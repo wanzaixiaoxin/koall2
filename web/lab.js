@@ -983,12 +983,13 @@
       const damageType = weapon.element;
       const homing = affixes.homing > 0 && !!cmd.target;
       const motionCfg = homing ? { type: "homing", speed, range, turnRate: 360, duration: 2.5, retarget: true } : weapon.cfg.motion ?? { type: "straight", speed, range };
-      const blast = affixes.blast > 0 ? {
-        radius: 70 + 30 * (affixes.blast - 1),
-        dmgMul: 0.5 + 0.25 * (affixes.blast - 1),
-        poolDpsMul: 0.4,
-        poolSec: 2.5
-      } : weapon.cfg.blastBase ?? null;
+      const blastBase = weapon.cfg.blastBase;
+      const blast = affixes.blast > 0 || blastBase ? {
+        radius: (blastBase?.radius ?? 70) + 30 * Math.max(0, affixes.blast - 1),
+        dmgMul: (blastBase?.dmgMul ?? 0.5) + 0.25 * Math.max(0, affixes.blast - 1),
+        poolDpsMul: blastBase?.poolDpsMul ?? 0.4,
+        poolSec: blastBase?.poolSec ?? 2.5
+      } : null;
       this.projectiles.push({
         id: this.nextEntityId++,
         weapon,

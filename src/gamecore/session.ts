@@ -506,14 +506,16 @@ export class GameSession {
     const motionCfg: TrajectoryConfig = homing
       ? { type: 'homing', speed, range, turnRate: 360, duration: 2.5, retarget: true }
       : (weapon.cfg.motion ?? { type: 'straight', speed, range });
-    const blast: BlastSpec | null = affixes.blast > 0
+    // 爆破：武器本体（blastBase）为基座，"扩爆"卡逐级放大（无本体则用默认基座）
+    const blastBase = weapon.cfg.blastBase;
+    const blast: BlastSpec | null = affixes.blast > 0 || blastBase
       ? {
-          radius: 70 + 30 * (affixes.blast - 1),
-          dmgMul: 0.5 + 0.25 * (affixes.blast - 1),
-          poolDpsMul: 0.4,
-          poolSec: 2.5,
+          radius: (blastBase?.radius ?? 70) + 30 * Math.max(0, affixes.blast - 1),
+          dmgMul: (blastBase?.dmgMul ?? 0.5) + 0.25 * Math.max(0, affixes.blast - 1),
+          poolDpsMul: blastBase?.poolDpsMul ?? 0.4,
+          poolSec: blastBase?.poolSec ?? 2.5,
         }
-      : (weapon.cfg.blastBase ?? null); // 爆破系武器本体机制
+      : null;
 
     this.projectiles.push({
       id: this.nextEntityId++,

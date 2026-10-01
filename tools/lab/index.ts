@@ -11,6 +11,7 @@ import {
   CardConfig,
   createTrajectory,
   frisbeeConfig,
+  applyForm,
   GameSession,
   HeroRuntime,
   LevelConfig,
@@ -253,18 +254,30 @@ const tests: TestCase[] = [
   } },
 
   // ===== C 类：形态卡 =====
-  { name: 'C-追踪弹：homing=1 且不叠加', run: () => {
-    const s = freshSession();
-    if (!s.grantCard('homing')) return '授予失败';
+  { name: 'C-追踪弹：回旋镖导向（homing=1 且不叠加）', run: () => {
+    const s = freshSession(1, 3); // boomerang（导向镖为其武器特性）
+    if (!s.grantCard('homing')) return '导向镖授予失败';
     return s.hero.weapons[0].affixes.homing === 1 && !s.grantCard('homing');
   } },
-  { name: 'C-弹射/分裂/爆破：按等级叠加', run: () => {
-    const s = freshSession();
+  { name: 'C-跳箭（弩专属）：弹射按级叠加，其他武器不可拿', run: () => {
+    const s = freshSession(1, 1); // crossbow_pierce
     s.grantCard('ricochet'); s.grantCard('ricochet'); s.grantCard('ricochet');
-    s.grantCard('split'); s.grantCard('split');
-    s.grantCard('blast'); s.grantCard('blast');
     const a = s.hero.weapons[0].affixes;
-    return a.bounce === 3 && a.split === 2 && a.blast === 2 && !s.grantCard('split');
+    if (!(a.bounce === 3 && !s.grantCard('ricochet'))) return `bounce=${a.bounce}`;
+    const rifle = freshSession();
+    if (rifle.grantCard('ricochet')) return '步枪不应能拿跳箭';
+    return true;
+  } },
+  { name: 'C-弹片/扩爆（炸弹专属）：分裂成长 + 在本体爆破上放大半径', run: () => {
+    const s = freshSession(1, 2); // alchemist_bomb（本体爆破 r90）
+    s.grantCard('split'); s.grantCard('split');
+    s.grantCard('blast');
+    const a = s.hero.weapons[0].affixes;
+    if (!(a.split === 2 && a.blast === 1)) return `split=${a.split} blast=${a.blast}`;
+    s.debugSpawn('slime', 540, 1100); // 远目标，射程尽头落地爆炸
+    const ok = runFor(s, 6, () => s.pools.length > 0);
+    if (!ok) return '伤害圈未出现';
+    return s.pools[0].radius >= 90 ? true : `半径 ${s.pools[0].radius}（应 ≥ 本体 90）`;
   } },
   { name: 'C-元素：赋予解锁骑士效果、加持成长、互斥与门控', run: () => {
     // 门控：未携带元素时加持卡不可授予
@@ -353,16 +366,10 @@ const tests: TestCase[] = [
     s.debugSpawn('bulwark', 540, 900);
     return runFor(s, 8, () => s.monsters.some((m) => m.shredAmount === 6 && m.shredUntil > s.timeSec));
   } },
-  { name: 'C-行为：爆破落地产生持续伤害圈', run: () => {
+  { name: 'C-行为：弹射后仍保留追踪（衍生/重定向词缀继承）', run: () => {
     const s = freshSession();
-    s.grantCard('blast');
-    s.debugSpawn('slime', 540, 1100); // 远目标，子弹射程耗尽落地
-    return runFor(s, 6, () => s.pools.length > 0);
-  } },
-  { name: 'C-行为：弹射后仍保留追踪（后拿不废先拿）', run: () => {
-    const s = freshSession();
-    s.grantCard('homing');       // 先拿追踪
-    s.grantCard('ricochet');     // 后拿弹射
+    applyForm(s.hero.weapons[0].affixes, 'homing', 1); // 直接注入词缀，验证机制继承
+    applyForm(s.hero.weapons[0].affixes, 'bounce', 1);
     s.debugSpawn('slime', 500, 800);
     s.debugSpawn('slime', 640, 850);
     s.debugSpawn('slime', 420, 880);
@@ -371,8 +378,8 @@ const tests: TestCase[] = [
   } },
   { name: 'C-行为：分裂衍生弹继承追踪', run: () => {
     const s = freshSession();
-    s.grantCard('homing');
-    s.grantCard('split');
+    applyForm(s.hero.weapons[0].affixes, 'homing', 1);
+    applyForm(s.hero.weapons[0].affixes, 'split', 1);
     s.debugSpawn('slime', 500, 800);
     s.debugSpawn('slime', 620, 860);
     return runFor(s, 8, () =>
