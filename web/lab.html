@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>卡牌实验室 · 英雄守卫战</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #07080F; color: #F5F5FA; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+  #layout { display: flex; height: 100vh; gap: 0; }
+  #left { flex: 0 0 auto; height: 100vh; aspect-ratio: 1080 / 1920; max-width: 46vw; background: #000; }
+  @media (max-aspect-ratio: 1/1) { #layout { flex-direction: column; overflow: auto; } #left { max-width: 100vw; height: 70vh; } }
+  canvas { width: 100%; height: 100%; display: block; }
+  #right { flex: 1; overflow-y: auto; padding: 14px 16px 40px; }
+  h2 { font-size: 18px; letter-spacing: .15em; margin-bottom: 4px; }
+  h2 small { font-size: 11px; color: rgba(245,245,250,.5); letter-spacing: .05em; }
+  .sec { margin: 14px 0 6px; font-size: 13px; color: #35E0C3; letter-spacing: .2em; }
+  #cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .cbtn {
+    text-align: left; padding: 8px 10px; border-radius: 10px; cursor: pointer;
+    background: #12142B; color: #F5F5FA; border: 1.5px solid #F5F5FA; font-size: 13px; line-height: 1.45;
+  }
+  .cbtn small { color: rgba(245,245,250,.55); font-size: 11px; }
+  .cbtn:hover:not(:disabled) { transform: translateY(-2px); }
+  .cbtn:disabled { opacity: .35; cursor: not-allowed; }
+  .cbtn.gated { border-style: dashed; opacity: .5; }
+  .cbtn.gated .cnt { color: #FFD54F; }
+  .cbtn .cnt { float: right; font-size: 11px; color: rgba(245,245,250,.5); }
+  .cbtn.t-bullet { border-color: #4FC3F7; }
+  .cbtn.t-form { border-color: #B388FF; }
+  .cbtn.t-wall { border-color: #3D4470; }
+  #mongrid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .mbtn, #clear, #reset {
+    padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(245,245,250,.3);
+    background: transparent; color: #F5F5FA; cursor: pointer; font-size: 13px;
+  }
+  .mbtn:hover, #clear:hover, #reset:hover { background: rgba(255,255,255,.08); }
+  #weaponselect { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  .wbtn {
+    padding: 8px 16px; border-radius: 10px; cursor: pointer; font-size: 14px;
+    border: 1.5px solid #3D4470; background: transparent; color: #F5F5FA;
+  }
+  .wbtn:hover { border-color: #35E0C3; }
+  .wbtn.active { background: #35E0C3; color: #0B0C1D; border-color: #35E0C3; font-weight: 700; }
+  #clear { color: #FF6B57; border-color: rgba(255,107,87,.5); }
+  #stats table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 4px; }
+  #stats td { padding: 2px 6px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  #stats td:nth-child(odd) { color: rgba(245,245,250,.55); width: 28%; }
+  #stats h3 { font-size: 12px; color: rgba(245,245,250,.7); margin: 10px 0 4px; letter-spacing: .1em; }
+  #log { margin-top: 12px; font-size: 12px; color: rgba(245,245,250,.6); max-height: 180px; overflow-y: auto; }
+  #log div { padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,.05); }
+  a { color: #35E0C3; }
+</style>
+</head>
+<body>
+  <div id="layout">
+    <div id="left"><canvas id="game"></canvas></div>
+    <div id="right">
+      <h2>卡牌实验室 <small>· <a href="./index.html">返回主菜单</a> · 点卡立即生效，实时验证效果</small></h2>
+      <div class="sec">英雄 / 武器构筑</div>
+      <div id="weaponselect"></div>
+      <div class="sec">测试怪（生成在射程外，可观行军与索敌）</div>
+      <div id="mongrid"></div>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button id="clear">清场</button>
+        <button id="autospawn">连续出怪：关</button>
+        <button id="beam">⚡ 光束（向上3s）</button>
+        <button id="link">⚡ 电网连线（随机横线3s）</button>
+        <button id="reset">重置全部</button>
+      </div>
+      <div class="sec">属性面板（实时）</div>
+      <div id="stats"></div>
+      <div class="sec">卡牌（点击授予）</div>
+      <div id="cardgrid"></div>
+      <div class="sec">操作日志</div>
+      <div id="log"></div>
+    </div>
+  </div>
+  <script src="./lab.js"></script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+{
+  "weapons": [
+    {
+      "id": "gun_rifle",
+      "name": "符文步枪",
+      "role": "速射系 · 均衡弹幕",
+      "damageType": "physical",
+      "baseDamage": 12,
+      "interval": 0.9,
+      "count": 1,
+      "projectileSpeed": 900,
+      "projectileRange": 900,
+      "projectileRadius": 5,
+      "pierce": 0,
+      "targeting": "nearest",
+      "trajectory": "straight"
+    },
+    {
+      "id": "crossbow_pierce",
+      "name": "穿透弩",
+      "role": "贯穿系 · 重箭穿线",
+      "damageType": "physical",
+      "baseDamage": 16,
+      "interval": 1.2,
+      "count": 1,
+      "projectileSpeed": 1100,
+      "projectileRange": 1000,
+      "projectileRadius": 4,
+      "pierce": 2,
+      "pierceFalloff": 0.15,
+      "targeting": "nearest",
+      "trajectory": "straight"
+    },
+    {
+      "id": "alchemist_bomb",
+      "name": "炼金炸弹",
+      "role": "爆破系 · 抛物轰击",
+      "damageType": "fire",
+      "baseDamage": 25,
+      "interval": 1.5,
+      "count": 1,
+      "projectileSpeed": 700,
+      "projectileRange": 950,
+      "projectileRadius": 8,
+      "pierce": 0,
+      "targeting": "random",
+      "trajectory": "straight",
+      "motion": { "type": "parabola", "speed": 700, "range": 950, "peak": 160 },
+      "blastBase": { "radius": 90, "dmgMul": 0.6, "poolDpsMul": 0.3, "poolSec": 2 }
+    },
+    {
+      "id": "boomerang",
+      "name": "回旋镖",
+      "role": "回旋系 · 双程切割",
+      "damageType": "physical",
+      "baseDamage": 10,
+      "interval": 1.0,
+      "count": 1,
+      "projectileSpeed": 550,
+      "projectileRange": 600,
+      "projectileRadius": 7,
+      "pierce": 99,
+      "targeting": "nearest",
+      "trajectory": "straight",
+      "motion": {
+        "type": "phased",
+        "phases": [
+          { "motion": { "type": "straight", "speed": 550, "range": 800 }, "until": { "kind": "distance", "value": 300 } },
+          { "motion": { "type": "homing", "speed": 550, "range": 99999, "turnRate": 720, "duration": 99, "retarget": false, "home": true }, "until": { "kind": "nearOwner", "value": 40 } }
+        ]
+      }
+    },
+    {
+      "id": "lightning_chain",
+      "name": "雷电权杖",
+      "role": "雷霆系 · 连锁落雷",
+      "damageType": "lightning",
+      "baseDamage": 14,
+      "interval": 1.1,
+      "count": 1,
+      "projectileSpeed": 0,
+      "projectileRange": 950,
+      "projectileRadius": 0,
+      "pierce": 0,
+      "targeting": "nearest",
+      "trajectory": "straight",
+      "chainBase": 1
+    }
+  ]
+}

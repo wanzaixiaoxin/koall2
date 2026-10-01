@@ -1,0 +1,21 @@
+{
+  "name": "hero-defense",
+  "version": "0.1.0",
+  "private": true,
+  "description": "英雄守卫战 - 竖屏底部防守射击 Roguelike（引擎解耦 + AI 自动创作）",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "sim": "npm run build && node dist/tools/sim/index.js",
+    "validate": "npm run build && node dist/tools/validate/index.js",
+    "lint": "eslint src tools",
+    "build:web": "esbuild src/adapter/web/main.ts --bundle --outfile=web/bundle.js && esbuild src/adapter/web/lab.ts --bundle --outfile=web/lab.js",
+    "play": "npm run build:web && node tools/serve.js",
+    "lab": "npm run build && node dist/tools/lab/index.js",
+    "test": "npm run build && node dist/tools/lab/index.js --all"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  }
+}

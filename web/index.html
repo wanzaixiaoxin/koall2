@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>英雄守卫战</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #07080F; color: #F5F5FA; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 20%, rgba(53,224,195,.08), transparent),
+      #07080F;
+    overflow: hidden;
+  }
+  /* 背景网格（docs/06 几何规范） */
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background:
+      linear-gradient(rgba(30,33,64,.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,33,64,.5) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+  }
+  #title { font-size: 52px; font-weight: 800; letter-spacing: .35em; text-indent: .35em; color: #35E0C3; text-shadow: 0 0 40px rgba(53,224,195,.35); }
+  #subtitle { margin-top: 10px; font-size: 13px; letter-spacing: .5em; text-indent: .5em; color: rgba(245,245,250,.45); }
+  #deco { margin: 26px 0 30px; display: flex; align-items: center; gap: 14px; }
+  #deco .tri { width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-bottom: 20px solid #FF6B57; }
+  #deco .line { width: 120px; height: 1px; background: linear-gradient(90deg, transparent, #3D4470, transparent); }
+  .sec { font-size: 13px; letter-spacing: .3em; color: rgba(245,245,250,.55); margin-bottom: 14px; align-self: flex-start; }
+  #panel { width: min(520px, 90vw); display: flex; flex-direction: column; }
+  #levels { display: flex; flex-direction: column; gap: 12px; margin-bottom: 26px; }
+  .lv {
+    display: flex; align-items: center; gap: 16px; padding: 16px 20px;
+    border: 1.5px solid #3D4470; border-radius: 14px; cursor: pointer;
+    background: rgba(18,20,43,.8); transition: transform .12s, border-color .12s, box-shadow .12s;
+  }
+  .lv:hover { transform: translateY(-3px); border-color: #35E0C3; box-shadow: 0 8px 30px rgba(53,224,195,.15); }
+  .lv .badge {
+    flex: 0 0 auto; width: 44px; height: 44px; border-radius: 12px;
+    background: #12142B; border: 1.5px solid #35E0C3; color: #35E0C3;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px;
+  }
+  .lv .info { flex: 1; }
+  .lv .name { font-size: 17px; font-weight: 700; margin-bottom: 3px; }
+  .lv .meta { font-size: 12px; color: rgba(245,245,250,.5); }
+  .lv .go { color: #35E0C3; font-size: 20px; }
+  #lab {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    padding: 14px; border-radius: 999px; cursor: pointer; font-size: 16px; letter-spacing: .2em;
+    border: 1.5px solid #B388FF; color: #B388FF; background: transparent;
+    transition: transform .12s, background .12s;
+  }
+  #lab:hover { transform: translateY(-2px); background: rgba(179,136,255,.08); }
+  #foot { position: fixed; bottom: 18px; width: 100%; text-align: center; font-size: 11px; color: rgba(245,245,250,.3); letter-spacing: .15em; }
+</style>
+</head>
+<body>
+  <div id="title">英雄守卫战</div>
+  <div id="subtitle">守 住 城 墙 · 撑 过 十 波</div>
+  <div id="deco"><div class="line"></div><div class="tri"></div><div class="line"></div></div>
+
+  <div id="panel">
+    <div class="sec">选 择 关 卡</div>
+    <div id="levels"><div style="color:rgba(245,245,250,.4);font-size:13px;">加载中…</div></div>
+    <div class="sec">工 具</div>
+    <div id="lab">🧪 卡牌实验室 · 验证每张卡的效果</div>
+  </div>
+
+  <div id="foot">HERO DEFENSE · engine-decoupled prototype · Cocos Creator ready</div>
+
+<script>
+(async function () {
+  const list = document.getElementById('levels');
+  try {
+    const manifest = await (await fetch('/configs/levels/index.json')).json();
+    list.innerHTML = '';
+    for (const lv of manifest.levels) {
+      const el = document.createElement('div');
+      el.className = 'lv';
+      el.innerHTML =
+        '<div class="badge">' + lv.chapter + '-' + (manifest.levels.indexOf(lv) + 1) + '</div>' +
+        '<div class="info"><div class="name">' + lv.name + '</div>' +
+        '<div class="meta">' + lv.waves + ' 波 · ' + (lv.desc || '') + '</div></div>' +
+        '<div class="go">▶</div>';
+      el.onclick = () => { location.href = './game.html?level=' + encodeURIComponent(lv.file); };
+      list.appendChild(el);
+    }
+    if (manifest.levels.length === 0) list.innerHTML = '<div style="color:rgba(245,245,250,.4);font-size:13px;">暂无关卡</div>';
+  } catch (e) {
+    list.innerHTML = '<div style="color:#FF6B57;font-size:13px;">关卡清单加载失败：' + e.message + '</div>';
+  }
+  document.getElementById('lab').onclick = () => { location.href = './lab.html'; };
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "monsters": [
+    { "id": "slime",      "name": "史莱姆",     "hp": 18,  "def": 0,  "speed": 55,  "radius": 20, "atk": 3, "attackInterval": 1.0, "behavior": "march",    "xp": 2, "weak": ["fire"] },
+    { "id": "wolf",       "name": "野狼",       "hp": 14,  "def": 0,  "speed": 120, "radius": 16, "atk": 4, "attackInterval": 0.8, "behavior": "dash",     "xp": 3 },
+    { "id": "thrower",    "name": "哥布林投矛手", "hp": 25, "def": 2,  "speed": 60,  "radius": 18, "atk": 5, "attackInterval": 1.6, "behavior": "ranged",   "xp": 4, "resist": ["fire"] },
+    { "id": "charger",    "name": "冲锋鼠",     "hp": 10,  "def": 0,  "speed": 205, "radius": 14, "atk": 3, "attackInterval": 0.9, "behavior": "fast_rush", "xp": 2 },
+    { "id": "bulwark",    "name": "岩甲兽",     "hp": 130, "def": 12, "speed": 30,  "radius": 30, "atk": 8, "attackInterval": 1.2, "behavior": "march",    "xp": 8, "weak": ["fire"] },
+    { "id": "split_shroom","name": "分裂菇",    "hp": 30,  "def": 0,  "speed": 65,  "radius": 20, "atk": 3, "attackInterval": 1.0, "behavior": "splitter", "xp": 4 },
+    { "id": "bat",        "name": "夜行蝙蝠",   "hp": 12,  "def": 0,  "speed": 140, "radius": 14, "atk": 2, "attackInterval": 0.7, "behavior": "zigzag",   "xp": 3 }
+  ]
+}

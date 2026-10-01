@@ -1,0 +1,23 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": { "ecmaVersion": 2021, "sourceType": "module" },
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    "no-restricted-imports": ["error", {
+      "paths": [
+        { "name": "cc", "message": "gamecore 禁止依赖 Cocos 引擎，引擎相关代码只能放在 src/adapter/ 下" },
+        { "name": "cc/env", "message": "gamecore 禁止依赖 Cocos 引擎，引擎相关代码只能放在 src/adapter/ 下" }
+      ]
+    }]
+  },
+  "overrides": [
+    {
+      "files": ["src/adapter/**/*"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["dist/", "node_modules/"]
+}

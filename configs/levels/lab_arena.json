@@ -1,0 +1,19 @@
+{
+  "id": "lab_arena",
+  "name": "卡牌实验室（测试场景）",
+  "arena": { "width": 1080, "height": 1920 },
+  "wall": { "height": 64, "hp": 1500 },
+  "defenseRect": { "yMin": 96, "yMax": 560 },
+  "spawnBandY": [1750, 1880],
+  "spawnPointsX": [140, 340, 540, 740, 940],
+  "prepareSec": 2,
+  "intermissionSec": 4,
+  "waveClearBonusXp": 0,
+  "waves": [
+    {
+      "banner": "实验室",
+      "durationSec": 99999,
+      "spawns": []
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "$comment": "优雅几何色板（docs/06 §1）：全游戏 ≤ 12 色，同屏主色 ≤ 3。深色夜空底 + 章节点缀主色 + 敌方互补警示色 + 4 状态色。",
+  "background": {
+    "night": "#12142B",
+    "nightDeep": "#0B0C1D",
+    "gridLine": "#1E2140"
+  },
+  "chapterAccent": {
+    "chapter_1": "#35E0C3"
+  },
+  "enemy": {
+    "primary": "#FF6B57",
+    "elite": "#FF3D71",
+    "boss": "#B537F2"
+  },
+  "damageType": {
+    "physical": "#F5F5FA",
+    "fire": "#FF5A3C",
+    "frost": "#4FC3F7",
+    "lightning": "#B388FF",
+    "poison": "#7CB342"
+  },
+  "friendly": {
+    "hero": "#35E0C3",
+    "assist": "#5EE1FF",
+    "wall": "#3D4470",
+    "wallDamaged": "#8A4B57"
+  },
+  "ui": {
+    "cardCommon": "#F5F5FA",
+    "cardRare": "#4FC3F7",
+    "cardEpic": "#B388FF",
+    "cardLegendary": "#FFD54F",
+    "warn": "#FF3D71",
+    "gemSmall": "#F5F5FA",
+    "gemMid": "#4FC3F7",
+    "gemLarge": "#FFD54F"
+  }
+}

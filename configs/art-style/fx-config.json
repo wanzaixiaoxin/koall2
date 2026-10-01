@@ -1,0 +1,20 @@
+{
+  "$comment": "动效规范表（docs/06 §3）：全部由适配层 Tween 实现，参数集中于此，美术调参不改代码。时长单位 ms。",
+  "hitFlash":        { "duration": 80,   "easing": "linear",        "note": "受击闪白，全元素覆盖，最高优先级" },
+  "squashStretch":   { "duration": 120,  "easing": "easeOutBack",   "scaleY": [1, 0.75, 1.15, 1], "note": "怪物移动/死亡通用" },
+  "spawnPop":        { "duration": 100,  "easing": "easeOutBack",   "scale": [0, 1.1, 1], "note": "投射物/怪物出生时缩放" },
+  "cardPop":         { "duration": 300,  "easing": "elastic",       "scale": [0.6, 1.05, 1], "note": "升级选卡弹出" },
+  "wallBreakSlowmo": { "duration": 1200, "timeScale": 0.3,          "easing": "linear", "note": "城破慢动作 + 屏幕渐黑" },
+  "screenShake": {
+    "hit":     { "duration": 100, "amplitude": 3 },
+    "bossSkill": { "duration": 300, "amplitude": 8 },
+    "easing": "decay"
+  },
+  "wallHitShake":    { "duration": 120,  "amplitude": 3,  "note": "城墙受击段抖动" },
+  "wallBreatheWarn": { "interval": 900,  "glow": 0.35,     "note": "城防 <30% 红光呼吸" },
+  "projectileTrail": { "fade": 80,       "note": "投射物拖尾统一渐隐" },
+  "dashTelegraph":   { "flashInterval": 120, "note": "dash 前摇预警线闪烁" },
+  "skillTelegraph":  { "easing": "linear", "note": "红圈填充进度与技能前摇一致" },
+  "gemMagnet":       { "speed": 600,      "acceleration": 2.0, "note": "磁石吸附速度(px/s)与加速度倍率" },
+  "levelUpFlash":    { "duration": 250,  "easing": "easeOut", "note": "升级瞬间英雄光圈" }
+}
