@@ -136,39 +136,51 @@ async function boot(): Promise<void> {
   // ---------- 卡牌按钮 ----------
   const cardGrid = document.getElementById('cardgrid')!;
   const cardBtns = new Map<string, { btn: HTMLButtonElement; cnt: HTMLSpanElement }>();
+  const elementNames: Record<string, string> = {
+    fire: '火焰', frost: '寒冰', lightning: '闪电', poison: '毒素', physical: '物理',
+  };
   const renderCards = (): void => {
     cardGrid.innerHTML = '';
     cardBtns.clear();
     const typeTag: Record<string, string> = { bullet: '子弹', wall: '城墙', form: '形态', passive: '属性', element: '元素' };
     const weaponNames = new Map(weaponsFile.weapons.map((w) => [w.id, w.name]));
-    const elementNames: Record<string, string> = {
-      fire: '火焰', frost: '寒冰', lightning: '闪电', poison: '毒素', physical: '物理',
+    const current = weaponsFile.weapons.find((w) => w.id === currentWeapon) ?? weaponsFile.weapons[0];
+    // 谱系分组：本武器专属卡 / 公共卡（其他武器的卡隐藏，切换武器即切换整套视图）
+    const exclusive = cardsFile.cards.filter((c) => c.target?.kind === 'weapon' && c.target.weaponType === current.id);
+    const shared = cardsFile.cards.filter((c) => c.target?.kind !== 'weapon');
+
+    const addGroup = (title: string, list: CardConfig[]): void => {
+      if (list.length === 0) return;
+      const h = document.createElement('div');
+      h.className = 'secgroup';
+      h.textContent = title;
+      cardGrid.appendChild(h);
+      for (const c of list) {
+        const targetTag = !c.target || c.target.kind === 'any'
+          ? '公共'
+          : `${elementNames[(c.target as { element: string }).element] ?? '元素'}·元素`;
+        const btn = document.createElement('button');
+        btn.className = `cbtn t-${c.type}`;
+        const cnt = document.createElement('span');
+        cnt.className = 'cnt';
+        const label = document.createElement('span');
+        label.innerHTML = `${c.name}<br><small>[${typeTag[c.type]}｜${targetTag}] ${c.desc ?? ''}</small>`;
+        btn.appendChild(cnt);
+        btn.appendChild(label);
+        btn.onclick = () => {
+          if (session.grantCard(c.id)) {
+            log(`✓ ${c.name} → ${c.desc ?? ''}`);
+            renderCards();
+          } else {
+            log(`✗ ${c.name}：不可用（未满足目标条件或已达上限）`);
+          }
+        };
+        cardGrid.appendChild(btn);
+        cardBtns.set(c.id, { btn, cnt });
+      }
     };
-    for (const c of cardsFile.cards) {
-      const targetTag = !c.target || c.target.kind === 'any'
-        ? '公共'
-        : c.target.kind === 'weapon'
-          ? (weaponNames.get(c.target.weaponType) ?? c.target.weaponType)
-          : `${elementNames[c.target.element] ?? c.target.element}·元素`;
-      const btn = document.createElement('button');
-      btn.className = `cbtn t-${c.type}`;
-      const cnt = document.createElement('span');
-      cnt.className = 'cnt';
-      const label = document.createElement('span');
-      label.innerHTML = `${c.name}<br><small>[${typeTag[c.type]}｜${targetTag}] ${c.desc ?? ''}</small>`;
-      btn.appendChild(cnt);
-      btn.appendChild(label);
-      btn.onclick = () => {
-        if (session.grantCard(c.id)) {
-          log(`✓ ${c.name} → ${c.desc ?? ''}`);
-          renderCards();
-        } else {
-          log(`✗ ${c.name}：不可用（未满足目标条件或已达上限）`);
-        }
-      };
-      cardGrid.appendChild(btn);
-      cardBtns.set(c.id, { btn, cnt });
-    }
+    addGroup(`专属卡 · ${weaponNames.get(current.id) ?? current.name}（${exclusive.length}）`, exclusive);
+    addGroup(`公共卡（${shared.length}）`, shared);
     refreshCardStates();
   };
 
@@ -228,7 +240,26 @@ async function boot(): Promise<void> {
 
   // 武器构筑选择：切换后重建沙盒会话，卡池按新武器门控刷新
   const weaponSelect = document.getElementById('weaponselect')!;
+  const wprofile = document.getElementById('wprofile')!;
   let currentWeapon = new URLSearchParams(location.search).get('weapon') ?? weaponsFile.weapons[0].id;
+
+  /** 谱系档案：定位 + 本体机制标签（由武器配置派生，docs/02 §6）。 */
+  const renderWeaponProfile = (): void => {
+    const w = weaponsFile.weapons.find((x) => x.id === currentWeapon) ?? weaponsFile.weapons[0];
+    const tags: string[] = [];
+    if (w.chainBase) tags.push(`落雷连锁 ×${w.chainBase}`);
+    if (w.blastBase) tags.push(`落地爆破圈 r${Math.round(w.blastBase.radius)}`);
+    if (w.motion?.type === 'parabola') tags.push('抛物线弹道');
+    if (w.motion?.type === 'phased') tags.push('飞出→返回');
+    if ((w.pierce ?? 0) > 0) tags.push(`穿透 ${w.pierce}`);
+    if (w.pierceFalloff) tags.push(`穿透衰减 ${Math.round(w.pierceFalloff * 100)}%/次`);
+    wprofile.innerHTML =
+      `<span class="role">${w.role ?? ''}</span>` +
+      `<span class="chip">${elementNames[w.damageType] ?? w.damageType}</span>` +
+      `<span class="chip">伤害 ${w.baseDamage} · ${w.interval}s · ${w.count} 发</span>` +
+      tags.map((t) => `<span class="chip mech">${t}</span>`).join('');
+  };
+
   const renderWeaponSelect = (): void => {
     weaponSelect.innerHTML = '';
     for (const w of weaponsFile.weapons) {
@@ -240,6 +271,7 @@ async function boot(): Promise<void> {
         currentWeapon = w.id;
         createSession(w.id);
         renderWeaponSelect();
+        renderWeaponProfile();
         renderCards();
         log(`切换武器构筑：${w.name}（专属卡已切换）`);
       };
@@ -308,6 +340,7 @@ async function boot(): Promise<void> {
   };
   createSession(currentWeapon);
   renderWeaponSelect();
+  renderWeaponProfile();
   renderCards();
   log('实验室就绪：上方切换武器构筑，下方卡牌随之切换；左侧战场拖动/WASD 移动');
 

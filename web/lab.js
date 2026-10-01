@@ -1550,39 +1550,51 @@
     }
     const cardGrid = document.getElementById("cardgrid");
     const cardBtns = /* @__PURE__ */ new Map();
+    const elementNames = {
+      fire: "\u706B\u7130",
+      frost: "\u5BD2\u51B0",
+      lightning: "\u95EA\u7535",
+      poison: "\u6BD2\u7D20",
+      physical: "\u7269\u7406"
+    };
     const renderCards = () => {
       cardGrid.innerHTML = "";
       cardBtns.clear();
       const typeTag = { bullet: "\u5B50\u5F39", wall: "\u57CE\u5899", form: "\u5F62\u6001", passive: "\u5C5E\u6027", element: "\u5143\u7D20" };
       const weaponNames = new Map(weaponsFile.weapons.map((w) => [w.id, w.name]));
-      const elementNames = {
-        fire: "\u706B\u7130",
-        frost: "\u5BD2\u51B0",
-        lightning: "\u95EA\u7535",
-        poison: "\u6BD2\u7D20",
-        physical: "\u7269\u7406"
+      const current = weaponsFile.weapons.find((w) => w.id === currentWeapon) ?? weaponsFile.weapons[0];
+      const exclusive = cardsFile.cards.filter((c) => c.target?.kind === "weapon" && c.target.weaponType === current.id);
+      const shared = cardsFile.cards.filter((c) => c.target?.kind !== "weapon");
+      const addGroup = (title, list) => {
+        if (list.length === 0) return;
+        const h = document.createElement("div");
+        h.className = "secgroup";
+        h.textContent = title;
+        cardGrid.appendChild(h);
+        for (const c of list) {
+          const targetTag = !c.target || c.target.kind === "any" ? "\u516C\u5171" : `${elementNames[c.target.element] ?? "\u5143\u7D20"}\xB7\u5143\u7D20`;
+          const btn = document.createElement("button");
+          btn.className = `cbtn t-${c.type}`;
+          const cnt = document.createElement("span");
+          cnt.className = "cnt";
+          const label = document.createElement("span");
+          label.innerHTML = `${c.name}<br><small>[${typeTag[c.type]}\uFF5C${targetTag}] ${c.desc ?? ""}</small>`;
+          btn.appendChild(cnt);
+          btn.appendChild(label);
+          btn.onclick = () => {
+            if (session.grantCard(c.id)) {
+              log(`\u2713 ${c.name} \u2192 ${c.desc ?? ""}`);
+              renderCards();
+            } else {
+              log(`\u2717 ${c.name}\uFF1A\u4E0D\u53EF\u7528\uFF08\u672A\u6EE1\u8DB3\u76EE\u6807\u6761\u4EF6\u6216\u5DF2\u8FBE\u4E0A\u9650\uFF09`);
+            }
+          };
+          cardGrid.appendChild(btn);
+          cardBtns.set(c.id, { btn, cnt });
+        }
       };
-      for (const c of cardsFile.cards) {
-        const targetTag = !c.target || c.target.kind === "any" ? "\u516C\u5171" : c.target.kind === "weapon" ? weaponNames.get(c.target.weaponType) ?? c.target.weaponType : `${elementNames[c.target.element] ?? c.target.element}\xB7\u5143\u7D20`;
-        const btn = document.createElement("button");
-        btn.className = `cbtn t-${c.type}`;
-        const cnt = document.createElement("span");
-        cnt.className = "cnt";
-        const label = document.createElement("span");
-        label.innerHTML = `${c.name}<br><small>[${typeTag[c.type]}\uFF5C${targetTag}] ${c.desc ?? ""}</small>`;
-        btn.appendChild(cnt);
-        btn.appendChild(label);
-        btn.onclick = () => {
-          if (session.grantCard(c.id)) {
-            log(`\u2713 ${c.name} \u2192 ${c.desc ?? ""}`);
-            renderCards();
-          } else {
-            log(`\u2717 ${c.name}\uFF1A\u4E0D\u53EF\u7528\uFF08\u672A\u6EE1\u8DB3\u76EE\u6807\u6761\u4EF6\u6216\u5DF2\u8FBE\u4E0A\u9650\uFF09`);
-          }
-        };
-        cardGrid.appendChild(btn);
-        cardBtns.set(c.id, { btn, cnt });
-      }
+      addGroup(`\u4E13\u5C5E\u5361 \xB7 ${weaponNames.get(current.id) ?? current.name}\uFF08${exclusive.length}\uFF09`, exclusive);
+      addGroup(`\u516C\u5171\u5361\uFF08${shared.length}\uFF09`, shared);
       refreshCardStates();
     };
     const refreshCardStates = () => {
@@ -1634,7 +1646,19 @@
     };
     document.getElementById("reset").onclick = () => location.reload();
     const weaponSelect = document.getElementById("weaponselect");
+    const wprofile = document.getElementById("wprofile");
     let currentWeapon = new URLSearchParams(location.search).get("weapon") ?? weaponsFile.weapons[0].id;
+    const renderWeaponProfile = () => {
+      const w = weaponsFile.weapons.find((x) => x.id === currentWeapon) ?? weaponsFile.weapons[0];
+      const tags = [];
+      if (w.chainBase) tags.push(`\u843D\u96F7\u8FDE\u9501 \xD7${w.chainBase}`);
+      if (w.blastBase) tags.push(`\u843D\u5730\u7206\u7834\u5708 r${Math.round(w.blastBase.radius)}`);
+      if (w.motion?.type === "parabola") tags.push("\u629B\u7269\u7EBF\u5F39\u9053");
+      if (w.motion?.type === "phased") tags.push("\u98DE\u51FA\u2192\u8FD4\u56DE");
+      if ((w.pierce ?? 0) > 0) tags.push(`\u7A7F\u900F ${w.pierce}`);
+      if (w.pierceFalloff) tags.push(`\u7A7F\u900F\u8870\u51CF ${Math.round(w.pierceFalloff * 100)}%/\u6B21`);
+      wprofile.innerHTML = `<span class="role">${w.role ?? ""}</span><span class="chip">${elementNames[w.damageType] ?? w.damageType}</span><span class="chip">\u4F24\u5BB3 ${w.baseDamage} \xB7 ${w.interval}s \xB7 ${w.count} \u53D1</span>` + tags.map((t) => `<span class="chip mech">${t}</span>`).join("");
+    };
     const renderWeaponSelect = () => {
       weaponSelect.innerHTML = "";
       for (const w of weaponsFile.weapons) {
@@ -1646,6 +1670,7 @@
           currentWeapon = w.id;
           createSession(w.id);
           renderWeaponSelect();
+          renderWeaponProfile();
           renderCards();
           log(`\u5207\u6362\u6B66\u5668\u6784\u7B51\uFF1A${w.name}\uFF08\u4E13\u5C5E\u5361\u5DF2\u5207\u6362\uFF09`);
         };
@@ -1709,6 +1734,7 @@
     };
     createSession(currentWeapon);
     renderWeaponSelect();
+    renderWeaponProfile();
     renderCards();
     log("\u5B9E\u9A8C\u5BA4\u5C31\u7EEA\uFF1A\u4E0A\u65B9\u5207\u6362\u6B66\u5668\u6784\u7B51\uFF0C\u4E0B\u65B9\u5361\u724C\u968F\u4E4B\u5207\u6362\uFF1B\u5DE6\u4FA7\u6218\u573A\u62D6\u52A8/WASD \u79FB\u52A8");
     function render() {

@@ -16,6 +16,17 @@
   h2 small { font-size: 11px; color: rgba(245,245,250,.5); letter-spacing: .05em; }
   .sec { margin: 14px 0 6px; font-size: 13px; color: #35E0C3; letter-spacing: .2em; }
   #cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .secgroup {
+    grid-column: 1 / -1; margin-top: 6px; font-size: 12px; letter-spacing: .2em;
+    color: #35E0C3; border-bottom: 1px solid rgba(53,224,195,.2); padding-bottom: 4px;
+  }
+  #wprofile { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 10px; align-items: center; }
+  #wprofile .role { font-size: 13px; font-weight: 700; color: #F5F5FA; margin-right: 4px; }
+  #wprofile .chip {
+    font-size: 11px; padding: 2px 10px; border-radius: 999px;
+    border: 1px solid #3D4470; color: rgba(245,245,250,.75);
+  }
+  #wprofile .chip.mech { border-color: #35E0C3; color: #35E0C3; }
   .cbtn {
     text-align: left; padding: 8px 10px; border-radius: 10px; cursor: pointer;
     background: #12142B; color: #F5F5FA; border: 1.5px solid #F5F5FA; font-size: 13px; line-height: 1.45;
@@ -59,6 +70,9 @@
       <h2>卡牌实验室 <small>· <a href="./index.html">返回主菜单</a> · 点卡立即生效，实时验证效果</small></h2>
       <div class="sec">英雄 / 武器构筑</div>
       <div id="weaponselect"></div>
+      <div id="wprofile"></div>
+      <div class="sec">卡牌（随武器构筑切换）</div>
+      <div id="cardgrid"></div>
       <div class="sec">测试怪（生成在射程外，可观行军与索敌）</div>
       <div id="mongrid"></div>
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
@@ -70,8 +84,6 @@
       </div>
       <div class="sec">属性面板（实时）</div>
       <div id="stats"></div>
-      <div class="sec">卡牌（点击授予）</div>
-      <div id="cardgrid"></div>
       <div class="sec">操作日志</div>
       <div id="log"></div>
     </div>
