@@ -14,7 +14,7 @@ import {
   Vec2,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot } from './render/shapes';
 
 const W = 1080;
 const H = 1920;
@@ -354,6 +354,11 @@ async function boot(): Promise<void> {
       (palette.damageType as Record<string, string>)[t] ?? '#BFFFF2';
     for (const p of session.projectiles) {
       drawProjectile(ctx, p, t, projColor(p.damageType));
+    }
+
+    // 怪物远程弹（投矛/投石，警示橙）
+    for (const s of session.monsterShots) {
+      drawMonsterShot(ctx, s);
     }
 
     // 伤害飘字（上升 + 淡出；文字在 y 翻转坐标系下需回到标准变换绘制）

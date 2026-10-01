@@ -26,6 +26,7 @@ import {
   LevelConfig,
   MonsterConfig,
   MonsterRuntime,
+  MonsterShot,
   ProjectileRuntime,
   SegmentField,
   WeaponAffixes,
@@ -209,6 +210,7 @@ export class GameSession {
   hero: HeroRuntime;
   monsters: MonsterRuntime[] = [];
   projectiles: ProjectileRuntime[] = [];
+  monsterShots: MonsterShot[] = []; // 怪物远程弹（可见弹道，落点结算对墙伤害）
   pools: DamagePool[] = [];
   segments: SegmentField[] = []; // 光束/连线伤害场（docs/07 §4）
 
@@ -340,7 +342,7 @@ export class GameSession {
       this.collideProjectile(p);
     }
 
-    // 5) 怪物推进：灼烧 DoT → 行为（含冰冻减速）→ 打墙
+    // 5) 怪物推进：灼烧 DoT → 行为（含冰冻减速）→ 打墙 / 远程停驻射击
     this.hash.rebuild(this.monsters);
     for (const m of this.monsters) {
       if (m.hp <= 0) continue;
@@ -351,7 +353,26 @@ export class GameSession {
         this.totalWallDamage += dmg;
         this.waveWallDamage += dmg;
         this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+      }, (src) => {
+        this.spawnMonsterShot(src);
       });
+    }
+
+    // 5b) 怪物远程弹推进：到达落点结算对墙伤害
+    for (let i = this.monsterShots.length - 1; i >= 0; i--) {
+      const s = this.monsterShots[i];
+      s.t += dt / s.dur;
+      if (s.t >= 1) {
+        this.wallHp = Math.max(0, this.wallHp - s.dmg);
+        this.totalWallDamage += s.dmg;
+        this.waveWallDamage += s.dmg;
+        this.bus.emit('onWallHit', { dmg: s.dmg, wallHp: this.wallHp, x: s.tx, y: this.level.wall.height + 26 });
+        this.monsterShots.splice(i, 1);
+        continue;
+      }
+      s.x = s.sx + (s.tx - s.sx) * s.t;
+      s.y = s.sy + (s.ty - s.sy) * s.t;
+      s.height = Math.sin(s.t * Math.PI) * (s.kind === 'rock' ? 140 : 40);
     }
 
     // 6) 落地范围伤害圈（持续 DoT）
@@ -458,13 +479,33 @@ export class GameSession {
 
   // ---------- 内部 ----------
 
+  /** 远程怪发射可见弹道（投矛/投石），落点结算对墙伤害。 */
+  private spawnMonsterShot(src: MonsterRuntime): void {
+    const isRock = (src.cfg.rangedDist ?? 0) > 400; // 投石车类远距抛石
+    const dist = Math.hypot(src.x - src.x, src.y - this.level.wall.height);
+    const speed = isRock ? 420 : 620;
+    this.monsterShots.push({
+      sx: src.x,
+      sy: src.y,
+      tx: src.x + this.rng.range(-24, 24),
+      ty: this.level.wall.height,
+      x: src.x,
+      y: src.y,
+      height: 0,
+      t: 0,
+      dur: Math.max(0.2, dist / speed),
+      dmg: src.cfg.atk,
+      kind: isRock ? 'rock' : 'spear',
+    });
+  }
+
   private spawnMonster(key: string, spawnX: number, spawnY?: number): void {
     const cfg = this.monsterCfgs.get(key);
     if (!cfg) throw new Error(`未知怪物配置: ${key}`);
     const x = clamp(spawnX, 40, this.level.arena.width - 40);
     const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
-    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 8%×n)，后期压力随玩家构筑同步爬升
-    const scale = 1 + 0.08 * this.director.currentWave;
+    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 10%×n)，血量随波次显著增强
+    const scale = 1 + 0.1 * this.director.currentWave;
     const hp = Math.round(cfg.hp * scale);
     this.monsters.push({
       id: this.monsters.length, // tick 内密度数组约定

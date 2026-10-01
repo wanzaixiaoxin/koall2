@@ -5,7 +5,7 @@
       "name": "符文步枪",
       "role": "速射系 · 弹幕雨",
       "damageType": "physical",
-      "baseDamage": 9,
+      "baseDamage": 14,
       "interval": 0.55,
       "count": 1,
       "projectileSpeed": 950,
@@ -14,7 +14,11 @@
       "pierce": 0,
       "targeting": "nearest",
       "trajectory": "straight",
-      "shape": "dot"
+      "shape": "dot",
+      "heat": {
+        "shots": 14,
+        "cooldown": 2.5
+      }
     },
     {
       "id": "crossbow_pierce",
@@ -31,7 +35,11 @@
       "pierceFalloff": 0.18,
       "targeting": "nearest",
       "trajectory": "straight",
-      "shape": "arrow"
+      "shape": "arrow",
+      "heat": {
+        "shots": 8,
+        "cooldown": 2.2
+      }
     },
     {
       "id": "alchemist_bomb",
@@ -59,7 +67,11 @@
         "poolDpsMul": 0.3,
         "poolSec": 2
       },
-      "shape": "bomb"
+      "shape": "bomb",
+      "heat": {
+        "shots": 10,
+        "cooldown": 2.5
+      }
     },
     {
       "id": "boomerang",
@@ -117,7 +129,11 @@
       },
       "shape": "gear",
       "spread": 0.3,
-      "pierceFalloff": 0
+      "pierceFalloff": 0,
+      "heat": {
+        "shots": 10,
+        "cooldown": 2.2
+      }
     },
     {
       "id": "lightning_chain",
@@ -134,7 +150,11 @@
       "targeting": "nearest",
       "trajectory": "straight",
       "chainBase": 1,
-      "shape": "dot"
+      "shape": "dot",
+      "heat": {
+        "shots": 14,
+        "cooldown": 2.5
+      }
     }
   ]
 }

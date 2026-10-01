@@ -419,9 +419,9 @@
   var scratch2 = [];
   var RANGED_HOLD_DISTANCE = 260;
   var DASH_PERIOD = 2.2;
-  function updateMonster(m, dt, now, wallTopY, monsters, hash, onWallHit) {
+  function updateMonster(m, dt, now, wallTopY, monsters, hash, onWallHit, onRangedShot) {
     const r = m.cfg.radius;
-    const holdY = wallTopY + (m.cfg.behavior === "ranged" ? RANGED_HOLD_DISTANCE : 0) + r;
+    const holdY = wallTopY + (m.cfg.behavior === "ranged" ? m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE : 0) + r;
     if (m.state === "march") {
       let speed = m.cfg.speed;
       if (now < m.slowUntil) speed *= m.slowFactor;
@@ -466,7 +466,11 @@
       m.attackTimer -= dt;
       if (m.attackTimer <= 0) {
         m.attackTimer += m.cfg.attackInterval;
-        onWallHit(m.cfg.atk, m);
+        if (m.cfg.behavior === "ranged") {
+          onRangedShot(m);
+        } else {
+          onWallHit(m.cfg.atk, m);
+        }
       }
     }
   }
@@ -496,6 +500,7 @@
         damage: cfg.baseDamage,
         cooldown: 0.3,
         // 开局小延迟，避免第一帧齐射
+        shotsSinceCool: 0,
         mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0 },
         element: cfg.damageType,
         riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
@@ -522,6 +527,13 @@
       const target = acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng);
       if (!target) continue;
       w.cooldown = w.cfg.interval / hero.stats.aspd;
+      if (w.cfg.heat) {
+        w.shotsSinceCool++;
+        if (w.shotsSinceCool >= w.cfg.heat.shots) {
+          w.shotsSinceCool = 0;
+          w.cooldown = Math.max(w.cooldown, w.cfg.heat.cooldown);
+        }
+      }
       const n = norm(target.x - hero.x, target.y - hero.y);
       const total = w.cfg.count + mods.extraCount;
       for (let i = 0; i < total; i++) {
@@ -728,6 +740,8 @@
       this.bus = new EventBus();
       this.monsters = [];
       this.projectiles = [];
+      this.monsterShots = [];
+      // 怪物远程弹（可见弹道，落点结算对墙伤害）
       this.pools = [];
       this.segments = [];
       // 可被 B 类卡（加固城墙）提升
@@ -849,7 +863,24 @@
           this.totalWallDamage += dmg;
           this.waveWallDamage += dmg;
           this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+        }, (src) => {
+          this.spawnMonsterShot(src);
         });
+      }
+      for (let i = this.monsterShots.length - 1; i >= 0; i--) {
+        const s = this.monsterShots[i];
+        s.t += dt / s.dur;
+        if (s.t >= 1) {
+          this.wallHp = Math.max(0, this.wallHp - s.dmg);
+          this.totalWallDamage += s.dmg;
+          this.waveWallDamage += s.dmg;
+          this.bus.emit("onWallHit", { dmg: s.dmg, wallHp: this.wallHp, x: s.tx, y: this.level.wall.height + 26 });
+          this.monsterShots.splice(i, 1);
+          continue;
+        }
+        s.x = s.sx + (s.tx - s.sx) * s.t;
+        s.y = s.sy + (s.ty - s.sy) * s.t;
+        s.height = Math.sin(s.t * Math.PI) * (s.kind === "rock" ? 140 : 40);
       }
       for (let i = this.pools.length - 1; i >= 0; i--) {
         const pool = this.pools[i];
@@ -942,12 +973,31 @@
       this.tick++;
     }
     // ---------- 内部 ----------
+    /** 远程怪发射可见弹道（投矛/投石），落点结算对墙伤害。 */
+    spawnMonsterShot(src) {
+      const isRock = (src.cfg.rangedDist ?? 0) > 400;
+      const dist = Math.hypot(src.x - src.x, src.y - this.level.wall.height);
+      const speed = isRock ? 420 : 620;
+      this.monsterShots.push({
+        sx: src.x,
+        sy: src.y,
+        tx: src.x + this.rng.range(-24, 24),
+        ty: this.level.wall.height,
+        x: src.x,
+        y: src.y,
+        height: 0,
+        t: 0,
+        dur: Math.max(0.2, dist / speed),
+        dmg: src.cfg.atk,
+        kind: isRock ? "rock" : "spear"
+      });
+    }
     spawnMonster(key, spawnX, spawnY) {
       const cfg = this.monsterCfgs.get(key);
       if (!cfg) throw new Error(`\u672A\u77E5\u602A\u7269\u914D\u7F6E: ${key}`);
       const x = clamp(spawnX, 40, this.level.arena.width - 40);
       const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
-      const scale = 1 + 0.08 * this.director.currentWave;
+      const scale = 1 + 0.1 * this.director.currentWave;
       const hp = Math.round(cfg.hp * scale);
       this.monsters.push({
         id: this.monsters.length,
@@ -1476,7 +1526,8 @@
     thrower: "#FF5E7A",
     bulwark: "#8A93B8",
     bat: "#FF7EC7",
-    shroom: "#FF6B9C"
+    shroom: "#FF6B9C",
+    boss: "#B537F2"
   };
   function monsterColor(m) {
     return MONSTER_COLOR[m.cfg.shape ?? "slime"] ?? "#FF6B57";
@@ -1594,6 +1645,29 @@
         ctx.fill();
         break;
       }
+      case "boss": {
+        const pulse = 1 + 0.04 * Math.sin(t * 2.4 + m.phase);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(pulse, pulse);
+        ctx.beginPath();
+        for (let i = 0; i < 12; i++) {
+          const a = Math.PI / 6 * i;
+          const rad = i % 2 === 0 ? r * 1.15 : r * 0.92;
+          const px = Math.cos(a) * rad;
+          const py = Math.sin(a) * rad;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "rgba(11,12,29,.5)";
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
       case "slime":
       default: {
         const sq = moving ? 1 + 0.12 * Math.sin(t * 6 + m.phase) : 1;
@@ -1697,6 +1771,34 @@
         ctx.fill();
         break;
       }
+    }
+  }
+  function drawMonsterShot(ctx, s) {
+    const color = "#FFB357";
+    if (s.kind === "rock") {
+      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.ty, 10, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y + s.height, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(11,12,29,.5)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else {
+      const dx = s.tx - s.sx;
+      const dy = s.ty - s.sy;
+      const l = Math.hypot(dx, dy) || 1;
+      const ux = dx / l;
+      const uy = dy / l;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(s.x - ux * 16, s.y - uy * 16 + s.height);
+      ctx.lineTo(s.x + ux * 4, s.y + uy * 4 + s.height);
+      ctx.stroke();
     }
   }
 
@@ -1984,6 +2086,9 @@
       const projColor = (t2) => palette.damageType[t2] ?? "#BFFFF2";
       for (const p of session.projectiles) {
         drawProjectile(ctx, p, t, projColor(p.damageType));
+      }
+      for (const s of session.monsterShots) {
+        drawMonsterShot(ctx, s);
       }
       const dtR = Math.min(0.05, (timeMs - prevRenderMs) / 1e3 || 0.016);
       prevRenderMs = timeMs;

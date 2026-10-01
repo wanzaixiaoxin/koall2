@@ -10,7 +10,7 @@ import {
   WeaponConfig,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot } from './render/shapes';
 
 const W = 1080;
 const H = 1920;
@@ -444,6 +444,9 @@ async function boot(): Promise<void> {
     const projColor = (t: string): string => palette.damageType[t] ?? '#BFFFF2';
     for (const p of session.projectiles) {
       drawProjectile(ctx, p, now, projColor(p.damageType));
+    }
+    for (const s of session.monsterShots) {
+      drawMonsterShot(ctx, s);
     }
 
     ctx.fillStyle = palette.friendly.hero;

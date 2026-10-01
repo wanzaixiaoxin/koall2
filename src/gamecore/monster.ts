@@ -27,9 +27,10 @@ export function updateMonster(
   monsters: readonly MonsterRuntime[],
   hash: SpatialHash,
   onWallHit: (dmg: number, m: MonsterRuntime) => void,
+  onRangedShot: (m: MonsterRuntime) => void,
 ): void {
   const r = m.cfg.radius;
-  const holdY = wallTopY + (m.cfg.behavior === 'ranged' ? RANGED_HOLD_DISTANCE : 0) + r;
+  const holdY = wallTopY + (m.cfg.behavior === 'ranged' ? (m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE) : 0) + r;
 
   if (m.state === 'march') {
     let speed = m.cfg.speed;
@@ -80,7 +81,11 @@ export function updateMonster(
     m.attackTimer -= dt;
     if (m.attackTimer <= 0) {
       m.attackTimer += m.cfg.attackInterval;
-      onWallHit(m.cfg.atk, m);
+      if (m.cfg.behavior === 'ranged') {
+        onRangedShot(m); // 远程怪：发射可见弹道（落点结算对墙伤害）
+      } else {
+        onWallHit(m.cfg.atk, m);
+      }
     }
   }
 }

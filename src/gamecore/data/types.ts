@@ -23,6 +23,8 @@ export interface WeaponConfig {
   /** 声明式运动配置（优先于 trajectory 字段），供新武器/AI 生成内容使用 */
   motion?: TrajectoryConfig;
   homing?: { turnRate: number; duration: number; retarget: boolean };
+  /** 枪管过热：每发射 shots 次（一轮齐射/连射计 1 次）强制冷却 cooldown 秒 */
+  heat?: { shots: number; cooldown: number };
   /** ≥1 = 落雷武器：开火不产生子弹，直接以"1+连锁等级"次打击落雷（连锁闪电武器本体） */
   chainBase?: number;
     /** 子弹视觉形态（docs/06）：dot 光点 / arrow 箭矢 / bomb 抛物弹 / gear 齿轮圆盘 */
@@ -49,12 +51,14 @@ export interface MonsterConfig {
   atk: number;             // 单次对墙伤害
   attackInterval: number;  // 对墙攻击间隔（秒）
   behavior: MonsterBehavior;
+  /** ranged 停驻射击距离（距城墙，默认 260）：投矛手 260 / 投石车 600 */
+  rangedDist?: number;
   xp: number;              // 经验（击杀自动吸收）
   /** 伤害类型弱点：受到该类型 ×1.25（docs/01 §2.1） */
   weak?: DamageType[];
   /** 伤害类型抗性：受到该类型 ×0.75 */
   resist?: DamageType[];
-  /** 外观形态（docs/06 形状语言）：slime/wolf/charger/thrower/bulwark/bat/shroom */
+  /** 外观形态（docs/06 形状语言）：slime/wolf/charger/thrower/bulwark/bat/shroom/boss */
   shape?: string;
 }
 
@@ -192,6 +196,8 @@ export interface WeaponInstance {
   level: number;
   damage: number;          // 面板伤害（不含子弹卡倍率；结算时 × mods.damageMul）
   cooldown: number;
+  /** 枪管过热：当前连射计数（达 cfg.heat.shots 后强制冷却） */
+  shotsSinceCool: number;
   mods: WeaponMods;
   /** 当前元素（默认 = cfg.damageType；可被元素赋予卡改变，享受类型克制与骑士效果） */
   element: DamageType;
@@ -199,6 +205,18 @@ export interface WeaponInstance {
   riders: WeaponRiders;
   /** 形态词缀（追踪/弹射/分裂/破甲/爆破/连锁） */
   affixes: WeaponAffixes;
+}
+
+/** 怪物远程弹（可见弹道：投矛/投石，落点结算对墙伤害） */
+export interface MonsterShot {
+  sx: number; sy: number;   // 起点
+  tx: number; ty: number;   // 落点（城墙）
+  x: number; y: number;
+  height: number;
+  t: number;                // 0~1 飞行进度
+  dur: number;
+  dmg: number;
+  kind: 'spear' | 'rock';
 }
 
 export interface MonsterRuntime {

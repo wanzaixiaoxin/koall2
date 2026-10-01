@@ -400,6 +400,32 @@ const tests: TestCase[] = [
   } },
 
   // ===== 弹道行为库（docs/07）：运动基元单测 =====
+  { name: 'W-枪管过热：连射 14 轮后强制冷却 2.5 秒', run: () => {
+    const s = freshSession(); // rifle heat 14/2.5
+    s.debugSpawn('bulwark', 540, 900);
+    const target = s.monsters[0];
+    target.hp = target.maxHp = 1e6; // 测试靶不死，隔离英雄火力干扰
+    let shots = 0;
+    let lastShotT = -1;
+    let cooled = false;
+    s.bus.on('onShoot', () => { shots++; lastShotT = s.timeSec; });
+    for (let i = 0; i < 30 * 25 && !cooled; i++) {
+      s.step();
+      if (lastShotT > 0 && s.timeSec - lastShotT > 1.2) cooled = true; // 0.55s 正常间隔下 >1.2s 空窗=过热冷却中
+    }
+    return shots >= 14 && cooled ? true : `射击 ${shots} 次，未检测到过冷窗口`;
+  } },
+  { name: 'M-远程怪：停驻发射可见弹道，落点结算对墙伤害', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 100000;
+    s.wallHp = 100000;
+    s.debugSpawn('thrower', 540, 900);
+    const target = s.monsters[0];
+    target.hp = target.maxHp = 1e6; // 测试靶不死
+    const before = s.totalWallDamage;
+    if (!runFor(s, 25, () => s.monsterShots.length > 0)) return '弹道未出现（停驻距离 260px，行军+首次射击需 ~13s）';
+    return runFor(s, 10, () => s.totalWallDamage > before) ? true : '落点未结算伤害';
+  } },
   { name: 'W-武器特色：炸弹本体=抛物线+落地爆破（自动产生伤害圈）', run: () => {
     const s = freshSession(5, 2); // alchemist_bomb（blastBase 本体机制）
     s.debugSpawn('slime', 540, 1100);

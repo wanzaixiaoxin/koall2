@@ -81,7 +81,11 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
     need(isNum(m.attackInterval) && m.attackInterval > 0, where, 'attackInterval 必须为正数');
     need(isNum(m.xp) && m.xp >= 0, where, 'xp 必须 ≥ 0');
     if (m.shape !== undefined) {
-      need(['slime', 'wolf', 'charger', 'thrower', 'bulwark', 'bat', 'shroom'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
+      need(['slime', 'wolf', 'charger', 'thrower', 'bulwark', 'bat', 'shroom', 'boss'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
+    }
+    if (m.rangedDist !== undefined) {
+      need(isNum(m.rangedDist) && m.rangedDist >= 100 && m.rangedDist <= 900, where, 'rangedDist 应在 100~900');
+      need(m.behavior === 'ranged', where, '声明 rangedDist 的怪物 behavior 应为 ranged');
     }
     map.set(m.id, m);
   }

@@ -41,6 +41,7 @@ export function createHero(x: number, y: number, weaponCfgs: WeaponConfig[]): He
       level: 1,
       damage: cfg.baseDamage,
       cooldown: 0.3, // 开局小延迟，避免第一帧齐射
+      shotsSinceCool: 0,
       mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0 },
       element: cfg.damageType,
       riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
@@ -90,6 +91,14 @@ export function updateWeapons(
     const target = acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng);
     if (!target) continue; // 无目标时冷却停在 0，不积累负值（否则目标出现时会"憋一大串"齐射）
     w.cooldown = w.cfg.interval / hero.stats.aspd; // 赋值而非累加
+    // 枪管过热：一轮发射计 1 次，达阈值强制冷却
+    if (w.cfg.heat) {
+      w.shotsSinceCool++;
+      if (w.shotsSinceCool >= w.cfg.heat.shots) {
+        w.shotsSinceCool = 0;
+        w.cooldown = Math.max(w.cooldown, w.cfg.heat.cooldown);
+      }
+    }
     const n = norm(target.x - hero.x, target.y - hero.y);
     const total = w.cfg.count + mods.extraCount;
     for (let i = 0; i < total; i++) {
