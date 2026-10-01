@@ -129,8 +129,9 @@ export function rollCardChoices(
     if ((stacks.get(c.id) ?? 0) >= c.maxStack) return false;
     const e = c.effect;
     if ('grantElement' in e) {
-      // 元素互斥：武器已被赋予过元素（≠ 默认元素）则不可再赋予
-      return weapons.some((w) => w.element === w.cfg.damageType);
+      // 元素互斥：武器已被赋予过元素（≠ 默认元素）则不可再赋予；
+      // 落雷武器（chainBase）伤害类型硬编码 lightning 且不结算骑士效果，不可赋予
+      return weapons.some((w) => w.element === w.cfg.damageType && !w.cfg.chainBase);
     }
     const t = c.target;
     if (!t || t.kind === 'any') return true;

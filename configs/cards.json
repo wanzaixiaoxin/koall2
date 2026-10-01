@@ -1,45 +1,611 @@
 {
   "cards": [
-    { "id": "volley",     "name": "齐射",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "gun_rifle" }, "effect": { "bullet": "count",     "op": "add", "value": 1    }, "maxStack": 3,  "desc": "步枪每次齐射 +1 发（主弹对准目标，附加弹左右扇形）" },
-    { "id": "burst_fire", "name": "连射",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "gun_rifle" }, "effect": { "bullet": "burst",     "op": "add", "value": 1    }, "maxStack": 3,  "desc": "步枪每次攻击追加 1 连发（整排重复发射）" },
-    { "id": "swift",      "name": "急速弹",   "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "gun_rifle" }, "effect": { "bullet": "projSpeed", "op": "mul", "value": 0.20 }, "maxStack": 3,  "desc": "步枪子弹飞行速度 +20%" },
-    { "id": "longbarrel", "name": "长枪管",   "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "gun_rifle" }, "effect": { "bullet": "range",     "op": "mul", "value": 0.15 }, "maxStack": 3,  "desc": "步枪攻击距离 +15%" },
-    { "id": "pierce_plus","name": "贯穿",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "crossbow_pierce" }, "effect": { "bullet": "pierce", "op": "add", "value": 1 }, "maxStack": 2, "desc": "弩箭穿透 +1（穿透衰减由破甲减免）" },
-    { "id": "cb_overload","name": "重弩装药", "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "crossbow_pierce" }, "effect": { "bullet": "damage", "op": "mul", "value": 0.18 }, "maxStack": 3, "desc": "弩箭伤害 +18%" },
-    { "id": "cb_multi",   "name": "多重箭",   "rarity": "rare",   "type": "bullet",  "target": { "kind": "weapon", "weaponType": "crossbow_pierce" }, "effect": { "bullet": "count", "op": "add", "value": 1 }, "maxStack": 2, "desc": "每次齐射 +1 支箭（主弹对准目标，附加弹左右扇形）" },
-    { "id": "cb_scope",   "name": "远瞄",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "crossbow_pierce" }, "effect": { "bullet": "range", "op": "mul", "value": 0.15 }, "maxStack": 3, "desc": "弩箭射程 +15%" },
-    { "id": "bomb_toss",  "name": "双掷",     "rarity": "rare",   "type": "bullet",  "target": { "kind": "weapon", "weaponType": "alchemist_bomb" }, "effect": { "bullet": "count", "op": "add", "value": 1 }, "maxStack": 2, "desc": "每次投掷 +1 枚炸弹（扇形散布）" },
-    { "id": "bomb_powder","name": "大装药",   "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "alchemist_bomb" }, "effect": { "bullet": "damage", "op": "mul", "value": 0.20 }, "maxStack": 3, "desc": "炸弹伤害 +20%" },
-    { "id": "bomb_lob",   "name": "远投",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "alchemist_bomb" }, "effect": { "bullet": "range",  "op": "mul", "value": 0.15 }, "maxStack": 3, "desc": "炸弹投掷距离 +15%" },
-    { "id": "bomb_fuse",  "name": "速燃",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "alchemist_bomb" }, "effect": { "bullet": "projSpeed", "op": "mul", "value": 0.15 }, "maxStack": 3, "desc": "炸弹飞行速度 +15%（更快落地轰击）" },
-    { "id": "boom_edge",  "name": "锋刃",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "boomerang" }, "effect": { "bullet": "damage",    "op": "mul", "value": 0.12 }, "maxStack": 5, "desc": "回旋镖伤害 +12%" },
-    { "id": "boom_light", "name": "轻身",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "boomerang" }, "effect": { "bullet": "projSpeed", "op": "mul", "value": 0.20 }, "maxStack": 3, "desc": "回旋镖飞行速度 +20%" },
-    { "id": "boom_twin",  "name": "双盘",     "rarity": "rare",   "type": "bullet",  "target": { "kind": "weapon", "weaponType": "boomerang" }, "effect": { "bullet": "count", "op": "add", "value": 1 }, "maxStack": 2, "desc": "同时掷出 +1 枚回旋镖" },
-    { "id": "boom_range", "name": "长旋",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "boomerang" }, "effect": { "bullet": "range", "op": "mul", "value": 0.20 }, "maxStack": 3, "desc": "回旋镖飞出距离 +20%（切割纵深）" },
-    { "id": "overload",   "name": "强装药",   "rarity": "common", "type": "bullet",  "target": { "kind": "any" }, "effect": { "bullet": "damage", "op": "mul", "value": 0.15 }, "maxStack": 5, "desc": "所有武器子弹伤害 +15%" },
-
-    { "id": "fortify",    "name": "加固城墙", "rarity": "common", "type": "wall",    "target": { "kind": "any" }, "effect": { "wall": "wallMax",    "op": "mul", "value": 0.30 }, "maxStack": 3,  "desc": "城防上限 +30% 并获得等额城防" },
-    { "id": "repair",     "name": "紧急修缮", "rarity": "common", "type": "wall",    "target": { "kind": "any" }, "effect": { "wall": "wallRepair", "op": "add", "value": 300  }, "maxStack": 99, "desc": "立即修复 300 城防" },
-
-    { "id": "homing",     "name": "导向镖",   "rarity": "rare",   "type": "form",    "target": { "kind": "weapon", "weaponType": "boomerang" }, "effect": { "form": "homing", "value": 1 }, "maxStack": 1, "desc": "回旋镖全程自动追踪目标（回旋系武器特性）" },
-    { "id": "ricochet",   "name": "跳箭",     "rarity": "rare",   "type": "form",    "target": { "kind": "weapon", "weaponType": "crossbow_pierce" }, "effect": { "form": "bounce", "value": 1 }, "maxStack": 3, "desc": "弩箭命中后弹向附近敌人（贯穿系武器特性）" },
-    { "id": "split",      "name": "弹片",     "rarity": "rare",   "type": "form",    "target": { "kind": "weapon", "weaponType": "alchemist_bomb" }, "effect": { "form": "split",  "value": 1 }, "maxStack": 2, "desc": "炸弹击杀时迸射 2 枚弹片（爆破系武器特性）" },
-    { "id": "shred",      "name": "破甲弹",   "rarity": "rare",   "type": "form",    "target": { "kind": "any" }, "effect": { "form": "shred",  "value": 1 }, "maxStack": 3, "desc": "命中破甲 -3（4 秒）；穿透衰减 -6%/级（通用弹药）" },
-    { "id": "blast",      "name": "扩爆",     "rarity": "epic",   "type": "form",    "target": { "kind": "weapon", "weaponType": "alchemist_bomb" }, "effect": { "form": "blast",  "value": 1 }, "maxStack": 2, "desc": "爆炸半径 +30/级、爆伤 +25%/级（在本体爆破上成长）" },
-    { "id": "chain_volt", "name": "闪击",     "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "lightning_chain" }, "effect": { "bullet": "damage", "op": "mul", "value": 0.18 }, "maxStack": 3, "desc": "闪电伤害 +18%" },
-    { "id": "chain_arc",  "name": "电弧延伸", "rarity": "common", "type": "bullet",  "target": { "kind": "weapon", "weaponType": "lightning_chain" }, "effect": { "bullet": "range", "op": "mul", "value": 0.20 }, "maxStack": 3, "desc": "闪电跳跃半径 +20%" },
-    { "id": "chain_twin", "name": "双雷",     "rarity": "rare",   "type": "bullet",  "target": { "kind": "weapon", "weaponType": "lightning_chain" }, "effect": { "bullet": "count", "op": "add", "value": 1 }, "maxStack": 2, "desc": "每次齐射额外劈下一道独立落雷" },
-    { "id": "chain_len",  "name": "连锁长度", "rarity": "epic",   "type": "form",    "target": { "kind": "weapon", "weaponType": "lightning_chain" }, "effect": { "form": "chain", "value": 1 }, "maxStack": 3, "desc": "每道落雷连锁打击 +1" },
-
-    { "id": "flame",      "name": "火焰弹",   "rarity": "rare",   "type": "element", "target": { "kind": "any" }, "effect": { "grantElement": "fire"  }, "maxStack": 1, "desc": "武器转为火属性，命中点燃（灼烧直至熄灭）" },
-    { "id": "frost",      "name": "寒冰弹",   "rarity": "rare",   "type": "element", "target": { "kind": "any" }, "effect": { "grantElement": "frost" }, "maxStack": 1, "desc": "武器转为冰属性，命中减速 12%" },
-    { "id": "ignite",     "name": "烈火",     "rarity": "rare",   "type": "element", "target": { "kind": "element", "element": "fire"  }, "effect": { "boostElement": "fire",  "value": 1 }, "maxStack": 3, "desc": "灼烧伤害 +15%/级（需火属性）" },
-    { "id": "deepfreeze", "name": "严寒",     "rarity": "rare",   "type": "element", "target": { "kind": "element", "element": "frost" }, "effect": { "boostElement": "frost", "value": 1 }, "maxStack": 3, "desc": "冰冻减速 +6%、时长 +0.5s（需冰属性）" },
-
-    { "id": "power",  "name": "力量", "rarity": "common", "type": "passive", "target": { "kind": "any" }, "effect": { "stat": "atk",        "op": "mul", "value": 0.08 }, "maxStack": 5, "desc": "攻击 +8%（全局，含所有武器）" },
-    { "id": "haste",  "name": "急速", "rarity": "common", "type": "passive", "target": { "kind": "any" }, "effect": { "stat": "aspd",       "op": "mul", "value": 0.07 }, "maxStack": 5, "desc": "攻速 +7%（所有武器）" },
-    { "id": "eagle",  "name": "鹰眼", "rarity": "common", "type": "passive", "target": { "kind": "any" }, "effect": { "stat": "critChance", "op": "add", "value": 0.05 }, "maxStack": 5, "desc": "暴击率 +5%" },
-    { "id": "rage",   "name": "狂暴", "rarity": "common", "type": "passive", "target": { "kind": "any" }, "effect": { "stat": "critDmg",    "op": "add", "value": 0.12 }, "maxStack": 5, "desc": "暴击伤害 +12%" },
-    { "id": "focus",  "name": "专注", "rarity": "common", "type": "passive", "target": { "kind": "any" }, "effect": { "stat": "dmgMul",     "op": "add", "value": 0.05 }, "maxStack": 5, "desc": "全伤害 +5%" }
+    {
+      "id": "volley",
+      "name": "齐射",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "gun_rifle"
+      },
+      "effect": {
+        "bullet": "count",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 3,
+      "desc": "步枪每次齐射 +1 发（主弹对准目标，附加弹左右扇形）"
+    },
+    {
+      "id": "burst_fire",
+      "name": "连射",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "gun_rifle"
+      },
+      "effect": {
+        "bullet": "burst",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 3,
+      "desc": "步枪每次攻击追加 1 连发（整排重复发射）"
+    },
+    {
+      "id": "swift",
+      "name": "急速弹",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "gun_rifle"
+      },
+      "effect": {
+        "bullet": "projSpeed",
+        "op": "mul",
+        "value": 0.2
+      },
+      "maxStack": 3,
+      "desc": "步枪子弹飞行速度 +20%"
+    },
+    {
+      "id": "longbarrel",
+      "name": "长枪管",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "gun_rifle"
+      },
+      "effect": {
+        "bullet": "range",
+        "op": "mul",
+        "value": 0.15
+      },
+      "maxStack": 3,
+      "desc": "步枪攻击距离 +15%"
+    },
+    {
+      "id": "pierce_plus",
+      "name": "贯穿",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "crossbow_pierce"
+      },
+      "effect": {
+        "bullet": "pierce",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "弩箭穿透 +1（穿透衰减由破甲减免）"
+    },
+    {
+      "id": "cb_overload",
+      "name": "重弩装药",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "crossbow_pierce"
+      },
+      "effect": {
+        "bullet": "damage",
+        "op": "mul",
+        "value": 0.18
+      },
+      "maxStack": 3,
+      "desc": "弩箭伤害 +18%"
+    },
+    {
+      "id": "cb_multi",
+      "name": "多重箭",
+      "rarity": "rare",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "crossbow_pierce"
+      },
+      "effect": {
+        "bullet": "count",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "每次齐射 +1 支箭（主弹对准目标，附加弹左右扇形）"
+    },
+    {
+      "id": "cb_scope",
+      "name": "远瞄",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "crossbow_pierce"
+      },
+      "effect": {
+        "bullet": "range",
+        "op": "mul",
+        "value": 0.15
+      },
+      "maxStack": 3,
+      "desc": "弩箭射程 +15%"
+    },
+    {
+      "id": "bomb_toss",
+      "name": "双掷",
+      "rarity": "rare",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "bullet": "count",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "每次投掷 +1 枚炸弹（扇形散布）"
+    },
+    {
+      "id": "bomb_powder",
+      "name": "大装药",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "bullet": "damage",
+        "op": "mul",
+        "value": 0.2
+      },
+      "maxStack": 3,
+      "desc": "炸弹伤害 +20%"
+    },
+    {
+      "id": "bomb_lob",
+      "name": "远投",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "bullet": "range",
+        "op": "mul",
+        "value": 0.15
+      },
+      "maxStack": 3,
+      "desc": "炸弹投掷距离 +15%"
+    },
+    {
+      "id": "bomb_fuse",
+      "name": "速燃",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "bullet": "projSpeed",
+        "op": "mul",
+        "value": 0.15
+      },
+      "maxStack": 3,
+      "desc": "炸弹飞行速度 +15%（更快落地轰击）"
+    },
+    {
+      "id": "boom_edge",
+      "name": "锋刃",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "boomerang"
+      },
+      "effect": {
+        "bullet": "damage",
+        "op": "mul",
+        "value": 0.12
+      },
+      "maxStack": 5,
+      "desc": "回旋镖伤害 +12%"
+    },
+    {
+      "id": "boom_light",
+      "name": "轻身",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "boomerang"
+      },
+      "effect": {
+        "bullet": "projSpeed",
+        "op": "mul",
+        "value": 0.2
+      },
+      "maxStack": 3,
+      "desc": "回旋镖飞行速度 +20%"
+    },
+    {
+      "id": "boom_twin",
+      "name": "双盘",
+      "rarity": "rare",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "boomerang"
+      },
+      "effect": {
+        "bullet": "count",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "同时掷出 +1 枚回旋镖"
+    },
+    {
+      "id": "boom_range",
+      "name": "长旋",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "boomerang"
+      },
+      "effect": {
+        "bullet": "range",
+        "op": "mul",
+        "value": 0.2
+      },
+      "maxStack": 3,
+      "desc": "回旋镖飞出距离 +20%（切割纵深）"
+    },
+    {
+      "id": "overload",
+      "name": "强装药",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "bullet": "damage",
+        "op": "mul",
+        "value": 0.15
+      },
+      "maxStack": 5,
+      "desc": "所有武器子弹伤害 +15%"
+    },
+    {
+      "id": "fortify",
+      "name": "加固城墙",
+      "rarity": "common",
+      "type": "wall",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "wall": "wallMax",
+        "op": "mul",
+        "value": 0.3
+      },
+      "maxStack": 3,
+      "desc": "城防上限 +30% 并获得等额城防"
+    },
+    {
+      "id": "repair",
+      "name": "紧急修缮",
+      "rarity": "common",
+      "type": "wall",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "wall": "wallRepair",
+        "op": "add",
+        "value": 300
+      },
+      "maxStack": 99,
+      "desc": "立即修复 300 城防"
+    },
+    {
+      "id": "homing",
+      "name": "导向镖",
+      "rarity": "rare",
+      "type": "form",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "boomerang"
+      },
+      "effect": {
+        "form": "homing",
+        "value": 1
+      },
+      "maxStack": 1,
+      "desc": "回旋镖全程自动追踪目标（回旋系武器特性）"
+    },
+    {
+      "id": "ricochet",
+      "name": "跳箭",
+      "rarity": "rare",
+      "type": "form",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "crossbow_pierce"
+      },
+      "effect": {
+        "form": "bounce",
+        "value": 1
+      },
+      "maxStack": 3,
+      "desc": "弩箭命中后弹向附近敌人（贯穿系武器特性）"
+    },
+    {
+      "id": "split",
+      "name": "弹片",
+      "rarity": "rare",
+      "type": "form",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "form": "split",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "炸弹击杀时迸射 2 枚弹片（爆破系武器特性）"
+    },
+    {
+      "id": "shred",
+      "name": "破甲弹",
+      "rarity": "rare",
+      "type": "form",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "crossbow_pierce"
+      },
+      "effect": {
+        "form": "shred",
+        "value": 1
+      },
+      "maxStack": 3,
+      "desc": "命中破甲 -3（4 秒）；穿透衰减 -6%/级（贯穿系武器特性）"
+    },
+    {
+      "id": "blast",
+      "name": "扩爆",
+      "rarity": "epic",
+      "type": "form",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "form": "blast",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "爆炸半径 +30/级、爆伤 +25%/级（在本体爆破上成长）"
+    },
+    {
+      "id": "chain_volt",
+      "name": "闪击",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "lightning_chain"
+      },
+      "effect": {
+        "bullet": "damage",
+        "op": "mul",
+        "value": 0.18
+      },
+      "maxStack": 3,
+      "desc": "闪电伤害 +18%"
+    },
+    {
+      "id": "chain_arc",
+      "name": "电弧延伸",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "lightning_chain"
+      },
+      "effect": {
+        "bullet": "range",
+        "op": "mul",
+        "value": 0.2
+      },
+      "maxStack": 3,
+      "desc": "闪电跳跃半径 +20%"
+    },
+    {
+      "id": "chain_twin",
+      "name": "双雷",
+      "rarity": "rare",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "lightning_chain"
+      },
+      "effect": {
+        "bullet": "count",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "每次齐射额外劈下一道独立落雷"
+    },
+    {
+      "id": "chain_len",
+      "name": "连锁长度",
+      "rarity": "epic",
+      "type": "form",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "lightning_chain"
+      },
+      "effect": {
+        "form": "chain",
+        "value": 1
+      },
+      "maxStack": 3,
+      "desc": "每道落雷连锁打击 +1"
+    },
+    {
+      "id": "flame",
+      "name": "火焰弹",
+      "rarity": "rare",
+      "type": "element",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "grantElement": "fire"
+      },
+      "maxStack": 1,
+      "desc": "武器转为火属性，命中点燃（灼烧直至熄灭）"
+    },
+    {
+      "id": "frost",
+      "name": "寒冰弹",
+      "rarity": "rare",
+      "type": "element",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "grantElement": "frost"
+      },
+      "maxStack": 1,
+      "desc": "武器转为冰属性，命中减速 12%"
+    },
+    {
+      "id": "ignite",
+      "name": "烈火",
+      "rarity": "rare",
+      "type": "element",
+      "target": {
+        "kind": "element",
+        "element": "fire"
+      },
+      "effect": {
+        "boostElement": "fire",
+        "value": 1
+      },
+      "maxStack": 3,
+      "desc": "灼烧伤害 +15%/级（需火属性）"
+    },
+    {
+      "id": "deepfreeze",
+      "name": "严寒",
+      "rarity": "rare",
+      "type": "element",
+      "target": {
+        "kind": "element",
+        "element": "frost"
+      },
+      "effect": {
+        "boostElement": "frost",
+        "value": 1
+      },
+      "maxStack": 3,
+      "desc": "冰冻减速 +6%、时长 +0.5s（需冰属性）"
+    },
+    {
+      "id": "power",
+      "name": "力量",
+      "rarity": "common",
+      "type": "passive",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "stat": "atk",
+        "op": "mul",
+        "value": 0.08
+      },
+      "maxStack": 5,
+      "desc": "攻击 +8%（全局，含所有武器）"
+    },
+    {
+      "id": "haste",
+      "name": "急速",
+      "rarity": "common",
+      "type": "passive",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "stat": "aspd",
+        "op": "mul",
+        "value": 0.07
+      },
+      "maxStack": 5,
+      "desc": "攻速 +7%（所有武器）"
+    },
+    {
+      "id": "eagle",
+      "name": "鹰眼",
+      "rarity": "common",
+      "type": "passive",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "stat": "critChance",
+        "op": "add",
+        "value": 0.05
+      },
+      "maxStack": 5,
+      "desc": "暴击率 +5%"
+    },
+    {
+      "id": "rage",
+      "name": "狂暴",
+      "rarity": "common",
+      "type": "passive",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "stat": "critDmg",
+        "op": "add",
+        "value": 0.12
+      },
+      "maxStack": 5,
+      "desc": "暴击伤害 +12%"
+    },
+    {
+      "id": "focus",
+      "name": "专注",
+      "rarity": "common",
+      "type": "passive",
+      "target": {
+        "kind": "any"
+      },
+      "effect": {
+        "stat": "dmgMul",
+        "op": "add",
+        "value": 0.05
+      },
+      "maxStack": 5,
+      "desc": "全伤害 +5%"
+    }
   ]
 }

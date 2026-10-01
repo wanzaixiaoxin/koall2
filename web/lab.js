@@ -546,7 +546,7 @@
       if ((stacks.get(c.id) ?? 0) >= c.maxStack) return false;
       const e = c.effect;
       if ("grantElement" in e) {
-        return weapons.some((w) => w.element === w.cfg.damageType);
+        return weapons.some((w) => w.element === w.cfg.damageType && !w.cfg.chainBase);
       }
       const t = c.target;
       if (!t || t.kind === "any") return true;
@@ -983,7 +983,15 @@
       const riders = weapon.riders;
       const damageType = weapon.element;
       const homing = affixes.homing > 0 && !!cmd.target;
-      const motionCfg = homing ? { type: "homing", speed, range, turnRate: 360, duration: 2.5, retarget: true } : weapon.cfg.motion ?? { type: "straight", speed, range };
+      let motionCfg = homing ? { type: "homing", speed, range, turnRate: 360, duration: 2.5, retarget: true } : weapon.cfg.motion ?? { type: "straight", speed, range };
+      if (motionCfg.type === "phased" && weapon.mods.rangeMul !== 1) {
+        motionCfg = {
+          ...motionCfg,
+          phases: motionCfg.phases.map(
+            (ph) => ph.until.kind === "distance" ? { ...ph, until: { ...ph.until, value: ph.until.value * weapon.mods.rangeMul } } : ph
+          )
+        };
+      }
       const blastBase = weapon.cfg.blastBase;
       const blast = affixes.blast > 0 || blastBase ? {
         radius: (blastBase?.radius ?? 70) + 30 * Math.max(0, affixes.blast - 1),
@@ -1228,7 +1236,7 @@
     isCardApplicable(card) {
       const e = card.effect;
       if ("grantElement" in e) {
-        return this.hero.weapons.some((w) => w.element === w.cfg.damageType);
+        return this.hero.weapons.some((w) => w.element === w.cfg.damageType && !w.cfg.chainBase);
       }
       const t = card.target;
       if (!t || t.kind === "any") return true;

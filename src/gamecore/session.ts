@@ -504,9 +504,20 @@ export class GameSession {
     const damageType = weapon.element;
     const homing = affixes.homing > 0 && !!cmd.target;
     // 运动配置快照：武器声明式配置优先；追踪词缀覆盖为 homing（弹射/分裂重定向按此配置重建）
-    const motionCfg: TrajectoryConfig = homing
+    let motionCfg: TrajectoryConfig = homing
       ? { type: 'homing', speed, range, turnRate: 360, duration: 2.5, retarget: true }
       : (weapon.cfg.motion ?? { type: 'straight', speed, range });
+    // 阶段机（回旋镖等）：距离相位随射程倍率缩放——"长旋"等射程卡对飞出距离生效
+    if (motionCfg.type === 'phased' && weapon.mods.rangeMul !== 1) {
+      motionCfg = {
+        ...motionCfg,
+        phases: motionCfg.phases.map((ph) =>
+          ph.until.kind === 'distance'
+            ? { ...ph, until: { ...ph.until, value: ph.until.value * weapon.mods.rangeMul } }
+            : ph,
+        ),
+      };
+    }
     // 爆破：武器本体（blastBase）为基座，"扩爆"卡逐级放大（无本体则用默认基座）
     const blastBase = weapon.cfg.blastBase;
     const blast: BlastSpec | null = affixes.blast > 0 || blastBase
@@ -795,8 +806,9 @@ export class GameSession {
   isCardApplicable(card: CardConfig): boolean {
     const e = card.effect;
     if ('grantElement' in e) {
-      // 元素互斥：武器已被赋予过元素（≠ 默认元素）则不可再赋予
-      return this.hero.weapons.some((w) => w.element === w.cfg.damageType);
+      // 元素互斥：武器已被赋予过元素（≠ 默认元素）则不可再赋予；
+      // 落雷武器（chainBase）伤害类型硬编码 lightning 且不结算骑士效果，不可赋予
+      return this.hero.weapons.some((w) => w.element === w.cfg.damageType && !w.cfg.chainBase);
     }
     const t = card.target;
     if (!t || t.kind === 'any') return true;

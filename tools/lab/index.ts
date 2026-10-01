@@ -364,11 +364,20 @@ const tests: TestCase[] = [
     s.debugSpawn('bulwark', 540, 900);
     return runFor(s, 8, () => s.monsters.some((m) => m.slowUntil > s.timeSec));
   } },
-  { name: 'C-行为：破甲命中后 shredAmount=3/层', run: () => {
-    const s = freshSession();
+  { name: 'C-破甲（弩专属）：命中后 shredAmount=3/层；步枪不可拿', run: () => {
+    const s = freshSession(1, 1); // crossbow_pierce
     s.grantCard('shred'); s.grantCard('shred');
     s.debugSpawn('bulwark', 540, 900);
-    return runFor(s, 8, () => s.monsters.some((m) => m.shredAmount === 6 && m.shredUntil > s.timeSec));
+    const ok = runFor(s, 8, () => s.monsters.some((m) => m.shredAmount === 6 && m.shredUntil > s.timeSec));
+    if (!ok) return '破甲未生效';
+    const rifle = freshSession();
+    return rifle.grantCard('shred') ? '步枪不应能拿破甲弹' : true;
+  } },
+  { name: 'C-元素赋予门控：落雷武器不可被赋予元素', run: () => {
+    const s = freshSession(1, 4); // lightning_chain
+    if (s.grantCard('flame')) return '雷电权杖不应能拿火焰弹';
+    if (s.grantCard('frost')) return '雷电权杖不应能拿寒冰弹';
+    return true;
   } },
   { name: 'C-行为：弹射后仍保留追踪（衍生/重定向词缀继承）', run: () => {
     const s = freshSession();

@@ -116,7 +116,8 @@
         ]
       },
       "shape": "gear",
-      "spread": 0.3
+      "spread": 0.3,
+      "pierceFalloff": 0
     },
     {
       "id": "lightning_chain",
