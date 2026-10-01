@@ -449,7 +449,7 @@ export class GameSession {
       this.pendingLevels--;
       const choices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng);
       if (choices.length === 0) break;
-      const picked = this.cardPolicy(choices, this.hero, this.rng);
+      const picked = this.cardPolicy(choices, this.hero, this.rng, this);
       this.applyPickedCard(picked);
     }
 

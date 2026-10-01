@@ -108,6 +108,8 @@ export interface CardConfig {
   maxStack: number;
   /** UI 展示用的效果描述 */
   desc?: string;
+  /** 出现权重（默认 1；<1 降低三选一刷新率，如齐射/连射设为 1/3 防叠满无敌） */
+  weight?: number;
 }
 
 export interface WaveSpawnConfig {

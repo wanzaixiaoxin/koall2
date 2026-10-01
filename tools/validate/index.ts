@@ -108,6 +108,9 @@ function validateCards(cards: CardConfig[]): void {
     need(['common', 'rare', 'epic', 'legendary'].includes(c.rarity), where, `未知稀有度: ${c.rarity}`);
     need(['passive', 'bullet', 'wall', 'form', 'element'].includes(c.type), where, `未知卡类型: ${c.type}`);
     need(isNum(c.maxStack) && c.maxStack >= 1, where, 'maxStack 必须 ≥ 1');
+    if (c.weight !== undefined) {
+      need(isNum(c.weight) && c.weight > 0 && c.weight <= 1, where, 'weight 应在 (0,1]');
+    }
     if (c.target) {
       need(['any', 'weapon', 'element'].includes(c.target.kind), where, `未知目标类型: ${c.target.kind}`);
       if (c.target.kind === 'weapon') need(typeof c.target.weaponType === 'string', where, 'weapon 目标缺少 weaponType');

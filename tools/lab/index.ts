@@ -17,6 +17,7 @@ import {
   LevelConfig,
   MonsterConfig,
   MotionContext,
+  rollCardChoices,
   Targetable,
   Trajectory,
   WeaponConfig,
@@ -400,6 +401,31 @@ const tests: TestCase[] = [
   } },
 
   // ===== 弹道行为库（docs/07）：运动基元单测 =====
+  { name: 'W-卡池权重：齐射/连射出现率约为其他卡的 1/3', run: () => {
+    // 构造等比池：volley(1/3) + burst(1/3) + power(1)，900 次抽取统计占比
+    const { level, weapon, monsters } = loadConfigs();
+    const cards = loadConfigs().cards.filter((c) => ['volley', 'burst_fire', 'power'].includes(c.id));
+    for (const c of cards) c.maxStack = 9999;
+    const s = new GameSession({
+      level, weaponConfigs: [weapon], monsterConfigs: monsters, cardConfigs: cards,
+      seed: 11,
+      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
+      cardPolicy: greedyDpsPolicy,
+    });
+    const rng = s.rng;
+    const counts = new Map<string, number>();
+    const stacks = new Map<string, number>();
+    for (let i = 0; i < 900; i++) {
+      const picks = rollCardChoices(cards, stacks, s.hero.weapons, rng, 1);
+      if (picks.length > 0) counts.set(picks[0].id, (counts.get(picks[0].id) ?? 0) + 1);
+    }
+    const pPower = (counts.get('power') ?? 0) / 900;
+    const pVolley = (counts.get('volley') ?? 0) / 900;
+    // 期望：power 3/5=0.6，volley 1/5=0.2（容差 ±0.08）
+    if (!(pPower > 0.52 && pPower < 0.68)) return `power 占比 ${(pPower * 100).toFixed(1)}%（期望 60%）`;
+    if (!(pVolley > 0.12 && pVolley < 0.28)) return `齐射占比 ${(pVolley * 100).toFixed(1)}%（期望 20%）`;
+    return true;
+  } },
   { name: 'W-枪管过热：连射 14 轮后强制冷却 2.5 秒', run: () => {
     const s = freshSession(); // rifle heat 14/2.5
     s.debugSpawn('bulwark', 540, 900);

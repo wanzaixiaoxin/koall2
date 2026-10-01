@@ -148,12 +148,20 @@ export function rollCardChoices(
     return weapons.some((w) => w.element === t.element);
   });
   const result: CardConfig[] = [];
-  const used = new Set<number>();
-  while (result.length < count && used.size < pool.length) {
-    const i = rng.int(0, pool.length - 1);
-    if (used.has(i)) continue;
-    used.add(i);
-    result.push(pool[i]);
+  // 加权无放回抽取（weight 默认 1）
+  const bag = [...pool];
+  while (result.length < count && bag.length > 0) {
+    let total = 0;
+    for (const c of bag) total += c.weight ?? 1;
+    let roll = rng.next() * total;
+    let idx = 0;
+    for (; idx < bag.length; idx++) {
+      roll -= bag[idx].weight ?? 1;
+      if (roll <= 0) break;
+    }
+    idx = Math.min(idx, bag.length - 1);
+    result.push(bag[idx]);
+    bag.splice(idx, 1);
   }
   return result;
 }
@@ -213,9 +221,10 @@ export function applyForm(a: WeaponAffixes, form: FormId, value = 1): void {
   }
 }
 
-/** AI/人类选卡策略接口：输入候选与当前状态，输出选择。 */
+/** AI/人类选卡策略接口：输入候选与当前状态，输出选择。session 为可选上下文（自适应策略用）。 */
 export type CardPolicy = (
   choices: readonly CardConfig[],
   hero: HeroRuntime,
   rng: Rng,
+  session?: { wallHp: number; wallMaxHp: number },
 ) => CardConfig;

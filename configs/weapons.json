@@ -5,7 +5,7 @@
       "name": "符文步枪",
       "role": "速射系 · 弹幕雨",
       "damageType": "physical",
-      "baseDamage": 14,
+      "baseDamage": 18,
       "interval": 0.55,
       "count": 1,
       "projectileSpeed": 950,
@@ -16,8 +16,8 @@
       "trajectory": "straight",
       "shape": "dot",
       "heat": {
-        "shots": 14,
-        "cooldown": 2.5
+        "shots": 16,
+        "cooldown": 2.2
       }
     },
     {

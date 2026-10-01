@@ -566,12 +566,19 @@
       return weapons.some((w) => w.element === t.element);
     });
     const result = [];
-    const used = /* @__PURE__ */ new Set();
-    while (result.length < count && used.size < pool.length) {
-      const i = rng.int(0, pool.length - 1);
-      if (used.has(i)) continue;
-      used.add(i);
-      result.push(pool[i]);
+    const bag = [...pool];
+    while (result.length < count && bag.length > 0) {
+      let total = 0;
+      for (const c of bag) total += c.weight ?? 1;
+      let roll = rng.next() * total;
+      let idx = 0;
+      for (; idx < bag.length; idx++) {
+        roll -= bag[idx].weight ?? 1;
+        if (roll <= 0) break;
+      }
+      idx = Math.min(idx, bag.length - 1);
+      result.push(bag[idx]);
+      bag.splice(idx, 1);
     }
     return result;
   }
@@ -949,7 +956,7 @@
         this.pendingLevels--;
         const choices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng);
         if (choices.length === 0) break;
-        const picked = this.cardPolicy(choices, this.hero, this.rng);
+        const picked = this.cardPolicy(choices, this.hero, this.rng, this);
         this.applyPickedCard(picked);
       }
       if (this.monsters.some((m) => m.hp <= 0)) {
@@ -1455,9 +1462,14 @@
   };
 
   // tools/sim/policies.ts
-  var greedyDpsPolicy = (choices) => {
+  var greedyDpsPolicy = (choices, _hero, _rng, session) => {
+    const wallDanger = session ? 1 - session.wallHp / session.wallMaxHp : 0;
     const prio = (c) => {
       const e = c.effect;
+      if (c.type === "wall") {
+        if (c.id === "fortify") return wallDanger > 0.35 ? 99 : 55;
+        return wallDanger > 0.3 ? 92 : 25;
+      }
       if (c.type === "bullet") {
         const isWeaponSpecific = c.target?.kind === "weapon";
         switch (e.bullet) {
@@ -1497,7 +1509,6 @@
         if ("grantElement" in e) return e.grantElement === "fire" ? 76 : 74;
         return 62;
       }
-      if (c.type === "wall") return 45;
       switch (e.stat) {
         case "atk":
           return 98;
