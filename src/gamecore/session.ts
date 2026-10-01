@@ -342,13 +342,13 @@ export class GameSession {
       this.collideProjectile(p);
     }
 
-    // 5) 怪物推进：灼烧 DoT → 行为（含冰冻减速）→ 打墙 / 远程停驻射击
+    // 5) 怪物推进：灼烧 DoT → 行为（含冰冻减速）→ 打墙 / 远程停驻射击（无碰撞遮挡，可互相穿过）
     this.hash.rebuild(this.monsters);
     for (const m of this.monsters) {
       if (m.hp <= 0) continue;
       this.tickBurns(m, dt);
       if (m.hp <= 0) continue;
-      updateMonster(m, dt, now, this.level.wall.height, this.monsters, this.hash, (dmg, src) => {
+      updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
         this.wallHp = Math.max(0, this.wallHp - dmg);
         this.totalWallDamage += dmg;
         this.waveWallDamage += dmg;

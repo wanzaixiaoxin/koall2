@@ -416,10 +416,9 @@
   };
 
   // src/gamecore/monster.ts
-  var scratch2 = [];
   var RANGED_HOLD_DISTANCE = 260;
   var DASH_PERIOD = 2.2;
-  function updateMonster(m, dt, now, wallTopY, monsters, hash, onWallHit, onRangedShot) {
+  function updateMonster(m, dt, now, wallTopY, onWallHit, onRangedShot) {
     const r = m.cfg.radius;
     const holdY = wallTopY + (m.cfg.behavior === "ranged" ? m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE : 0) + r;
     if (m.state === "march") {
@@ -441,22 +440,6 @@
           break;
       }
       m.y -= speed * dt;
-      hash.queryCircle(m.x, m.y, r * 2, scratch2);
-      for (const nid of scratch2) {
-        if (nid === m.id) continue;
-        const o = monsters[nid];
-        if (!o || o.hp <= 0) continue;
-        const dx = m.x - o.x;
-        const dy = m.y - o.y;
-        const d2 = dx * dx + dy * dy;
-        const minD = r + o.cfg.radius;
-        if (d2 > 1e-6 && d2 < minD * minD) {
-          const d = Math.sqrt(d2);
-          const push = (minD - d) / d * 0.5;
-          m.x += dx * push;
-          m.y += dy * push;
-        }
-      }
       if (m.y <= holdY) {
         m.y = holdY;
         m.state = "assault";
@@ -865,7 +848,7 @@
         if (m.hp <= 0) continue;
         this.tickBurns(m, dt);
         if (m.hp <= 0) continue;
-        updateMonster(m, dt, now, this.level.wall.height, this.monsters, this.hash, (dmg, src) => {
+        updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
           this.wallHp = Math.max(0, this.wallHp - dmg);
           this.totalWallDamage += dmg;
           this.waveWallDamage += dmg;

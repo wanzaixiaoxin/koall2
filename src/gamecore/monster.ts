@@ -1,7 +1,4 @@
 import { MonsterRuntime } from './data/types';
-import { SpatialHash } from './core/spatial-hash';
-
-const scratch: number[] = [];
 
 /** ranged 怪停驻射击城墙的距离（距城墙顶） */
 const RANGED_HOLD_DISTANCE = 260;
@@ -9,14 +6,15 @@ const RANGED_HOLD_DISTANCE = 260;
 const DASH_PERIOD = 2.2;
 
 /**
- * 怪物系统：行军（向下压向城墙）+ 抵达后驻留攻击 + 近邻分离。
+ * 怪物系统：行军（向下压向城墙）+ 抵达后驻留攻击。
  * 坐标系：y 向上，城墙在底部（y ∈ [0, wallHeight]），怪物从顶部出生带向下推进。
+ * 设计：怪物间无碰撞遮挡——小怪可以互相穿过（docs/04 §1.1，密集潮不堵路）。
  *
  * 行为（docs/04 §1.1）：
  * - march/fast_rush：直线压墙（速度差在配置里）
  * - zigzag：蛇形横向摆动
  * - dash：周期性前摇 + 冲刺（压墙尖峰）
- * - ranged：距墙 RANGED_HOLD_DISTANCE 处停驻，远程磨墙
+ * - ranged：距墙 rangedDist（默认 260）处停驻，发射可见弹道
  * - 所有近战抵达后转 assault 驻留打墙
  */
 export function updateMonster(
@@ -24,8 +22,6 @@ export function updateMonster(
   dt: number,
   now: number,
   wallTopY: number,
-  monsters: readonly MonsterRuntime[],
-  hash: SpatialHash,
   onWallHit: (dmg: number, m: MonsterRuntime) => void,
   onRangedShot: (m: MonsterRuntime) => void,
 ): void {
@@ -53,24 +49,6 @@ export function updateMonster(
     }
 
     m.y -= speed * dt;
-
-    // 分离：只算近邻，防止叠成一团
-    hash.queryCircle(m.x, m.y, r * 2, scratch);
-    for (const nid of scratch) {
-      if (nid === m.id) continue;
-      const o = monsters[nid];
-      if (!o || o.hp <= 0) continue;
-      const dx = m.x - o.x;
-      const dy = m.y - o.y;
-      const d2 = dx * dx + dy * dy;
-      const minD = r + o.cfg.radius;
-      if (d2 > 1e-6 && d2 < minD * minD) {
-        const d = Math.sqrt(d2);
-        const push = ((minD - d) / d) * 0.5;
-        m.x += dx * push;
-        m.y += dy * push;
-      }
-    }
 
     if (m.y <= holdY) {
       m.y = holdY;
