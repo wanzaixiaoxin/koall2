@@ -232,8 +232,19 @@ const tests: TestCase[] = [
     const s = freshSession();
     s.grantCard('burst_fire'); s.grantCard('burst_fire'); s.grantCard('burst_fire');
     s.debugSpawn('slime', 540, 800);
-    const groups = fireGroups(s, 3);
-    return groups.length >= 1 && groups.every((g) => g === 4);
+    const times: number[] = [];
+    s.bus.on('onShoot', () => { if (times.length < 40) times.push(s.timeSec); });
+    const ticks = Math.round(2.2 * 30); // 4 轮攻击窗口
+    for (let i = 0; i < ticks; i++) s.step();
+    // 按 0.16s 间隔分组：连射内部 0.12s / 轮间 ≥0.19s（0.55 间隔 - 0.36 连射跨度）
+    const groups: number[] = [];
+    let lastT = -1;
+    for (const t of times) {
+      if (lastT < 0 || t - lastT > 0.16) groups.push(1);
+      else groups[groups.length - 1]++;
+      lastT = t;
+    }
+    return groups.length >= 2 && groups.every((g) => g === 4);
   } },
 
   // ===== B 类：城墙卡 =====
@@ -480,7 +491,7 @@ const tests: TestCase[] = [
     s.sandboxMode = true;
     for (let i = 0; i < 10; i++) s.debugSpawn('slime', 400 + i * 30, 850 + (i % 3) * 60);
     let autoPicked = false;
-    for (let t = 0; t < 30 * 15; t++) {
+    for (let t = 0; t < 30 * 28; t++) { // 低伤版本击杀慢，放宽到 28 秒
       s.step();
       if (s.cardPickLog.length > 0) { autoPicked = true; break; }
     }
