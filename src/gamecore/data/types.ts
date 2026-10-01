@@ -25,8 +25,10 @@ export interface WeaponConfig {
   homing?: { turnRate: number; duration: number; retarget: boolean };
   /** ≥1 = 落雷武器：开火不产生子弹，直接以"1+连锁等级"次打击落雷（连锁闪电武器本体） */
   chainBase?: number;
-  /** 子弹视觉形态（docs/06）：dot 光点 / arrow 箭矢 / bomb 抛物弹 / crescent 回旋刃 */
+    /** 子弹视觉形态（docs/06）：dot 光点 / arrow 箭矢 / bomb 抛物弹 / gear 齿轮圆盘 */
   shape?: string;
+  /** 齐射扇形间距（rad/档，默认 0.1）；大型弹体（齿轮盘）建议加大以拉开间距 */
+  spread?: number;
   /** 内置爆破（爆破系武器本体）：子弹消亡时产生范围伤害圈（可被"爆破落地"卡叠加强化） */
   blastBase?: { radius: number; dmgMul: number; poolDpsMul: number; poolSec: number };
   /** 武器谱系定位（docs/02 §6 分类）：速射 / 贯穿 / 爆破 / 回旋 / 雷霆 */

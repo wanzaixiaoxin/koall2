@@ -487,12 +487,12 @@ export class GameSession {
   private spawnProjectile(cmd: FireCommand): void {
     const { weapon, fromX, fromY, dirX, dirY, speed, range, dmg, index } = cmd;
     // 齐射扇形：index 0 为主弹头——严格对准目标；从第 2 发开始一左一右交替，
-    // 每侧按固定角度均匀展开（+1 左、+2 右、+3 左 2 档、+4 右 2 档……）
+    // 每侧按武器间距（spread，默认 0.1rad）均匀展开（+1 左、+2 右、+3 左 2 档、+4 右 2 档……）
     let fan = 0;
     if (index > 0) {
       const side = index % 2 === 1 ? -1 : 1;
       const step = Math.ceil(index / 2);
-      fan = side * step * 0.1;
+      fan = side * step * (weapon.cfg.spread ?? 0.1);
     }
     const cos = Math.cos(fan);
     const sin = Math.sin(fan);

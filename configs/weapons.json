@@ -115,7 +115,8 @@
           }
         ]
       },
-      "shape": "crescent"
+      "shape": "gear",
+      "spread": 0.3
     },
     {
       "id": "lightning_chain",

@@ -973,7 +973,7 @@
       if (index > 0) {
         const side = index % 2 === 1 ? -1 : 1;
         const step = Math.ceil(index / 2);
-        fan = side * step * 0.1;
+        fan = side * step * (weapon.cfg.spread ?? 0.1);
       }
       const cos = Math.cos(fan);
       const sin = Math.sin(fan);
@@ -1652,18 +1652,26 @@
         ctx.fill();
         break;
       }
+      case "gear":
       case "crescent": {
+        const R = 17;
         ctx.save();
         ctx.translate(p.x, p.y);
-        ctx.rotate(t * 14 + p.id);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 5;
-        ctx.lineCap = "round";
+        ctx.rotate(t * 10 + p.id);
+        ctx.fillStyle = color;
+        for (let i = 0; i < 8; i++) {
+          ctx.save();
+          ctx.rotate(Math.PI / 4 * i);
+          ctx.fillRect(-2.5, -R - 4.5, 5, 6.5);
+          ctx.restore();
+        }
         ctx.beginPath();
-        ctx.moveTo(-12, -7);
-        ctx.lineTo(0, 5);
-        ctx.lineTo(12, -7);
-        ctx.stroke();
+        ctx.arc(0, 0, R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#0B0C1D";
+        ctx.beginPath();
+        ctx.arc(0, 0, R * 0.45, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
         break;
       }

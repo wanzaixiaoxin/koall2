@@ -52,7 +52,10 @@ function validateWeapons(weapons: WeaponConfig[]): void {
       need(isNum(w.blastBase.poolSec) && w.blastBase.poolSec >= 0, where, 'blastBase.poolSec 必须 ≥ 0');
     }
     if (w.shape !== undefined) {
-      need(['dot', 'arrow', 'bomb', 'crescent'].includes(w.shape), where, `未知子弹形态: ${w.shape}`);
+      need(['dot', 'arrow', 'bomb', 'gear', 'crescent'].includes(w.shape), where, `未知子弹形态: ${w.shape}`);
+    }
+    if (w.spread !== undefined) {
+      need(isNum(w.spread) && w.spread > 0 && w.spread < 1, where, 'spread 必须在 (0,1) rad 内');
     }
     need(isNum(w.projectileRange) && w.projectileRange > 0, where, 'projectileRange 必须为正数');
     need(isNum(w.count) && w.count >= 1, where, 'count 必须 ≥ 1');
