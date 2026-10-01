@@ -406,6 +406,11 @@ export class GameSession {
       this.hero.level++;
       this.pendingLevels++;
     }
+    if (this.sandboxMode) {
+      // 沙盒（实验室）：升级不弹卡、不自动选——卡牌只能手动 grantCard 验证
+      this.pendingLevels = 0;
+      this.pendingLevelChoices = [];
+    }
     while (this.pendingLevels > 0) {
       if (this.externalLevelUps) {
         // 人类输入适配器（Web/Cocos）：暂停内部结算，等外部点选 resolveLevelUp

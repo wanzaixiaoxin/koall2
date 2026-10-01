@@ -395,6 +395,19 @@ const tests: TestCase[] = [
     }
     return missing.length === 0 ? true : `专属卡不足: ${missing.join(' ')}`;
   } },
+  { name: 'X-沙盒：实验室击杀升级不自动选卡（卡牌只能手动验证）', run: () => {
+    const s = freshSession();
+    s.sandboxMode = true;
+    for (let i = 0; i < 10; i++) s.debugSpawn('slime', 400 + i * 30, 850 + (i % 3) * 60);
+    let autoPicked = false;
+    for (let t = 0; t < 30 * 15; t++) {
+      s.step();
+      if (s.cardPickLog.length > 0) { autoPicked = true; break; }
+    }
+    if (autoPicked) return `自动选卡: ${s.cardPickLog.join('、')}`;
+    return s.hero.level >= 2
+      ? true : `等级 ${s.hero.level}（升级未发生，测试无效）`;
+  } },
   { name: 'T-直线：匀速前进，射程耗尽消亡', run: () => {
     const ctx: MotionContext = { dt: 1 / 30, now: 0, ownerX: 0, ownerY: 0, nearestMonster: () => null };
     const t: Trajectory = createTrajectory({ type: 'straight', speed: 300, range: 100 }, { dirX: 1, dirY: 0 });

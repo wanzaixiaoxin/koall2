@@ -898,6 +898,10 @@
         this.hero.level++;
         this.pendingLevels++;
       }
+      if (this.sandboxMode) {
+        this.pendingLevels = 0;
+        this.pendingLevelChoices = [];
+      }
       while (this.pendingLevels > 0) {
         if (this.externalLevelUps) {
           if (this.pendingLevelChoices.length === 0) {
