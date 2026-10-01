@@ -16,12 +16,14 @@ export const greedyDpsPolicy: CardPolicy = (choices, _hero, _rng, session) => {
     }
     if (c.type === 'bullet') {
       const isWeaponSpecific = c.target?.kind === 'weapon';
+      // 低基础伤害版本：齐射/连射是乘法级输出（+100%/+轮），远超百分比加伤
       switch (e.bullet) {
-        case 'damage': return 100;
-        case 'count': return isWeaponSpecific ? 96 : 90;
-        case 'burst': return isWeaponSpecific ? 94 : 88;
+        case 'count': return isWeaponSpecific ? 108 : 90;
+        case 'burst': return isWeaponSpecific ? 106 : 88;
+        case 'damage': return 82;
         case 'range': return 60;
         case 'projSpeed': return 55;
+        case 'pierce': return 58;
         default: return 50;
       }
     }
