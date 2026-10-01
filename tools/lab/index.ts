@@ -178,31 +178,36 @@ const tests: TestCase[] = [
     const groups = fireGroups(s, 3);
     return groups.length >= 1 && groups.every((g) => g === 4);
   } },
-  { name: 'A-行为：穿透衰减与破甲（docs/02：衰减 15%/次，破甲每级 -5%，上限原弹伤）', run: () => {
-    // 穿透弩（pierce 2）直线穿过三只岩甲兽，抓三次命中的伤害比
-    const setup = (shredLv: number): number[] => {
-      const s = freshSession(7, 1); // weapons[1] = crossbow_pierce
+  { name: 'A-行为：穿透衰减与破甲（均值比，消除浮动噪声）', run: () => {
+    // 穿透弩直线穿过三只岩甲兽；按 0.4s 窗口分组每次齐射的多次命中，取 (第1命中,第2命中) 均值比
+    const meanRatio = (shredLv: number): number | null => {
+      const s = freshSession(7, 1); // crossbow_pierce
       for (let i = 0; i < shredLv; i++) s.grantCard('shred');
       s.debugSpawn('bulwark', 540, 680);
       s.debugSpawn('bulwark', 540, 760);
       s.debugSpawn('bulwark', 540, 840);
-      const hits: number[] = [];
-      s.bus.on('onHit', (p: { dmg: number }) => { if (hits.length < 3) hits.push(p.dmg); });
-      runFor(s, 6, () => hits.length >= 3);
-      return hits;
+      const hits: { t: number; dmg: number }[] = [];
+      // 剔除暴击样本（×1.5 会污染均值；种子固定时同一暴击位每次复现造成系统性偏差）
+      s.bus.on('onHit', (p: { dmg: number; isCrit: boolean }) => {
+        if (!p.isCrit && hits.length < 60) hits.push({ t: s.timeSec, dmg: p.dmg });
+      });
+      for (let i = 0; i < 30 * 10 && hits.length < 40; i++) s.step();
+      const pairs: [number, number][] = [];
+      for (let i = 0; i < hits.length - 1; i++) {
+        if (hits[i + 1].t - hits[i].t < 0.4) pairs.push([hits[i].dmg, hits[i + 1].dmg]);
+      }
+      if (pairs.length < 3) return null;
+      const m1 = pairs.reduce((a, p) => a + p[0], 0) / pairs.length;
+      const m2 = pairs.reduce((a, p) => a + p[1], 0) / pairs.length;
+      return m2 / m1;
     };
-    const base = setup(0);
-    if (base.length < 3) return `命中数不足 ${base.length}`;
-    const r0 = base[1] / base[0];
-    const r0c = base[2] / base[1]; // 二次穿透衰减应叠加（±5% 浮动噪声带）
-    if (!(r0 > 0.75 && r0 < 0.95)) return `无破甲衰减比 ${r0.toFixed(2)}（期望 ≈0.85）`;
-    if (!(r0c > 0.75 && r0c < 0.95)) return `二次衰减比 ${r0c.toFixed(2)}`;
-    const full = setup(3); // 破甲×3 → 衰减率 0
-    const r3 = full[1] / full[0];
-    if (!(r3 > 0.88 && r3 < 1.12)) return `破甲×3 衰减比 ${r3.toFixed(2)}（期望 ≈1.0）`;
-    const half = setup(1); // 衰减率 10%
-    const r1 = half[1] / half[0];
-    if (!(r1 > 0.80 && r1 < 1.0)) return `破甲×1 衰减比 ${r1.toFixed(2)}（期望 ≈0.90）`;
+    const r0 = meanRatio(0);
+    if (r0 === null) return '命中样本不足';
+    if (!(r0 > 0.80 && r0 < 0.90)) return `无破甲均值比 ${r0.toFixed(3)}（期望 ≈0.85）`;
+    const r3 = meanRatio(3);
+    if (r3 === null || !(r3 > 0.97 && r3 < 1.03)) return `破甲×3 均值比 ${r3?.toFixed(3)}（期望 ≈1.0）`;
+    const r1 = meanRatio(1);
+    if (r1 === null || !(r1 > 0.85 && r1 < 0.95)) return `破甲×1 均值比 ${r1?.toFixed(3)}（期望 ≈0.90）`;
     return true;
   } },
 
