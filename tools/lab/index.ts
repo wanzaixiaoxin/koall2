@@ -203,11 +203,11 @@ const tests: TestCase[] = [
     };
     const r0 = meanRatio(0);
     if (r0 === null) return '命中样本不足';
-    if (!(r0 > 0.80 && r0 < 0.90)) return `无破甲均值比 ${r0.toFixed(3)}（期望 ≈0.85）`;
+    if (!(r0 > 0.76 && r0 < 0.88)) return `无破甲均值比 ${r0.toFixed(3)}（期望 ≈0.82）`;
     const r3 = meanRatio(3);
     if (r3 === null || !(r3 > 0.97 && r3 < 1.03)) return `破甲×3 均值比 ${r3?.toFixed(3)}（期望 ≈1.0）`;
     const r1 = meanRatio(1);
-    if (r1 === null || !(r1 > 0.85 && r1 < 0.95)) return `破甲×1 均值比 ${r1?.toFixed(3)}（期望 ≈0.90）`;
+    if (r1 === null || !(r1 > 0.84 && r1 < 0.94)) return `破甲×1 均值比 ${r1?.toFixed(3)}（期望 ≈0.88）`;
     return true;
   } },
 
@@ -395,6 +395,14 @@ const tests: TestCase[] = [
     const s = freshSession(5, 2); // alchemist_bomb（blastBase 本体机制）
     s.debugSpawn('slime', 540, 1100);
     return runFor(s, 6, () => s.pools.length > 0);
+  } },
+  { name: 'W-血滴子：回旋镖悬停期间对同一目标反复研磨（0.5s 重击冷却）', run: () => {
+    const s = freshSession(9, 3); // boomerang（飞出 350 → 悬停 2s → 返回）
+    s.debugSpawn('bulwark', 540, 670); // ≈悬停点（英雄 328 + 飞出 350）
+    let hits = 0;
+    s.bus.on('onHit', () => { hits++; });
+    runFor(s, 6, () => false);
+    return hits >= 3 ? true : `总命中 ${hits} 次（悬停研磨未生效）`;
   } },
   { name: 'W-谱系完整性：每把武器 ≥3 张专属升级卡', run: () => {
     const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;

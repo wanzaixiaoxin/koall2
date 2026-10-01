@@ -1006,7 +1006,7 @@
         pierceLeft: weapon.cfg.pierce + Math.round(weapon.mods.pierceAdd),
         pierceCount: 0,
         bounceLeft: affixes.bounce,
-        hitIds: /* @__PURE__ */ new Set(),
+        hitIds: /* @__PURE__ */ new Map(),
         alive: true,
         affixes,
         riders,
@@ -1023,11 +1023,12 @@
       for (const mid of this.scratch) {
         if (!p.alive) break;
         const m = this.monsters[mid];
-        if (!m || m.hp <= 0 || p.hitIds.has(m.id)) continue;
+        if (!m || m.hp <= 0) continue;
+        if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < 0.5) continue;
         const rr = p.radius + m.cfg.radius;
         if (distToSegment(m.x, m.y, p.px, p.py, p.x, p.y) > rr) continue;
-        p.hitIds.add(m.id);
-        const falloffRate = Math.max(0, (p.weapon.cfg.pierceFalloff ?? 0.15) - p.affixes.shred * 0.05);
+        p.hitIds.set(m.id, now);
+        const falloffRate = Math.max(0, (p.weapon.cfg.pierceFalloff ?? 0.15) - p.affixes.shred * 0.06);
         const effDmg = p.dmg * Math.min(1, Math.max(0, 1 - falloffRate * p.pierceCount));
         const def = Math.max(0, m.cfg.def - (now < m.shredUntil ? m.shredAmount : 0));
         const res = calcDamage(
@@ -1109,13 +1110,21 @@
       }
       this.bus.emit("onChain", { points: path });
     }
-    /** 半径内最近的存活怪（排除指定 id 集合），供连锁/追踪重索敌。 */
+    /** 半径内最近的存活怪。exclude 为 Map 时按 0.5s 重击冷却排除（悬停研磨可重复命中），Set 时永久排除。 */
     nearestMonsterRuntime(x, y, radius, exclude) {
+      const now = this.timeSec;
       this.hash.queryCircle(x, y, radius, this.scratch);
       let best = null;
       let bestD = Infinity;
       for (const id of this.scratch) {
-        if (exclude.has(id)) continue;
+        if (exclude.has(id)) {
+          if (exclude instanceof Map) {
+            const t = exclude.get(id);
+            if (t !== void 0 && now - t < 0.5) continue;
+          } else {
+            continue;
+          }
+        }
         const m = this.monsters[id];
         if (!m || m.hp <= 0) continue;
         const d = (m.x - x) ** 2 + (m.y - y) ** 2;
@@ -1349,7 +1358,7 @@
             pierceLeft: 0,
             pierceCount: 0,
             bounceLeft: 0,
-            hitIds: /* @__PURE__ */ new Set(),
+            hitIds: /* @__PURE__ */ new Map(),
             alive: true,
             affixes: { ...p.affixes, split: 0, bounce: 0, blast: 0 },
             riders: p.riders,

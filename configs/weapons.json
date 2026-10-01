@@ -3,13 +3,13 @@
     {
       "id": "gun_rifle",
       "name": "符文步枪",
-      "role": "速射系 · 均衡弹幕",
+      "role": "速射系 · 弹幕雨",
       "damageType": "physical",
-      "baseDamage": 12,
-      "interval": 0.9,
+      "baseDamage": 9,
+      "interval": 0.55,
       "count": 1,
-      "projectileSpeed": 900,
-      "projectileRange": 900,
+      "projectileSpeed": 950,
+      "projectileRange": 850,
       "projectileRadius": 5,
       "pierce": 0,
       "targeting": "nearest",
@@ -18,16 +18,16 @@
     {
       "id": "crossbow_pierce",
       "name": "穿透弩",
-      "role": "贯穿系 · 重箭穿线",
+      "role": "贯穿系 · 重狙穿线",
       "damageType": "physical",
-      "baseDamage": 16,
-      "interval": 1.2,
+      "baseDamage": 24,
+      "interval": 1.6,
       "count": 1,
-      "projectileSpeed": 1100,
-      "projectileRange": 1000,
+      "projectileSpeed": 1200,
+      "projectileRange": 1100,
       "projectileRadius": 4,
-      "pierce": 2,
-      "pierceFalloff": 0.15,
+      "pierce": 3,
+      "pierceFalloff": 0.18,
       "targeting": "nearest",
       "trajectory": "straight"
     },
@@ -51,10 +51,10 @@
     {
       "id": "boomerang",
       "name": "回旋镖",
-      "role": "回旋系 · 双程切割",
+      "role": "回旋系 · 血滴子",
       "damageType": "physical",
-      "baseDamage": 10,
-      "interval": 1.0,
+      "baseDamage": 8,
+      "interval": 1.2,
       "count": 1,
       "projectileSpeed": 550,
       "projectileRange": 600,
@@ -65,7 +65,8 @@
       "motion": {
         "type": "phased",
         "phases": [
-          { "motion": { "type": "straight", "speed": 550, "range": 800 }, "until": { "kind": "distance", "value": 300 } },
+          { "motion": { "type": "straight", "speed": 550, "range": 800 }, "until": { "kind": "distance", "value": 350 } },
+          { "motion": { "type": "hover" }, "until": { "kind": "duration", "value": 2.0 } },
           { "motion": { "type": "homing", "speed": 550, "range": 99999, "turnRate": 720, "duration": 99, "retarget": false, "home": true }, "until": { "kind": "nearOwner", "value": 40 } }
         ]
       }

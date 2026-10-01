@@ -234,10 +234,15 @@ export interface ProjectileRuntime {
   dmg: number;             // 最终单发伤害（含倍率）
   damageType: DamageType;
   trajectory: import('../trajectory').Trajectory;
+  /**
+   * 已命中记录：monsterId → 最近命中时间。
+   * 0.5s 重击冷却：悬停/回旋类武器可对同一目标反复切割（血滴子研磨），
+   * 冷却期内不再结算（也用于弹射/连锁的"未命中"判定）。
+   */
+  hitIds: Map<number, number>;
   pierceLeft: number;
   pierceCount: number;    // 已穿透次数（穿透伤害衰减结算用）
   bounceLeft: number;      // 剩余弹射次数
-  hitIds: Set<number>;
   alive: boolean;
   affixes: WeaponAffixes;  // 发射武器的词缀快照（局内构筑只增不减，引用即可）
   riders: WeaponRiders;    // 发射武器的元素骑士快照
