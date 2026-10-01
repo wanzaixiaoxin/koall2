@@ -462,8 +462,8 @@ export class GameSession {
     if (!cfg) throw new Error(`未知怪物配置: ${key}`);
     const x = clamp(spawnX, 40, this.level.arena.width - 40);
     const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
-    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 12%×n)，后期压力随玩家构筑同步爬升
-    const scale = 1 + 0.12 * this.director.currentWave;
+    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 8%×n)，后期压力随玩家构筑同步爬升
+    const scale = 1 + 0.08 * this.director.currentWave;
     const hp = Math.round(cfg.hp * scale);
     this.monsters.push({
       id: this.monsters.length, // tick 内密度数组约定

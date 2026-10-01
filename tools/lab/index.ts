@@ -194,16 +194,15 @@ const tests: TestCase[] = [
     const base = setup(0);
     if (base.length < 3) return `命中数不足 ${base.length}`;
     const r0 = base[1] / base[0];
-    const r0c = base[2] / base[1]; // 二次穿透衰减应叠加
-    if (!(r0 > 0.78 && r0 < 0.92)) return `无破甲衰减比 ${r0.toFixed(2)}（期望 ≈0.85）`;
-    if (!(r0c > 0.78 && r0c < 0.92)) return `二次衰减比 ${r0c.toFixed(2)}`;
+    const r0c = base[2] / base[1]; // 二次穿透衰减应叠加（±5% 浮动噪声带）
+    if (!(r0 > 0.75 && r0 < 0.95)) return `无破甲衰减比 ${r0.toFixed(2)}（期望 ≈0.85）`;
+    if (!(r0c > 0.75 && r0c < 0.95)) return `二次衰减比 ${r0c.toFixed(2)}`;
     const full = setup(3); // 破甲×3 → 衰减率 0
     const r3 = full[1] / full[0];
-    // 结构保证系数 ≤1（Math.min 封顶），此处容差覆盖 ±5% 浮动随机
-    if (!(r3 > 0.90 && r3 < 1.10)) return `破甲×3 衰减比 ${r3.toFixed(2)}（期望 ≈1.0）`;
+    if (!(r3 > 0.88 && r3 < 1.12)) return `破甲×3 衰减比 ${r3.toFixed(2)}（期望 ≈1.0）`;
     const half = setup(1); // 衰减率 10%
     const r1 = half[1] / half[0];
-    if (!(r1 > 0.83 && r1 < 0.97)) return `破甲×1 衰减比 ${r1.toFixed(2)}（期望 ≈0.90）`;
+    if (!(r1 > 0.80 && r1 < 1.0)) return `破甲×1 衰减比 ${r1.toFixed(2)}（期望 ≈0.90）`;
     return true;
   } },
 

@@ -946,7 +946,7 @@
       if (!cfg) throw new Error(`\u672A\u77E5\u602A\u7269\u914D\u7F6E: ${key}`);
       const x = clamp(spawnX, 40, this.level.arena.width - 40);
       const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
-      const scale = 1 + 0.12 * this.director.currentWave;
+      const scale = 1 + 0.08 * this.director.currentWave;
       const hp = Math.round(cfg.hp * scale);
       this.monsters.push({
         id: this.monsters.length,

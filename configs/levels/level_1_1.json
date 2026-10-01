@@ -2,7 +2,7 @@
   "id": "level_1_1",
   "name": "第 1 关 · 森林边缘",
   "arena": { "width": 1080, "height": 1920 },
-  "wall": { "height": 64, "hp": 1500 },
+  "wall": { "height": 64, "hp": 1800 },
   "defenseRect": { "yMin": 96, "yMax": 560 },
   "spawnBandY": [1750, 1880],
   "spawnPointsX": [140, 340, 540, 740, 940],
@@ -50,7 +50,7 @@
       "formation": "line",
       "durationSec": 65,
       "spawns": [
-        { "monster": "slime",   "count": 48, "spawnPoints": "all",     "releasePerTick": 3 },
+        { "monster": "slime",   "count": 40, "spawnPoints": "all",     "releasePerTick": 3 },
         { "monster": "bulwark", "count": 4,  "spawnPoints": [1, 2, 3], "releasePerTick": 1 }
       ]
     },
@@ -59,7 +59,7 @@
       "formation": "stream",
       "durationSec": 55,
       "spawns": [
-        { "monster": "wolf", "count": 36, "spawnPoints": "all", "releasePerTick": 2 }
+        { "monster": "wolf", "count": 32, "spawnPoints": "all", "releasePerTick": 2 }
       ]
     },
     {
@@ -77,9 +77,9 @@
       "formation": "line",
       "durationSec": 70,
       "spawns": [
-        { "monster": "slime",   "count": 48, "spawnPoints": "all", "releasePerTick": 3 },
-        { "monster": "wolf",    "count": 14, "spawnPoints": "all", "releasePerTick": 1 },
-        { "monster": "charger", "count": 12, "spawnPoints": "all", "releasePerTick": 1 }
+        { "monster": "slime",   "count": 40, "spawnPoints": "all", "releasePerTick": 3 },
+        { "monster": "wolf",    "count": 12, "spawnPoints": "all", "releasePerTick": 1 },
+        { "monster": "charger", "count": 10, "spawnPoints": "all", "releasePerTick": 1 }
       ]
     },
     {
@@ -87,8 +87,8 @@
       "formation": "stream",
       "durationSec": 65,
       "spawns": [
-        { "monster": "slime", "count": 40, "spawnPoints": "all", "releasePerTick": 3 },
-        { "monster": "wolf",  "count": 30, "spawnPoints": "all", "releasePerTick": 2 }
+        { "monster": "slime", "count": 34, "spawnPoints": "all", "releasePerTick": 3 },
+        { "monster": "wolf",  "count": 24, "spawnPoints": "all", "releasePerTick": 2 }
       ]
     },
     {
@@ -96,8 +96,8 @@
       "formation": "line",
       "durationSec": 80,
       "spawns": [
-        { "monster": "slime",   "count": 48, "spawnPoints": "all",     "releasePerTick": 4 },
-        { "monster": "wolf",    "count": 30, "spawnPoints": "all",     "releasePerTick": 2 },
+        { "monster": "slime",   "count": 40, "spawnPoints": "all",     "releasePerTick": 4 },
+        { "monster": "wolf",    "count": 26, "spawnPoints": "all",     "releasePerTick": 2 },
         { "monster": "thrower", "count": 16, "spawnPoints": [1, 2, 3], "releasePerTick": 1 },
         { "monster": "bulwark", "count": 6,  "spawnPoints": [2],       "releasePerTick": 1 }
       ]
