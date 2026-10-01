@@ -1,14 +1,151 @@
 {
   "monsters": [
-    { "id": "slime",      "name": "史莱姆",     "hp": 18,  "def": 0,  "speed": 70,  "radius": 20, "atk": 4,  "attackInterval": 1.0, "behavior": "march",    "xp": 2,   "weak": ["fire"], "shape": "slime" },
-    { "id": "wolf",       "name": "野狼",       "hp": 14,  "def": 0,  "speed": 150, "radius": 16, "atk": 6,  "attackInterval": 0.8, "behavior": "dash",     "xp": 3,   "shape": "wolf" },
-    { "id": "thrower",    "name": "哥布林投矛手", "hp": 25, "def": 2,  "speed": 60,  "radius": 18, "atk": 6,  "attackInterval": 1.6, "behavior": "ranged",   "rangedDist": 260, "xp": 4, "resist": ["fire"], "shape": "thrower" },
-    { "id": "catapult",   "name": "哥布林投石车", "hp": 60, "def": 4,  "speed": 25,  "radius": 26, "atk": 12, "attackInterval": 2.5, "behavior": "ranged",   "rangedDist": 600, "xp": 8, "shape": "thrower" },
-    { "id": "charger",    "name": "冲锋鼠",     "hp": 10,  "def": 0,  "speed": 260, "radius": 14, "atk": 5,  "attackInterval": 0.9, "behavior": "fast_rush", "xp": 2,   "shape": "charger" },
-    { "id": "bulwark",    "name": "岩甲兽",     "hp": 170, "def": 10, "speed": 30,  "radius": 30, "atk": 10, "attackInterval": 1.2, "behavior": "march",    "xp": 10,  "weak": ["fire"], "shape": "bulwark" },
-    { "id": "bulwark_king","name": "岩甲魔王",  "hp": 1500,"def": 10, "speed": 22,  "radius": 48, "atk": 18, "attackInterval": 1.4, "behavior": "march",    "xp": 120, "weak": ["fire"], "shape": "bulwark" },
-    { "id": "boss_treant","name": "腐化树人",   "hp": 4200,"def": 6,  "speed": 18,  "radius": 62, "atk": 30, "attackInterval": 1.8, "behavior": "march",    "xp": 250, "weak": ["fire"], "shape": "boss" },
-    { "id": "split_shroom","name": "分裂菇",    "hp": 30,  "def": 0,  "speed": 65,  "radius": 20, "atk": 4,  "attackInterval": 1.0, "behavior": "splitter", "xp": 4,   "shape": "shroom" },
-    { "id": "bat",        "name": "夜行蝙蝠",   "hp": 12,  "def": 0,  "speed": 180, "radius": 14, "atk": 3,  "attackInterval": 0.7, "behavior": "zigzag",   "xp": 3,   "shape": "bat" }
+    {
+      "id": "slime",
+      "name": "史莱姆",
+      "hp": 18,
+      "def": 0,
+      "speed": 70,
+      "radius": 20,
+      "atk": 4,
+      "attackInterval": 1.0,
+      "behavior": "march",
+      "xp": 2,
+      "weak": [
+        "fire"
+      ],
+      "shape": "slime"
+    },
+    {
+      "id": "wolf",
+      "name": "野狼",
+      "hp": 14,
+      "def": 0,
+      "speed": 150,
+      "radius": 16,
+      "atk": 6,
+      "attackInterval": 0.8,
+      "behavior": "dash",
+      "xp": 3,
+      "shape": "wolf"
+    },
+    {
+      "id": "thrower",
+      "name": "哥布林投矛手",
+      "hp": 25,
+      "def": 2,
+      "speed": 60,
+      "radius": 18,
+      "atk": 6,
+      "attackInterval": 1.6,
+      "behavior": "ranged",
+      "rangedDist": 260,
+      "xp": 4,
+      "resist": [
+        "fire"
+      ],
+      "shape": "thrower"
+    },
+    {
+      "id": "catapult",
+      "name": "哥布林投石车",
+      "hp": 60,
+      "def": 4,
+      "speed": 25,
+      "radius": 26,
+      "atk": 12,
+      "attackInterval": 2.5,
+      "behavior": "ranged",
+      "rangedDist": 600,
+      "xp": 8,
+      "shape": "thrower"
+    },
+    {
+      "id": "charger",
+      "name": "冲锋鼠",
+      "hp": 10,
+      "def": 0,
+      "speed": 260,
+      "radius": 14,
+      "atk": 5,
+      "attackInterval": 0.9,
+      "behavior": "fast_rush",
+      "xp": 2,
+      "shape": "charger"
+    },
+    {
+      "id": "bulwark",
+      "name": "岩甲兽",
+      "hp": 130,
+      "def": 10,
+      "speed": 30,
+      "radius": 30,
+      "atk": 10,
+      "attackInterval": 1.2,
+      "behavior": "march",
+      "xp": 10,
+      "weak": [
+        "fire"
+      ],
+      "shape": "bulwark"
+    },
+    {
+      "id": "bulwark_king",
+      "name": "岩甲魔王",
+      "hp": 1100,
+      "def": 10,
+      "speed": 22,
+      "radius": 48,
+      "atk": 18,
+      "attackInterval": 1.4,
+      "behavior": "march",
+      "xp": 120,
+      "weak": [
+        "fire"
+      ],
+      "shape": "bulwark"
+    },
+    {
+      "id": "boss_treant",
+      "name": "腐化树人",
+      "hp": 3000,
+      "def": 6,
+      "speed": 18,
+      "radius": 62,
+      "atk": 30,
+      "attackInterval": 1.8,
+      "behavior": "march",
+      "xp": 250,
+      "weak": [
+        "fire"
+      ],
+      "shape": "boss"
+    },
+    {
+      "id": "split_shroom",
+      "name": "分裂菇",
+      "hp": 30,
+      "def": 0,
+      "speed": 65,
+      "radius": 20,
+      "atk": 4,
+      "attackInterval": 1.0,
+      "behavior": "splitter",
+      "xp": 4,
+      "shape": "shroom"
+    },
+    {
+      "id": "bat",
+      "name": "夜行蝙蝠",
+      "hp": 12,
+      "def": 0,
+      "speed": 180,
+      "radius": 14,
+      "atk": 3,
+      "attackInterval": 0.7,
+      "behavior": "zigzag",
+      "xp": 3,
+      "shape": "bat"
+    }
   ]
 }

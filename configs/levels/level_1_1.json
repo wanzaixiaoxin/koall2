@@ -39,7 +39,7 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 78,
+          "count": 24,
           "spawnPoints": "all",
           "releasePerTick": 3
         }
@@ -52,13 +52,13 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 96,
+          "count": 30,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "charger",
-          "count": 36,
+          "count": 14,
           "spawnPoints": "all",
           "releasePerTick": 2
         }
@@ -71,7 +71,7 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 96,
+          "count": 32,
           "spawnPoints": [
             2,
             3,
@@ -83,7 +83,7 @@
         },
         {
           "monster": "wolf",
-          "count": 48,
+          "count": 16,
           "spawnPoints": [
             0,
             1,
@@ -94,7 +94,7 @@
         },
         {
           "monster": "charger",
-          "count": 18,
+          "count": 8,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -107,7 +107,7 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 120,
+          "count": 66,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
@@ -126,13 +126,13 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 112,
+          "count": 62,
           "spawnPoints": "all",
           "releasePerTick": 4
         },
         {
           "monster": "bulwark",
-          "count": 6,
+          "count": 3,
           "spawnPoints": [
             2,
             4,
@@ -142,7 +142,7 @@
         },
         {
           "monster": "bat",
-          "count": 12,
+          "count": 7,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -163,13 +163,13 @@
       "spawns": [
         {
           "monster": "wolf",
-          "count": 102,
+          "count": 56,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "charger",
-          "count": 36,
+          "count": 20,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
@@ -194,7 +194,7 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 225,
+          "count": 124,
           "spawnPoints": [
             1,
             2,
@@ -208,7 +208,7 @@
         },
         {
           "monster": "bulwark",
-          "count": 4,
+          "count": 2,
           "spawnPoints": [
             0,
             8
@@ -223,7 +223,7 @@
         },
         {
           "monster": "bat",
-          "count": 18,
+          "count": 10,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -236,25 +236,25 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 112,
+          "count": 62,
           "spawnPoints": "all",
           "releasePerTick": 4
         },
         {
           "monster": "wolf",
-          "count": 48,
+          "count": 26,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "charger",
-          "count": 42,
+          "count": 23,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "bat",
-          "count": 18,
+          "count": 10,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -275,13 +275,13 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 132,
+          "count": 73,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "wolf",
-          "count": 90,
+          "count": 50,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
@@ -295,7 +295,7 @@
         },
         {
           "monster": "bat",
-          "count": 18,
+          "count": 10,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -320,13 +320,13 @@
       "spawns": [
         {
           "monster": "slime",
-          "count": 112,
+          "count": 62,
           "spawnPoints": "all",
           "releasePerTick": 5
         },
         {
           "monster": "wolf",
-          "count": 96,
+          "count": 53,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
@@ -346,7 +346,7 @@
         },
         {
           "monster": "bulwark",
-          "count": 8,
+          "count": 4,
           "spawnPoints": [
             4
           ],
@@ -354,13 +354,13 @@
         },
         {
           "monster": "charger",
-          "count": 30,
+          "count": 16,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "bat",
-          "count": 12,
+          "count": 7,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
