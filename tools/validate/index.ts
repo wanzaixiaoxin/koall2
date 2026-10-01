@@ -51,6 +51,9 @@ function validateWeapons(weapons: WeaponConfig[]): void {
       need(isNum(w.blastBase.dmgMul) && w.blastBase.dmgMul > 0, where, 'blastBase.dmgMul 必须为正数');
       need(isNum(w.blastBase.poolSec) && w.blastBase.poolSec >= 0, where, 'blastBase.poolSec 必须 ≥ 0');
     }
+    if (w.shape !== undefined) {
+      need(['dot', 'arrow', 'bomb', 'crescent'].includes(w.shape), where, `未知子弹形态: ${w.shape}`);
+    }
     need(isNum(w.projectileRange) && w.projectileRange > 0, where, 'projectileRange 必须为正数');
     need(isNum(w.count) && w.count >= 1, where, 'count 必须 ≥ 1');
     need(['nearest', 'lowestHp', 'strongest', 'random', 'densest'].includes(w.targeting), where, `未知索敌规则: ${w.targeting}`);
@@ -74,6 +77,9 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
     need(isNum(m.atk) && m.atk >= 0, where, 'atk 必须 ≥ 0');
     need(isNum(m.attackInterval) && m.attackInterval > 0, where, 'attackInterval 必须为正数');
     need(isNum(m.xp) && m.xp >= 0, where, 'xp 必须 ≥ 0');
+    if (m.shape !== undefined) {
+      need(['slime', 'wolf', 'charger', 'thrower', 'bulwark', 'bat', 'shroom'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
+    }
     map.set(m.id, m);
   }
   return map;

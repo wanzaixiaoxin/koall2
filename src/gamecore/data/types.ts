@@ -25,6 +25,8 @@ export interface WeaponConfig {
   homing?: { turnRate: number; duration: number; retarget: boolean };
   /** ≥1 = 落雷武器：开火不产生子弹，直接以"1+连锁等级"次打击落雷（连锁闪电武器本体） */
   chainBase?: number;
+  /** 子弹视觉形态（docs/06）：dot 光点 / arrow 箭矢 / bomb 抛物弹 / crescent 回旋刃 */
+  shape?: string;
   /** 内置爆破（爆破系武器本体）：子弹消亡时产生范围伤害圈（可被"爆破落地"卡叠加强化） */
   blastBase?: { radius: number; dmgMul: number; poolDpsMul: number; poolSec: number };
   /** 武器谱系定位（docs/02 §6 分类）：速射 / 贯穿 / 爆破 / 回旋 / 雷霆 */
@@ -50,6 +52,8 @@ export interface MonsterConfig {
   weak?: DamageType[];
   /** 伤害类型抗性：受到该类型 ×0.75 */
   resist?: DamageType[];
+  /** 外观形态（docs/06 形状语言）：slime/wolf/charger/thrower/bulwark/bat/shroom */
+  shape?: string;
 }
 
 export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
@@ -232,6 +236,7 @@ export interface ProjectileRuntime {
   radius: number;
   speed: number;           // 最终弹速（含子弹卡倍率）
   dmg: number;             // 最终单发伤害（含倍率）
+  height: number;          // 俯视离地高度（抛物线渲染用，每帧由轨迹回写）
   damageType: DamageType;
   trajectory: import('../trajectory').Trajectory;
   /**

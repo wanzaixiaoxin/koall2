@@ -14,6 +14,7 @@ import {
   Vec2,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
+import { drawMonster, drawProjectile } from './render/shapes';
 
 const W = 1080;
 const H = 1920;
@@ -281,19 +282,12 @@ async function boot(): Promise<void> {
       ctx.fillRect(0, 0, W, wallTop);
     }
 
-    // 怪物（圆角方块 squash 弹跳，docs/06 史莱姆几何规范）
+    // 怪物（形状语言区分种类，docs/06；血条/状态指示由下方叠加）
     const t = timeMs / 1000;
+    const now = session.timeSec;
     for (const m of session.monsters) {
-      const moving = m.state === 'march';
-      const sq = moving ? 1 + 0.12 * Math.sin(t * 6 + m.phase) : 1;
       const r = m.cfg.radius;
-      ctx.fillStyle = palette.enemy.primary;
-      ctx.save();
-      ctx.translate(m.x, m.y);
-      ctx.scale(2 - sq, sq); // squash & stretch
-      drawRoundRect(-r, -r, r * 2, r * 2, r * 0.45);
-      ctx.fill();
-      ctx.restore();
+      drawMonster(ctx, m, t);
       // 血条
       if (m.hp < m.maxHp) {
         ctx.fillStyle = 'rgba(255,255,255,0.25)';
@@ -302,7 +296,6 @@ async function boot(): Promise<void> {
         ctx.fillRect(m.x - r, m.y - r - 10, (r * 2 * m.hp) / m.maxHp, 4);
       }
       // 状态指示：冰冻（蓝环）/ 灼烧（附着火焰，定时跳伤害直至熄灭）
-      const now = session.timeSec;
       if (now < m.slowUntil) {
         ctx.strokeStyle = 'rgba(79,195,247,0.9)';
         ctx.lineWidth = 2;
@@ -356,21 +349,11 @@ async function boot(): Promise<void> {
     ctx.fill();
     ctx.restore();
 
-    // 投射物（发光圆点 + 拖尾，按伤害类型着色）
+    // 投射物（按武器塑形 + 伤害类型着色）
     const projColor = (t: string): string =>
       (palette.damageType as Record<string, string>)[t] ?? '#BFFFF2';
     for (const p of session.projectiles) {
-      const color = projColor(p.damageType);
-      ctx.strokeStyle = color + '66';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(p.x - (p.x - p.px) * 3, p.y - (p.y - p.py) * 3);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-      ctx.fill();
+      drawProjectile(ctx, p, t, projColor(p.damageType));
     }
 
     // 伤害飘字（上升 + 淡出；文字在 y 翻转坐标系下需回到标准变换绘制）

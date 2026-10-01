@@ -331,6 +331,7 @@ export class GameSession {
       const res = p.trajectory.update(p.x, p.y, this.motionCtx);
       p.x = res.x;
       p.y = res.y;
+      p.height = res.height ?? 0;
       p.stepLen = Math.hypot(p.x - p.px, p.y - p.py);
       if (!res.alive) {
         this.killProjectile(p); // 射程耗尽落地（触发爆破落地圈）
@@ -528,6 +529,7 @@ export class GameSession {
       radius: weapon.cfg.projectileRadius,
       speed,
       dmg,
+      height: 0,
       damageType,
       trajectory: createTrajectory(motionCfg, { dirX: dx, dirY: dy, target: cmd.target }),
       pierceLeft: weapon.cfg.pierce + Math.round(weapon.mods.pierceAdd),
@@ -923,6 +925,7 @@ export class GameSession {
           radius: p.radius,
           speed: p.speed,
           dmg: p.dmg * 0.5,
+          height: 0,
           damageType: p.damageType,
           trajectory: createTrajectory(childCfg, { dirX: dx, dirY: dy, target: childTarget }),
           pierceLeft: 0,

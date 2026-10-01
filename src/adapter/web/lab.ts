@@ -10,6 +10,7 @@ import {
   WeaponConfig,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
+import { drawMonster, drawProjectile } from './render/shapes';
 
 const W = 1080;
 const H = 1920;
@@ -413,18 +414,16 @@ async function boot(): Promise<void> {
     }
 
     const now = session.timeSec;
+    const tNow = now; // 渲染动效时钟与逻辑时钟一致（实验室确定性优先）
     for (const m of session.monsters) {
-      ctx.fillStyle = palette.enemy.primary;
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, m.cfg.radius, 0, Math.PI * 2);
-      ctx.fill();
+      drawMonster(ctx, m, tNow);
       if (now < m.slowUntil) {
         ctx.strokeStyle = 'rgba(79,195,247,0.9)';
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(m.x, m.y, m.cfg.radius + 4, 0, Math.PI * 2); ctx.stroke();
       }
       if (m.burn && m.burn.until > now) {
-        const flick = 8 + Math.sin(session.timeSec * 14 + m.phase) * 3;
+        const flick = 8 + Math.sin(now * 14 + m.phase) * 3;
         ctx.fillStyle = '#FF5A3C';
         ctx.beginPath();
         ctx.moveTo(m.x, m.y + m.cfg.radius + 4 + flick);
@@ -444,14 +443,7 @@ async function boot(): Promise<void> {
 
     const projColor = (t: string): string => palette.damageType[t] ?? '#BFFFF2';
     for (const p of session.projectiles) {
-      ctx.strokeStyle = projColor(p.damageType) + '66';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(p.x - (p.x - p.px) * 3, p.y - (p.y - p.py) * 3);
-      ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-      ctx.fillStyle = projColor(p.damageType);
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2); ctx.fill();
+      drawProjectile(ctx, p, now, projColor(p.damageType));
     }
 
     ctx.fillStyle = palette.friendly.hero;

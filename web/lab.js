@@ -831,6 +831,7 @@
         const res = p.trajectory.update(p.x, p.y, this.motionCtx);
         p.x = res.x;
         p.y = res.y;
+        p.height = res.height ?? 0;
         p.stepLen = Math.hypot(p.x - p.px, p.y - p.py);
         if (!res.alive) {
           this.killProjectile(p);
@@ -860,10 +861,10 @@
         for (const mid of this.scratch) {
           const m = this.monsters[mid];
           if (!m || m.hp <= 0) continue;
-          const rr = pool.radius + m.cfg.radius;
+          const rr2 = pool.radius + m.cfg.radius;
           const dx = m.x - pool.x;
           const dy = m.y - pool.y;
-          if (dx * dx + dy * dy > rr * rr) continue;
+          if (dx * dx + dy * dy > rr2 * rr2) continue;
           const dmg = pool.dps * dt;
           m.hp -= dmg;
           this.totalDamage += dmg;
@@ -885,8 +886,8 @@
         this.hash.rebuild(this.monsters);
         for (const m of this.monsters) {
           if (m.hp <= 0) continue;
-          const rr = seg.width / 2 + m.cfg.radius;
-          if (distToSegment(m.x, m.y, seg.ax, seg.ay, seg.bx, seg.by) > rr) continue;
+          const rr2 = seg.width / 2 + m.cfg.radius;
+          if (distToSegment(m.x, m.y, seg.ax, seg.ay, seg.bx, seg.by) > rr2) continue;
           const dmg = seg.dps * dt;
           m.hp -= dmg;
           this.totalDamage += dmg;
@@ -1001,6 +1002,7 @@
         radius: weapon.cfg.projectileRadius,
         speed,
         dmg,
+        height: 0,
         damageType,
         trajectory: createTrajectory(motionCfg, { dirX: dx, dirY: dy, target: cmd.target }),
         pierceLeft: weapon.cfg.pierce + Math.round(weapon.mods.pierceAdd),
@@ -1025,8 +1027,8 @@
         const m = this.monsters[mid];
         if (!m || m.hp <= 0) continue;
         if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < 0.5) continue;
-        const rr = p.radius + m.cfg.radius;
-        if (distToSegment(m.x, m.y, p.px, p.py, p.x, p.y) > rr) continue;
+        const rr2 = p.radius + m.cfg.radius;
+        if (distToSegment(m.x, m.y, p.px, p.py, p.x, p.y) > rr2) continue;
         p.hitIds.set(m.id, now);
         const falloffRate = Math.max(0, (p.weapon.cfg.pierceFalloff ?? 0.15) - p.affixes.shred * 0.06);
         const effDmg = p.dmg * Math.min(1, Math.max(0, 1 - falloffRate * p.pierceCount));
@@ -1157,10 +1159,10 @@
       for (const mid of this.scratch) {
         const m = this.monsters[mid];
         if (!m || m.hp <= 0) continue;
-        const rr = radius + m.cfg.radius;
+        const rr2 = radius + m.cfg.radius;
         const dx = m.x - p.x;
         const dy = m.y - p.y;
-        if (dx * dx + dy * dy > rr * rr) continue;
+        if (dx * dx + dy * dy > rr2 * rr2) continue;
         const def = Math.max(0, m.cfg.def - (now < m.shredUntil ? m.shredAmount : 0));
         const res = calcDamage(
           heroAttackerSnapshot(this.hero),
@@ -1353,6 +1355,7 @@
             radius: p.radius,
             speed: p.speed,
             dmg: p.dmg * 0.5,
+            height: 0,
             damageType: p.damageType,
             trajectory: createTrajectory(childCfg, { dirX: dx, dirY: dy, target: childTarget }),
             pierceLeft: 0,
@@ -1456,6 +1459,230 @@
     };
     return [...choices].sort((a, b) => prio(b) - prio(a))[0];
   };
+
+  // src/adapter/web/render/shapes.ts
+  var MONSTER_COLOR = {
+    slime: "#FF6B57",
+    wolf: "#FF8357",
+    charger: "#FFA25E",
+    thrower: "#FF5E7A",
+    bulwark: "#8A93B8",
+    bat: "#FF7EC7",
+    shroom: "#FF6B9C"
+  };
+  function monsterColor(m) {
+    return MONSTER_COLOR[m.cfg.shape ?? "slime"] ?? "#FF6B57";
+  }
+  function rr(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function drawMonster(ctx, m, t) {
+    const r = m.cfg.radius;
+    const moving = m.state === "march";
+    const color = monsterColor(m);
+    ctx.fillStyle = color;
+    const x = m.x;
+    const y = m.y;
+    switch (m.cfg.shape) {
+      case "wolf": {
+        const stretch = moving ? 1 + 0.15 * Math.sin(t * 8 + m.phase) : 1;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1, stretch);
+        ctx.beginPath();
+        ctx.moveTo(0, -r);
+        ctx.lineTo(-r * 0.85, r * 0.8);
+        ctx.lineTo(r * 0.85, r * 0.8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case "charger": {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 1.4);
+        ctx.lineTo(-r * 0.55, r);
+        ctx.lineTo(r * 0.55, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case "thrower": {
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.8, y - r * 0.7);
+        ctx.lineTo(x + r * 0.8, y - r * 0.7);
+        ctx.lineTo(x + r * 0.5, y + r * 0.8);
+        ctx.lineTo(x - r * 0.5, y + r * 0.8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y + r * 0.3);
+        ctx.lineTo(x, y + r * 1.6);
+        ctx.stroke();
+        break;
+      }
+      case "bulwark": {
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = Math.PI / 3 * i + Math.PI / 6;
+          const px = x + Math.cos(a) * r;
+          const py = y + Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(11,12,29,.55)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = Math.PI / 3 * i + Math.PI / 6;
+          const px = x + Math.cos(a) * r * 0.55;
+          const py = y + Math.sin(a) * r * 0.55;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        break;
+      }
+      case "bat": {
+        const flap = 0.75 + 0.3 * Math.sin(t * 12 + m.phase);
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1, flap);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-r * 1.3, -r * 0.7);
+        ctx.lineTo(-r * 0.9, r * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(r * 1.3, -r * 0.7);
+        ctx.lineTo(r * 0.9, r * 0.5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
+      case "shroom": {
+        ctx.beginPath();
+        ctx.arc(x, y + r * 0.35, r * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x, y - r * 0.35, r * 0.85, Math.PI, 0);
+        ctx.fill();
+        break;
+      }
+      case "slime":
+      default: {
+        const sq = moving ? 1 + 0.12 * Math.sin(t * 6 + m.phase) : 1;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(2 - sq, sq);
+        rr(ctx, -r, -r, r * 2, r * 2, r * 0.45);
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
+    }
+  }
+  function drawProjectile(ctx, p, t, color) {
+    const shape = p.weapon.cfg.shape ?? "dot";
+    const dx = p.x - p.px;
+    const dy = p.y - p.py;
+    const len2 = Math.hypot(dx, dy) || 1;
+    const ux = dx / len2;
+    const uy = dy / len2;
+    switch (shape) {
+      case "arrow": {
+        const shaft = 22;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(p.x - ux * shaft, p.y - uy * shaft);
+        ctx.lineTo(p.x + ux * 6, p.y + uy * 6);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        const px = -uy;
+        const py = ux;
+        ctx.moveTo(p.x + ux * 12, p.y + uy * 12);
+        ctx.lineTo(p.x - ux * 2 + px * 4.5, p.y - uy * 2 + py * 4.5);
+        ctx.lineTo(p.x - ux * 2 - px * 4.5, p.y - uy * 2 - py * 4.5);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case "bomb": {
+        const h = p.height;
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, 9, 3.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        const by = p.y + h;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(p.x, by, p.radius + 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(11,12,29,.6)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(p.x, by + p.radius + 3);
+        ctx.lineTo(p.x + 3, by + p.radius + 8);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255,213,79,${0.6 + 0.4 * Math.sin(t * 20)})`;
+        ctx.beginPath();
+        ctx.arc(p.x + 3, by + p.radius + 9, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "crescent": {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(t * 14 + p.id);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 5;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(-12, -7);
+        ctx.lineTo(0, 5);
+        ctx.lineTo(12, -7);
+        ctx.stroke();
+        ctx.restore();
+        break;
+      }
+      case "dot":
+      default: {
+        ctx.strokeStyle = color + "66";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(p.x - ux * 30, p.y - uy * 30);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+    }
+  }
 
   // src/adapter/web/lab.ts
   var W = 1080;
@@ -1826,11 +2053,9 @@
         ctx.stroke();
       }
       const now = session.timeSec;
+      const tNow = now;
       for (const m of session.monsters) {
-        ctx.fillStyle = palette.enemy.primary;
-        ctx.beginPath();
-        ctx.arc(m.x, m.y, m.cfg.radius, 0, Math.PI * 2);
-        ctx.fill();
+        drawMonster(ctx, m, tNow);
         if (now < m.slowUntil) {
           ctx.strokeStyle = "rgba(79,195,247,0.9)";
           ctx.lineWidth = 2;
@@ -1839,7 +2064,7 @@
           ctx.stroke();
         }
         if (m.burn && m.burn.until > now) {
-          const flick = 8 + Math.sin(session.timeSec * 14 + m.phase) * 3;
+          const flick = 8 + Math.sin(now * 14 + m.phase) * 3;
           ctx.fillStyle = "#FF5A3C";
           ctx.beginPath();
           ctx.moveTo(m.x, m.y + m.cfg.radius + 4 + flick);
@@ -1860,16 +2085,7 @@
       }
       const projColor = (t) => palette.damageType[t] ?? "#BFFFF2";
       for (const p of session.projectiles) {
-        ctx.strokeStyle = projColor(p.damageType) + "66";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(p.x - (p.x - p.px) * 3, p.y - (p.y - p.py) * 3);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
-        ctx.fillStyle = projColor(p.damageType);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
-        ctx.fill();
+        drawProjectile(ctx, p, now, projColor(p.damageType));
       }
       ctx.fillStyle = palette.friendly.hero;
       ctx.beginPath();

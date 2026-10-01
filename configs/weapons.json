@@ -13,7 +13,8 @@
       "projectileRadius": 5,
       "pierce": 0,
       "targeting": "nearest",
-      "trajectory": "straight"
+      "trajectory": "straight",
+      "shape": "dot"
     },
     {
       "id": "crossbow_pierce",
@@ -29,7 +30,8 @@
       "pierce": 3,
       "pierceFalloff": 0.18,
       "targeting": "nearest",
-      "trajectory": "straight"
+      "trajectory": "straight",
+      "shape": "arrow"
     },
     {
       "id": "alchemist_bomb",
@@ -45,8 +47,19 @@
       "pierce": 0,
       "targeting": "random",
       "trajectory": "straight",
-      "motion": { "type": "parabola", "speed": 700, "range": 950, "peak": 160 },
-      "blastBase": { "radius": 90, "dmgMul": 0.6, "poolDpsMul": 0.3, "poolSec": 2 }
+      "motion": {
+        "type": "parabola",
+        "speed": 700,
+        "range": 950,
+        "peak": 160
+      },
+      "blastBase": {
+        "radius": 90,
+        "dmgMul": 0.6,
+        "poolDpsMul": 0.3,
+        "poolSec": 2
+      },
+      "shape": "bomb"
     },
     {
       "id": "boomerang",
@@ -65,11 +78,44 @@
       "motion": {
         "type": "phased",
         "phases": [
-          { "motion": { "type": "straight", "speed": 550, "range": 800 }, "until": { "kind": "distance", "value": 350 } },
-          { "motion": { "type": "hover" }, "until": { "kind": "duration", "value": 2.0 } },
-          { "motion": { "type": "homing", "speed": 550, "range": 99999, "turnRate": 720, "duration": 99, "retarget": false, "home": true }, "until": { "kind": "nearOwner", "value": 40 } }
+          {
+            "motion": {
+              "type": "straight",
+              "speed": 550,
+              "range": 800
+            },
+            "until": {
+              "kind": "distance",
+              "value": 350
+            }
+          },
+          {
+            "motion": {
+              "type": "hover"
+            },
+            "until": {
+              "kind": "duration",
+              "value": 2.0
+            }
+          },
+          {
+            "motion": {
+              "type": "homing",
+              "speed": 550,
+              "range": 99999,
+              "turnRate": 720,
+              "duration": 99,
+              "retarget": false,
+              "home": true
+            },
+            "until": {
+              "kind": "nearOwner",
+              "value": 40
+            }
+          }
         ]
-      }
+      },
+      "shape": "crescent"
     },
     {
       "id": "lightning_chain",
@@ -85,7 +131,8 @@
       "pierce": 0,
       "targeting": "nearest",
       "trajectory": "straight",
-      "chainBase": 1
+      "chainBase": 1,
+      "shape": "dot"
     }
   ]
 }
