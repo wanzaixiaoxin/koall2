@@ -1456,16 +1456,18 @@
       if (c.type === "bullet") {
         const isWeaponSpecific = c.target?.kind === "weapon";
         switch (e.bullet) {
-          case "damage":
-            return 100;
           case "count":
-            return isWeaponSpecific ? 96 : 90;
+            return isWeaponSpecific ? 108 : 90;
           case "burst":
-            return isWeaponSpecific ? 94 : 88;
+            return isWeaponSpecific ? 106 : 88;
+          case "damage":
+            return 82;
           case "range":
             return 60;
           case "projSpeed":
             return 55;
+          case "pierce":
+            return 58;
           default:
             return 50;
         }
