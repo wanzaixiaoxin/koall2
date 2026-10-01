@@ -76,7 +76,7 @@
     {
       "id": "bulwark",
       "name": "岩甲兽",
-      "hp": 130,
+      "hp": 150,
       "def": 10,
       "speed": 30,
       "radius": 30,
@@ -108,7 +108,7 @@
     {
       "id": "boss_treant",
       "name": "腐化树人",
-      "hp": 3000,
+      "hp": 2800,
       "def": 6,
       "speed": 18,
       "radius": 62,

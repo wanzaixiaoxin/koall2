@@ -58,7 +58,7 @@ export const greedyDpsPolicy: CardPolicy = (choices, _hero, _rng, session) => {
 export const randomPolicy: CardPolicy = (choices, _hero, rng: Rng) =>
   choices[rng.int(0, choices.length - 1)];
 
-export type PolicyName = 'greedy' | 'random';
+export type PolicyName = 'greedy' | 'random' | 'casual';
 
 export function getPolicy(name: PolicyName): CardPolicy {
   return name === 'greedy' ? greedyDpsPolicy : randomPolicy;

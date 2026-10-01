@@ -18,6 +18,7 @@ import {
   TICK_DT,
 } from '../../src/gamecore';
 import { SimAIController } from './controller';
+import { CasualAIController } from './casual';
 import { getPolicy, PolicyName } from './policies';
 import { runWatch } from './watch';
 
@@ -70,7 +71,7 @@ function runOnce(
     monsterConfigs: monsterCfgs,
     cardConfigs,
     seed,
-    controller: new SimAIController(),
+    controller: policy === 'casual' ? new CasualAIController(seed) : new SimAIController(),
     cardPolicy: getPolicy(policy),
   });
 
