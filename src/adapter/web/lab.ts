@@ -215,15 +215,26 @@ async function boot(): Promise<void> {
   for (const m of monstersFile.monsters) {
     const btn = document.createElement('button');
     btn.className = 'mbtn';
-    btn.textContent = `+ ${m.name}`;
+    btn.textContent = `+ ${m.name}${m.escort ? '（带护卫环）' : ''}`;
     btn.onclick = () => {
       const x = 150 + Math.random() * (W - 300);
       const y = 1250 + Math.random() * 450; // 步枪射程（≈1228）之外生成， marched 过程可观察
       session.debugSpawn(m.id, x, y);
-      log(`+ 生成 ${m.name} @ (${x.toFixed(0)}, ${y.toFixed(0)})`);
+      log(`+ 生成 ${m.name}${m.escort ? ' + 护卫环' : ''} @ (${x.toFixed(0)}, ${y.toFixed(0)})`);
     };
     monGrid.appendChild(btn);
   }
+  // 特殊：单独巫师（不带护卫环，测治疗本体）
+  const soloShaman = document.createElement('button');
+  soloShaman.className = 'mbtn';
+  soloShaman.textContent = '+ 巫师（单独）';
+  soloShaman.onclick = () => {
+    const x = 200 + Math.random() * (W - 400);
+    const y = 1000 + Math.random() * 400;
+    session.debugSpawn('shaman', x, y, { noEscort: true });
+    log(`+ 生成 巫师（无护卫）@ (${x.toFixed(0)}, ${y.toFixed(0)})`);
+  };
+  monGrid.appendChild(soloShaman);
   document.getElementById('clear')!.onclick = () => {
     session.monsters.forEach((m) => { m.hp = 0; });
     log('清场');

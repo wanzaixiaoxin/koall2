@@ -523,7 +523,7 @@ export class GameSession {
     });
   }
 
-  private spawnMonster(key: string, spawnX: number, spawnY?: number): void {
+  private spawnMonster(key: string, spawnX: number, spawnY?: number, skipEscort = false): void {
     const cfg = this.monsterCfgs.get(key);
     if (!cfg) throw new Error(`未知怪物配置: ${key}`);
     const x = clamp(spawnX, 40, this.level.arena.width - 40);
@@ -551,7 +551,7 @@ export class GameSession {
     });
 
     // 出场护卫：巫师等带 escort 的怪，周围环形部署一圈护卫
-    if (cfg.escort) {
+    if (cfg.escort && !skipEscort) {
       for (let i = 0; i < cfg.escort.count; i++) {
         const ang = (Math.PI * 2 * i) / cfg.escort.count + this.rng.range(-0.2, 0.2);
         const ex = clamp(x + Math.cos(ang) * cfg.escort.radius, 40, this.level.arena.width - 40);
@@ -907,10 +907,10 @@ export class GameSession {
     return this.hero.weapons.some((w) => w.element === t.element);
   }
 
-  /** 在指定位置生成测试怪；id 不存在返回 false。 */
-  debugSpawn(monsterKey: string, x: number, y: number): boolean {
+  /** 在指定位置生成测试怪；id 不存在返回 false。noEscort=true 时不触发出场护卫（如单独生成巫师）。 */
+  debugSpawn(monsterKey: string, x: number, y: number, opts?: { noEscort?: boolean }): boolean {
     if (!this.monsterCfgs.has(monsterKey)) return false;
-    this.spawnMonster(monsterKey, x, y);
+    this.spawnMonster(monsterKey, x, y, opts?.noEscort ?? false);
     return true;
   }
 

@@ -1006,7 +1006,7 @@
         kind: isRock ? "rock" : "spear"
       });
     }
-    spawnMonster(key, spawnX, spawnY) {
+    spawnMonster(key, spawnX, spawnY, skipEscort = false) {
       const cfg = this.monsterCfgs.get(key);
       if (!cfg) throw new Error(`\u672A\u77E5\u602A\u7269\u914D\u7F6E: ${key}`);
       const x = clamp(spawnX, 40, this.level.arena.width - 40);
@@ -1032,7 +1032,7 @@
         shredUntil: 0,
         shredAmount: 0
       });
-      if (cfg.escort) {
+      if (cfg.escort && !skipEscort) {
         for (let i = 0; i < cfg.escort.count; i++) {
           const ang = Math.PI * 2 * i / cfg.escort.count + this.rng.range(-0.2, 0.2);
           const ex = clamp(x + Math.cos(ang) * cfg.escort.radius, 40, this.level.arena.width - 40);
@@ -1336,10 +1336,10 @@
       if (t.kind === "weapon") return this.hero.weapons.some((w) => w.cfg.id === t.weaponType);
       return this.hero.weapons.some((w) => w.element === t.element);
     }
-    /** 在指定位置生成测试怪；id 不存在返回 false。 */
-    debugSpawn(monsterKey, x, y) {
+    /** 在指定位置生成测试怪；id 不存在返回 false。noEscort=true 时不触发出场护卫（如单独生成巫师）。 */
+    debugSpawn(monsterKey, x, y, opts) {
       if (!this.monsterCfgs.has(monsterKey)) return false;
-      this.spawnMonster(monsterKey, x, y);
+      this.spawnMonster(monsterKey, x, y, opts?.noEscort ?? false);
       return true;
     }
     /** 测试入口：光束——锚定英雄、朝 angle（弧度）持续 dps 伤害 duration 秒。 */
@@ -2044,15 +2044,25 @@
     for (const m of monstersFile.monsters) {
       const btn = document.createElement("button");
       btn.className = "mbtn";
-      btn.textContent = `+ ${m.name}`;
+      btn.textContent = `+ ${m.name}${m.escort ? "\uFF08\u5E26\u62A4\u536B\u73AF\uFF09" : ""}`;
       btn.onclick = () => {
         const x = 150 + Math.random() * (W - 300);
         const y = 1250 + Math.random() * 450;
         session.debugSpawn(m.id, x, y);
-        log(`+ \u751F\u6210 ${m.name} @ (${x.toFixed(0)}, ${y.toFixed(0)})`);
+        log(`+ \u751F\u6210 ${m.name}${m.escort ? " + \u62A4\u536B\u73AF" : ""} @ (${x.toFixed(0)}, ${y.toFixed(0)})`);
       };
       monGrid.appendChild(btn);
     }
+    const soloShaman = document.createElement("button");
+    soloShaman.className = "mbtn";
+    soloShaman.textContent = "+ \u5DEB\u5E08\uFF08\u5355\u72EC\uFF09";
+    soloShaman.onclick = () => {
+      const x = 200 + Math.random() * (W - 400);
+      const y = 1e3 + Math.random() * 400;
+      session.debugSpawn("shaman", x, y, { noEscort: true });
+      log(`+ \u751F\u6210 \u5DEB\u5E08\uFF08\u65E0\u62A4\u536B\uFF09@ (${x.toFixed(0)}, ${y.toFixed(0)})`);
+    };
+    monGrid.appendChild(soloShaman);
     document.getElementById("clear").onclick = () => {
       session.monsters.forEach((m) => {
         m.hp = 0;

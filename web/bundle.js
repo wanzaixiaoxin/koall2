@@ -1006,7 +1006,7 @@
         kind: isRock ? "rock" : "spear"
       });
     }
-    spawnMonster(key, spawnX, spawnY) {
+    spawnMonster(key, spawnX, spawnY, skipEscort = false) {
       const cfg = this.monsterCfgs.get(key);
       if (!cfg) throw new Error(`\u672A\u77E5\u602A\u7269\u914D\u7F6E: ${key}`);
       const x = clamp(spawnX, 40, this.level.arena.width - 40);
@@ -1032,7 +1032,7 @@
         shredUntil: 0,
         shredAmount: 0
       });
-      if (cfg.escort) {
+      if (cfg.escort && !skipEscort) {
         for (let i = 0; i < cfg.escort.count; i++) {
           const ang = Math.PI * 2 * i / cfg.escort.count + this.rng.range(-0.2, 0.2);
           const ex = clamp(x + Math.cos(ang) * cfg.escort.radius, 40, this.level.arena.width - 40);
@@ -1336,10 +1336,10 @@
       if (t.kind === "weapon") return this.hero.weapons.some((w) => w.cfg.id === t.weaponType);
       return this.hero.weapons.some((w) => w.element === t.element);
     }
-    /** 在指定位置生成测试怪；id 不存在返回 false。 */
-    debugSpawn(monsterKey, x, y) {
+    /** 在指定位置生成测试怪；id 不存在返回 false。noEscort=true 时不触发出场护卫（如单独生成巫师）。 */
+    debugSpawn(monsterKey, x, y, opts) {
       if (!this.monsterCfgs.has(monsterKey)) return false;
-      this.spawnMonster(monsterKey, x, y);
+      this.spawnMonster(monsterKey, x, y, opts?.noEscort ?? false);
       return true;
     }
     /** 测试入口：光束——锚定英雄、朝 angle（弧度）持续 dps 伤害 duration 秒。 */
