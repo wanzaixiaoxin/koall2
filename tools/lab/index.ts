@@ -452,6 +452,23 @@ const tests: TestCase[] = [
     }
     return shots >= 14 && cooled ? true : `射击 ${shots} 次，未检测到过冷窗口`;
   } },
+  { name: 'M-蝙蝠强化：10 层免伤盾 + 灼烧免疫 + 双倍速', run: () => {
+    const s = freshSession();
+    s.debugSpawn('bat', 540, 900);
+    const bat = s.monsters[0];
+    if (bat.cfg.speed !== 360) return `速度 ${bat.cfg.speed}（应 360）`;
+    s.grantCard('flame'); // 火属性点燃
+    const hits: number[] = [];
+    s.bus.on('onHit', (p: { dmg: number }) => { if (hits.length < 20) hits.push(p.dmg); });
+    const hasBurn = runFor(s, 12, () => false);
+    void hasBurn;
+    // 前 10 次直接命中应被盾抵消（dmg=0），第 11 次起开始掉血
+    if (hits.length < 11) return `命中样本 ${hits.length} 不足`;
+    if (!hits.slice(0, 10).every((d) => d === 0)) return `前 10 次未全部免伤: ${hits.slice(0, 10).join(',')}`;
+    if (!(hits[10] > 0)) return `第 11 次仍未掉血`;
+    if (bat.burn !== null && bat.burn.until > s.timeSec) return '蝙蝠被点燃（灼烧免疫失效）';
+    return true;
+  } },
   { name: 'M-远程怪：停驻发射可见弹道，落点结算对墙伤害', run: () => {
     const s = freshSession();
     s.wallMaxHp = 100000;

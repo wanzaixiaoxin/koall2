@@ -139,13 +139,15 @@
       "name": "夜行蝙蝠",
       "hp": 12,
       "def": 0,
-      "speed": 180,
+      "speed": 360,
       "radius": 14,
       "atk": 3,
       "attackInterval": 0.7,
       "behavior": "zigzag",
       "xp": 3,
-      "shape": "bat"
+      "shape": "bat",
+      "hitShield": 10,
+      "burnImmune": true
     }
   ]
 }

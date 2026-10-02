@@ -155,15 +155,22 @@ async function boot(): Promise<void> {
     if (floats.length >= 40) floats.shift();
     floats.push({ x, y, text, color, size, life: 0.8, maxLife: 0.8 });
   };
-  session.bus.on<{ dmg: number; isCrit: boolean; x: number; y: number }>('onHit', ({ dmg, isCrit, x, y }) => {
-    pushFloat(
-      x + (Math.random() - 0.5) * 24,
-      y + 20,
-      String(Math.round(dmg)),
-      isCrit ? '#FFD54F' : '#F5F5FA',
-      isCrit ? 30 : 19,
-    );
-  });
+  session.bus.on<{ dmg: number; isCrit: boolean; blocked?: boolean; x: number; y: number }>(
+    'onHit',
+    ({ dmg, isCrit, blocked, x, y }) => {
+      if (blocked) {
+        pushFloat(x, y - 12, '挡', '#8A93B8', 16); // 免伤盾抵消
+        return;
+      }
+      pushFloat(
+        x + (Math.random() - 0.5) * 24,
+        y + 20,
+        String(Math.round(dmg)),
+        isCrit ? '#FFD54F' : '#F5F5FA',
+        isCrit ? 30 : 19,
+      );
+    },
+  );
   session.bus.on<{ dmg: number; x: number; y: number }>('onWallHit', ({ dmg, x, y }) => {
     pushFloat(x, y, `-${Math.round(dmg)}`, '#FF6B57', 17);
   });

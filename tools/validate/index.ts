@@ -87,6 +87,9 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
       need(isNum(m.rangedDist) && m.rangedDist >= 100 && m.rangedDist <= 900, where, 'rangedDist 应在 100~900');
       need(m.behavior === 'ranged', where, '声明 rangedDist 的怪物 behavior 应为 ranged');
     }
+    if (m.hitShield !== undefined) {
+      need(isNum(m.hitShield) && m.hitShield >= 1 && m.hitShield <= 99, where, 'hitShield 应在 1~99');
+    }
     map.set(m.id, m);
   }
   return map;

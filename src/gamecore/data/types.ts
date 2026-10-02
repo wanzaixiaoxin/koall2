@@ -56,6 +56,10 @@ export interface MonsterConfig {
   behavior: MonsterBehavior;
   /** ranged 停驻射击距离（距城墙，默认 260）：投矛手 260 / 投石车 600 */
   rangedDist?: number;
+  /** 免伤盾：抵消 N 次直接命中（每被命中一次消耗 1 层；DoT/伤害圈等持续伤害不消耗） */
+  hitShield?: number;
+  /** 灼烧免疫：不可被点燃 */
+  burnImmune?: boolean;
   xp: number;              // 经验（击杀自动吸收）
   /** 伤害类型弱点：受到该类型 ×1.25（docs/01 §2.1） */
   weak?: DamageType[];
@@ -236,6 +240,7 @@ export interface MonsterRuntime {
   phase: number;           // zigzag/dash 相位
   /** 附着的火焰（灼烧）：定时跳伤害直至熄灭；重复命中只刷新时长，不叠加（叠加需专门卡牌） */
   burn: { dps: number; until: number; nextTick: number } | null;
+  shieldLeft: number;      // 剩余免伤层数（hitShield）
   slowUntil: number;       // 冰冻减速
   slowFactor: number;
   shredUntil: number;      // 破甲

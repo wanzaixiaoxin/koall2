@@ -524,6 +524,7 @@ export class GameSession {
       attackTimer: cfg.attackInterval,
       phase: this.rng.range(0, Math.PI * 2),
       burn: null,
+      shieldLeft: cfg.hitShield ?? 0,
       slowUntil: 0,
       slowFactor: 1,
       shredUntil: 0,
@@ -631,13 +632,14 @@ export class GameSession {
         },
         this.rng,
       );
-      m.hp -= res.amount;
-      this.totalDamage += res.amount;
-      if (res.isCrit) this.totalCrits++;
-      this.bus.emit('onHit', { monsterId: m.id, dmg: res.amount, isCrit: res.isCrit, x: m.x, y: m.y });
+      const dealt = this.applyDirectHit(m, res.amount); // 免伤盾结算
+      m.hp -= dealt;
+      this.totalDamage += dealt;
+      if (res.isCrit && dealt > 0) this.totalCrits++;
+      this.bus.emit('onHit', { monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, x: m.x, y: m.y });
 
-      // C 类词缀：灼烧（火焰骑士，附着定时跳伤不叠加）/ 冰冻（寒冰骑士）/ 破甲
-      if (p.damageType === 'fire' && p.riders.burnDpsMul > 0) {
+      // C 类词缀：灼烧（火焰骑士，附着定时跳伤不叠加；灼烧免疫怪不可被点燃）/ 冰冻 / 破甲
+      if (p.damageType === 'fire' && p.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
         const dps = p.dmg * p.riders.burnDpsMul;
         if (m.burn && m.burn.dps >= dps) {
           m.burn.until = now + p.riders.burnSec; // 重复命中只刷新时长，不叠加伤害
@@ -695,15 +697,15 @@ export class GameSession {
         },
         this.rng,
       );
-      cur.hp -= res.amount;
-      this.totalDamage += res.amount;
-      if (res.isCrit) this.totalCrits++;
-      this.bus.emit('onHit', { monsterId: cur.id, dmg: res.amount, isCrit: res.isCrit, x: cur.x, y: cur.y });
+      const dealt = this.applyDirectHit(cur, res.amount); // 免伤盾结算
+      cur.hp -= dealt;
+      this.totalDamage += dealt;
+      if (res.isCrit && dealt > 0) this.totalCrits++;
+      this.bus.emit('onHit', { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, x: cur.x, y: cur.y });
       if (cur.hp <= 0) this.killMonster(null, cur); // 闪电不触发分裂（无弹体）
       path.push([cur.x, cur.y]);
       strikesLeft--;
       mul *= 0.8;
-      // 跳跃半径基础 420px，随武器射程倍率成长（电弧延伸卡）
       cur = strikesLeft > 0
         ? this.nearestMonsterRuntime(cur.x, cur.y, 420 * cmd.weapon.mods.rangeMul, hit)
         : null;
@@ -782,9 +784,10 @@ export class GameSession {
         },
         this.rng,
       );
-      m.hp -= res.amount;
-      this.totalDamage += res.amount;
-      if (res.isCrit) this.totalCrits++;
+      const dealt = this.applyDirectHit(m, res.amount); // 免伤盾结算
+      m.hp -= dealt;
+      this.totalDamage += dealt;
+      if (res.isCrit && dealt > 0) this.totalCrits++;
       if (m.hp <= 0) this.killMonster(null, m);
     }
     // 持续伤害圈
@@ -797,6 +800,15 @@ export class GameSession {
       damageType: p.damageType,
     });
     this.bus.emit('onExplode', { x: p.x, y: p.y, radius });
+  }
+
+  /** 直接命中结算（吃免伤盾，DoT/伤害圈不消耗盾）；返回实际落地伤害。 */
+  private applyDirectHit(m: MonsterRuntime, rawAmount: number): number {
+    if (m.shieldLeft > 0) {
+      m.shieldLeft--;
+      return 0;
+    }
+    return rawAmount;
   }
 
   /** 灼烧：附着的火焰每 0.5s 跳一次伤害直至熄灭（重复命中只刷新时长，不叠加）。 */
