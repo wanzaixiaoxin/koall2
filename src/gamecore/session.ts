@@ -396,7 +396,7 @@ export class GameSession {
         const dx = m.x - pool.x;
         const dy = m.y - pool.y;
         if (dx * dx + dy * dy > rr * rr) continue;
-        const dmg = pool.dps * dt;
+        const dmg = Math.max(1, Math.round(pool.dps * dt)); // 整数结算
         m.hp -= dmg;
         this.totalDamage += dmg;
         if (m.hp <= 0) this.killMonster(null, m);
@@ -421,7 +421,7 @@ export class GameSession {
         if (m.hp <= 0) continue;
         const rr = seg.width / 2 + m.cfg.radius;
         if (distToSegment(m.x, m.y, seg.ax, seg.ay, seg.bx, seg.by) > rr) continue;
-        const dmg = seg.dps * dt;
+        const dmg = Math.max(1, Math.round(seg.dps * dt)); // 整数结算
         m.hp -= dmg;
         this.totalDamage += dmg;
         if (m.hp <= 0) this.killMonster(null, m);
@@ -810,7 +810,7 @@ export class GameSession {
     }
     if (now >= b.nextTick) {
       b.nextTick += 0.5;
-      const dmg = b.dps * 0.5;
+      const dmg = Math.max(1, Math.round(b.dps * 0.5)); // 整数结算（伤害无小数）
       m.hp -= dmg;
       this.totalDamage += dmg;
       this.bus.emit('onBurnTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg });

@@ -891,7 +891,7 @@
           const dx = m.x - pool.x;
           const dy = m.y - pool.y;
           if (dx * dx + dy * dy > rr2 * rr2) continue;
-          const dmg = pool.dps * dt;
+          const dmg = Math.max(1, Math.round(pool.dps * dt));
           m.hp -= dmg;
           this.totalDamage += dmg;
           if (m.hp <= 0) this.killMonster(null, m);
@@ -914,7 +914,7 @@
           if (m.hp <= 0) continue;
           const rr2 = seg.width / 2 + m.cfg.radius;
           if (distToSegment(m.x, m.y, seg.ax, seg.ay, seg.bx, seg.by) > rr2) continue;
-          const dmg = seg.dps * dt;
+          const dmg = Math.max(1, Math.round(seg.dps * dt));
           m.hp -= dmg;
           this.totalDamage += dmg;
           if (m.hp <= 0) this.killMonster(null, m);
@@ -1253,7 +1253,7 @@
       }
       if (now >= b.nextTick) {
         b.nextTick += 0.5;
-        const dmg = b.dps * 0.5;
+        const dmg = Math.max(1, Math.round(b.dps * 0.5));
         m.hp -= dmg;
         this.totalDamage += dmg;
         this.bus.emit("onBurnTick", { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
