@@ -807,7 +807,7 @@ export class GameSession {
       const dmg = b.dps * 0.5;
       m.hp -= dmg;
       this.totalDamage += dmg;
-      this.bus.emit('onBurnTick', { x: m.x, y: m.y });
+      this.bus.emit('onBurnTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
       if (m.hp <= 0) this.killMonster(null, m);
     }
   }
@@ -915,7 +915,7 @@ export class GameSession {
       for (const w of this.hero.weapons) {
         w.element = e.grantElement;
         if (e.grantElement === 'fire') {
-          w.riders.burnDpsMul = Math.max(w.riders.burnDpsMul, 0.25);
+          w.riders.burnDpsMul = Math.max(w.riders.burnDpsMul, 1.0); // 点燃：每秒 100% 弹伤，直至熄灭
           w.riders.burnSec = 3;
         } else if (e.grantElement === 'frost') {
           w.riders.slowPct = Math.max(w.riders.slowPct, 0.12);
@@ -926,7 +926,7 @@ export class GameSession {
       // 元素加持：仅对已携带该元素的武器生效
       for (const w of this.hero.weapons.filter((x) => x.element === e.boostElement)) {
         if (e.boostElement === 'fire') {
-          w.riders.burnDpsMul += 0.15 * e.value;
+          w.riders.burnDpsMul += 0.5 * e.value;
           w.riders.burnSec = 3;
         } else if (e.boostElement === 'frost') {
           w.riders.slowPct = Math.min(0.65, w.riders.slowPct + 0.06 * e.value);

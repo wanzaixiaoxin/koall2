@@ -1251,7 +1251,7 @@
         const dmg = b.dps * 0.5;
         m.hp -= dmg;
         this.totalDamage += dmg;
-        this.bus.emit("onBurnTick", { x: m.x, y: m.y });
+        this.bus.emit("onBurnTick", { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
         if (m.hp <= 0) this.killMonster(null, m);
       }
     }
@@ -1347,7 +1347,7 @@
         for (const w of this.hero.weapons) {
           w.element = e.grantElement;
           if (e.grantElement === "fire") {
-            w.riders.burnDpsMul = Math.max(w.riders.burnDpsMul, 0.25);
+            w.riders.burnDpsMul = Math.max(w.riders.burnDpsMul, 1);
             w.riders.burnSec = 3;
           } else if (e.grantElement === "frost") {
             w.riders.slowPct = Math.max(w.riders.slowPct, 0.12);
@@ -1357,7 +1357,7 @@
       } else {
         for (const w of this.hero.weapons.filter((x) => x.element === e.boostElement)) {
           if (e.boostElement === "fire") {
-            w.riders.burnDpsMul += 0.15 * e.value;
+            w.riders.burnDpsMul += 0.5 * e.value;
             w.riders.burnSec = 3;
           } else if (e.boostElement === "frost") {
             w.riders.slowPct = Math.min(0.65, w.riders.slowPct + 0.06 * e.value);
@@ -1927,6 +1927,9 @@
     });
     session.bus.on("onWallHit", ({ dmg, x, y }) => {
       pushFloat(x, y, `-${Math.round(dmg)}`, "#FF6B57", 17);
+    });
+    session.bus.on("onBurnTick", ({ dmg, x, y }) => {
+      pushFloat(x, y, String(Math.round(dmg * 10) / 10), "#FF9A3C", 14);
     });
     const bolts = [];
     session.bus.on("onChain", ({ points }) => {

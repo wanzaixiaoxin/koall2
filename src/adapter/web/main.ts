@@ -167,6 +167,10 @@ async function boot(): Promise<void> {
   session.bus.on<{ dmg: number; x: number; y: number }>('onWallHit', ({ dmg, x, y }) => {
     pushFloat(x, y, `-${Math.round(dmg)}`, '#FF6B57', 17);
   });
+  // 灼烧跳伤：小橙色飘字（让点燃的定时伤害"看得见"）
+  session.bus.on<{ dmg: number; x: number; y: number }>('onBurnTick', ({ dmg, x, y }) => {
+    pushFloat(x, y, String(Math.round(dmg * 10) / 10), '#FF9A3C', 14);
+  });
   // 连锁闪电折线（渲染层表现，0.22s 闪现）
   const bolts: { pts: number[][]; life: number }[] = [];
   session.bus.on<{ points: number[][] }>('onChain', ({ points }) => {

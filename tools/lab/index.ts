@@ -303,10 +303,10 @@ const tests: TestCase[] = [
     // 火路线：赋予 → 元素转 fire + 灼烧骑士 0.25；加持按级成长；第二次赋予被互斥拒绝
     if (!s1.grantCard('flame')) return '火焰弹授予失败';
     const w1 = s1.hero.weapons[0];
-    if (w1.element !== 'fire' || !approx(w1.riders.burnDpsMul, 0.25)) return '火赋予未解锁灼烧';
+    if (w1.element !== 'fire' || !approx(w1.riders.burnDpsMul, 1.0)) return '火赋予未解锁点燃（100%/s）';
     if (s1.grantCard('frost')) return '元素互斥失效：已有火属性仍可拿寒冰弹';
     s1.grantCard('ignite'); s1.grantCard('ignite');
-    if (!approx(w1.riders.burnDpsMul, 0.55)) return `烈火×2 后灼烧 ${w1.riders.burnDpsMul}`;
+    if (!approx(w1.riders.burnDpsMul, 2.0)) return `烈火×2 后灼烧 ${w1.riders.burnDpsMul}`;
     // 冰路线（独立会话）：赋予 → 减速骑士 0.12；严寒×2 → 0.24
     const s2 = freshSession();
     s2.grantCard('frost');
@@ -319,9 +319,9 @@ const tests: TestCase[] = [
   { name: 'C-灼烧：火焰赋予后命中附着燃烧，重复命中不叠加', run: () => {
     const s = freshSession();
     s.grantCard('flame');
-    s.grantCard('ignite'); s.grantCard('ignite'); // 烈火×2：灼烧 0.25+0.3
+    s.grantCard('ignite'); s.grantCard('ignite'); // 烈火×2：灼烧 100% + 100% = 200%/s
     const w = s.hero.weapons[0];
-    if (!approx(w.riders.burnDpsMul, 0.55)) return `灼烧倍率 ${w.riders.burnDpsMul}`;
+    if (!approx(w.riders.burnDpsMul, 2.0)) return `灼烧倍率 ${w.riders.burnDpsMul}`;
     s.debugSpawn('bulwark', 540, 900);
     const applied = runFor(s, 8, () => s.monsters.some((m) => m.burn !== null));
     if (!applied) return '灼烧未附着';
