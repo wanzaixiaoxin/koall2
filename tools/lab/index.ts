@@ -478,9 +478,10 @@ const tests: TestCase[] = [
     if (spread < 400) return `横排未展开（跨度 ${spread.toFixed(0)}）`;
     const gaps = xs.slice(1).map((v, i) => v - xs[i]);
     if (Math.min(...gaps) > 60) return `横排存在缝隙（最小间距 ${Math.min(...gaps).toFixed(0)} > 盾径 60）`;
-    // 伤害转嫁：巫师受击由护卫代伤
+    // 伤害转嫁：把巫师提到线前使其成为最近目标（横排在物理上护住了它），受击应由护卫代伤
     shaman.hp = shaman.maxHp;
     for (const e of escorts) e.hp = e.maxHp;
+    shaman.y = 200; // 线前暴露位，且在转嫁半径 320 内
     let transferSeen = false;
     s.bus.on('onDamageTransfer', () => { transferSeen = true; });
     const hpBefore = shaman.hp;
