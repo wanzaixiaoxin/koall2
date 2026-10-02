@@ -64,7 +64,7 @@ export interface MonsterConfig {
   healAura?: { radius: number; amount: number; interval: number };
   /** 出场护卫：生成时在自身周围 radius 半径部署 count 只 escort 怪（环形站位） */
   escort?: { monster: string; count: number; radius: number };
-  /** 伤害转嫁（变阵后生效）：受到的直接伤害转移给半径内随机友军（无友军则自己承受） */
+  /** 伤害转嫁（始终生效）：受到的直接伤害转移给半径内随机友军（无友军则自己承受） */
   transferAura?: { radius: number };
   /** 近墙变阵：与城墙距离小于该值时，护卫排成一排啃墙、巫师居中（docs/04 §1.2） */
   formationDist?: number;

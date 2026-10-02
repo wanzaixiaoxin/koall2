@@ -1386,9 +1386,9 @@
         this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
       }
     }
-    /** 伤害转嫁：变阵巫师的直接伤害转移给半径内随机友军（无友军则自承）。返回巫师实际承受值。 */
+    /** 伤害转嫁：巫师受到的直接伤害始终转移给半径内随机友军（无友军则自承）。返回巫师实际承受值。 */
     resolveTransfer(m, dealt) {
-      if (dealt <= 0 || !m.formationActive || !m.cfg.transferAura) return dealt;
+      if (dealt <= 0 || !m.cfg.transferAura) return dealt;
       this.hash.queryCircle(m.x, m.y, m.cfg.transferAura.radius, this.scratch);
       const candidates = [];
       for (const id of this.scratch) {
