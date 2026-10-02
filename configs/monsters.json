@@ -155,7 +155,7 @@
       "name": "地精巫师",
       "hp": 80,
       "def": 0,
-      "speed": 45,
+      "speed": 30,
       "radius": 22,
       "atk": 5,
       "attackInterval": 1.5,

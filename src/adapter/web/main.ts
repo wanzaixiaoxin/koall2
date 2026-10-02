@@ -268,6 +268,10 @@ async function boot(): Promise<void> {
     // 保证视觉上城墙在底部、怪物自上而下进攻、点击方向与移动一致。
     ctx.setTransform(1, 0, 0, -1, 0, H);
 
+    // 帧间隔（飘字/闪电/治疗环的寿命衰减共用）
+    const dtR = Math.min(0.05, (timeMs - prevRenderMs) / 1000 || 0.016);
+    prevRenderMs = timeMs;
+
     // 背景
     ctx.fillStyle = palette.background.nightDeep;
     ctx.fillRect(0, 0, W, H);
@@ -393,8 +397,6 @@ async function boot(): Promise<void> {
     }
 
     // 伤害飘字（上升 + 淡出；文字在 y 翻转坐标系下需回到标准变换绘制）
-    const dtR = Math.min(0.05, (timeMs - prevRenderMs) / 1000 || 0.016);
-    prevRenderMs = timeMs;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.textAlign = 'center';

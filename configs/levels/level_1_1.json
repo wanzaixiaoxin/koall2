@@ -142,7 +142,7 @@
         },
         {
           "monster": "bat",
-          "count": 8,
+          "count": 18,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -231,7 +231,7 @@
         },
         {
           "monster": "bat",
-          "count": 12,
+          "count": 24,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -270,7 +270,7 @@
         },
         {
           "monster": "bat",
-          "count": 12,
+          "count": 24,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -311,7 +311,7 @@
         },
         {
           "monster": "bat",
-          "count": 12,
+          "count": 24,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -384,7 +384,7 @@
         },
         {
           "monster": "bat",
-          "count": 8,
+          "count": 18,
           "spawnPoints": "all",
           "releasePerTick": 1
         },

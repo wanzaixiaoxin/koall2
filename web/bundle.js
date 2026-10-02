@@ -2086,6 +2086,8 @@
     }
     function render(timeMs) {
       ctx.setTransform(1, 0, 0, -1, 0, H);
+      const dtR = Math.min(0.05, (timeMs - prevRenderMs) / 1e3 || 0.016);
+      prevRenderMs = timeMs;
       ctx.fillStyle = palette.background.nightDeep;
       ctx.fillRect(0, 0, W, H);
       ctx.strokeStyle = palette.background.gridLine;
@@ -2190,8 +2192,6 @@
         }
         drawHealPulse(ctx, h2.x, h2.y, h2.radius, 1 - h2.life / 0.5);
       }
-      const dtR = Math.min(0.05, (timeMs - prevRenderMs) / 1e3 || 0.016);
-      prevRenderMs = timeMs;
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.textAlign = "center";
