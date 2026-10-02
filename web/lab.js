@@ -887,7 +887,7 @@
         let healed = 0;
         for (const id of this.scratch) {
           const ally = this.monsters[id];
-          if (!ally || ally.hp <= 0 || ally.hp >= ally.maxHp) continue;
+          if (!ally || ally === m || ally.hp <= 0 || ally.hp >= ally.maxHp) continue;
           const amount = Math.round(aura.amount);
           ally.hp = Math.min(ally.maxHp, ally.hp + amount);
           healed++;

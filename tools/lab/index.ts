@@ -482,14 +482,17 @@ const tests: TestCase[] = [
     shaman.hp = shaman.maxHp;
     for (const e of escorts) e.hp = e.maxHp;
     // 英雄压到墙前线与巫师同点：巫师必为最近目标且被领队锚定静止（瞬移会被走位甩弹）
+    // 横排重叠掩护使直击够不到巫师——用爆破落地(AoE 可伤及巫师)触发转嫁
+    applyForm(s.hero.weapons[0].affixes, 'blast', 1);
     s.hero.x = 540;
-    s.hero.y = 96;
+    s.hero.y = 200;
     let transferSeen = false;
     s.bus.on('onDamageTransfer', () => { transferSeen = true; });
     const hpBefore = shaman.hp;
     runFor(s, 10, () => transferSeen);
     if (!transferSeen) return '转嫁未触发';
-    return shaman.hp >= hpBefore ? true : `巫师仍掉血（${hpBefore} → ${shaman.hp}）`;
+    // 直击/爆炸全额转嫁；伤害圈 tick 不转嫁（设计：DoT 可磨巫师），允许少量圈伤
+    return shaman.hp >= hpBefore - 20 ? true : `巫师异常掉血（${hpBefore} → ${shaman.hp}）`;
   } },
   { name: 'M-巫师编队减员：先杀护卫后队籍不错位，变阵/转嫁仍生效', run: () => {
     const s = freshSession();
@@ -507,10 +510,13 @@ const tests: TestCase[] = [
     if (!aliveEscorts.every((e) => e.groupId === shamanIdx)) return '减员后队籍错位';
     // 变阵 + 转嫁仍工作
     if (!runFor(s, 20, () => shaman.formationActive)) return '变阵未激活';
+    runFor(s, 12, () => aliveEscorts.every((e) => e.state === 'assault')); // 等横排完全就位开啃
     shaman.hp = shaman.maxHp;
     for (const e of aliveEscorts) e.hp = e.maxHp;
+    // 横排重叠掩护使直击够不到巫师——用爆破落地(AoE 可伤及巫师)触发转嫁
+    applyForm(s.hero.weapons[0].affixes, 'blast', 1);
     s.hero.x = 540;
-    s.hero.y = 96;
+    s.hero.y = 200;
     let transferSeen = false;
     s.bus.on('onDamageTransfer', () => { transferSeen = true; });
     runFor(s, 10, () => transferSeen);
