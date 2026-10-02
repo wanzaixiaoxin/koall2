@@ -981,10 +981,19 @@
         this.applyPickedCard(picked);
       }
       if (this.monsters.some((m) => m.hp <= 0)) {
-        this.monsters = this.monsters.filter((m) => m.hp > 0);
-        this.monsters.forEach((m, i) => {
-          m.id = i;
-        });
+        const idMap = /* @__PURE__ */ new Map();
+        const survivors = [];
+        for (const m of this.monsters) {
+          if (m.hp > 0) {
+            idMap.set(m.id, survivors.length);
+            survivors.push(m);
+          }
+        }
+        this.monsters = survivors;
+        for (const m of this.monsters) {
+          m.id = idMap.get(m.id);
+          if (m.groupId >= 0) m.groupId = idMap.get(m.groupId) ?? -1;
+        }
       }
       this.projectiles = this.projectiles.filter((p) => p.alive);
       this.maxMonsters = Math.max(this.maxMonsters, this.monsters.length);

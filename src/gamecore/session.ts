@@ -494,10 +494,22 @@ export class GameSession {
       this.applyPickedCard(picked);
     }
 
-    // 8) 清理死亡怪物（密度数组约定：id = 下标，tick 末尾压缩并重建 id）
+    // 8) 清理死亡怪物（密度数组约定：id = 下标；压缩时同步重映射队籍 groupId，
+    //    否则巫师护卫阵在减员后队籍错位，变阵/转嫁失效）
     if (this.monsters.some((m) => m.hp <= 0)) {
-      this.monsters = this.monsters.filter((m) => m.hp > 0);
-      this.monsters.forEach((m, i) => { m.id = i; });
+      const idMap = new Map<number, number>();
+      const survivors: MonsterRuntime[] = [];
+      for (const m of this.monsters) {
+        if (m.hp > 0) {
+          idMap.set(m.id, survivors.length);
+          survivors.push(m);
+        }
+      }
+      this.monsters = survivors;
+      for (const m of this.monsters) {
+        m.id = idMap.get(m.id)!;
+        if (m.groupId >= 0) m.groupId = idMap.get(m.groupId) ?? -1; // 领队阵亡 → 编队解散
+      }
     }
     this.projectiles = this.projectiles.filter((p) => p.alive);
 

@@ -489,6 +489,32 @@ const tests: TestCase[] = [
     if (!transferSeen) return '转嫁未触发';
     return shaman.hp >= hpBefore ? true : `巫师仍掉血（${hpBefore} → ${shaman.hp}）`;
   } },
+  { name: 'M-巫师编队减员：先杀护卫后队籍不错位，变阵/转嫁仍生效', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 99999;
+    s.wallHp = 99999;
+    s.debugSpawn('shaman', 540, 700);
+    const shaman = s.monsters.find((m) => m.cfg.id === 'shaman')!;
+    const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
+    // 先杀 3 只护卫（触发 id 压缩与队籍重映射）
+    for (let i = 0; i < 3; i++) escorts[i].hp = 0;
+    runFor(s, 1, () => false);
+    // 队籍必须仍然指向巫师
+    const aliveEscorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
+    const shamanIdx = shaman.id;
+    if (!aliveEscorts.every((e) => e.groupId === shamanIdx)) return '减员后队籍错位';
+    // 变阵 + 转嫁仍工作
+    if (!runFor(s, 20, () => shaman.formationActive)) return '变阵未激活';
+    shaman.hp = shaman.maxHp;
+    for (const e of aliveEscorts) e.hp = e.maxHp;
+    shaman.y = 200;
+    let transferSeen = false;
+    s.bus.on('onDamageTransfer', () => { transferSeen = true; });
+    runFor(s, 10, () => transferSeen);
+    // 守卫有攻击力：横排在啃墙（城墙 99999 会受伤）
+    const wallDamaged = s.totalWallDamage > 0;
+    return transferSeen && wallDamaged ? true : `转嫁=${transferSeen} 啃墙=${wallDamaged}`;
+  } },
   { name: 'M-巫师：治疗光环为周围友军回血 + 出场自带岩甲兽护卫环', run: () => {
     const s = freshSession();
     s.debugSpawn('shaman', 540, 900);
