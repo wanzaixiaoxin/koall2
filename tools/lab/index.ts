@@ -469,15 +469,16 @@ const tests: TestCase[] = [
     s.wallHp = 10000;
     s.debugSpawn('split_shroom', 540, 900);
     const parent = s.monsters[0];
-    if (parent.maxHp !== Math.round(60 * 0.9)) return `母体血量未强化 maxHp=${parent.maxHp}`; // waveIndex -1 → ×0.9
-    // 定时分裂：6~8s 内应出现 1 只幼体
-    const born = runFor(s, 9, () => s.monsters.some((m) => m.cfg.id === 'shroom_baby'));
+    if (parent.cfg.hp !== 60) return `母体血量未强化 cfg.hp=${parent.cfg.hp}`;
+    parent.hp = parent.maxHp = 1e6; // 测试靶：防止被步枪提前打死（54 血撑不过 6s 分裂周期）
+    // 定时分裂：6~9s 内应出现幼体
+    const born = runFor(s, 10, () => s.monsters.some((m) => m.cfg.id === 'shroom_baby'));
     if (!born) return '定时分裂未发生';
     const baby = s.monsters.find((m) => m.cfg.id === 'shroom_baby')!;
     if (baby.maxHp !== parent.maxHp) return `幼体血条不一致（${baby.maxHp}/${parent.maxHp}）`;
     if (!(baby.cfg.speed > parent.cfg.speed)) return `幼体未提速（${baby.cfg.speed} vs ${parent.cfg.speed}）`;
     if (baby.cfg.splitTimer || baby.cfg.deathSplit) return '幼体可再分裂（应不可）';
-    // 死后裂双：清掉幼体使母体成为唯一目标，打死母体 → 2 只幼体
+    // 死后裂双：清场使母体成为唯一目标，击杀 → 2 只幼体
     for (const m of s.monsters) if (m !== parent) m.hp = 0;
     runFor(s, 1, () => false);
     parent.hp = 1;
