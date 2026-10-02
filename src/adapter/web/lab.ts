@@ -411,19 +411,6 @@ async function boot(): Promise<void> {
     ctx.fillRect(0, session.level.defenseRect.yMin, W, session.level.defenseRect.yMax - session.level.defenseRect.yMin);
 
     const wallTop = session.level.wall.height;
-    // 城墙血条（实验室实时可见怪物磨血）
-    const wallRatio = session.wallHp / session.wallMaxHp;
-    const barW = 420;
-    const barX = (W - barW) / 2;
-    const barY = wallTop + 26;
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(barX, barY, barW, 10);
-    ctx.fillStyle = wallRatio < 0.3 ? '#FF3D71' : '#3D4470';
-    ctx.fillRect(barX, barY, barW * wallRatio, 10);
-    ctx.fillStyle = '#F5F5FA';
-    ctx.font = '700 13px "PingFang SC", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`城防 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`, W / 2, barY + 26);
     const segs = 12;
     const segW = W / segs;
     const wr = session.wallHp / session.wallMaxHp;
@@ -499,6 +486,18 @@ async function boot(): Promise<void> {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.textAlign = 'center';
+    // 城墙血条（标准变换绘制，避免翻转；实验室实时可见怪物磨血）
+    const wallRatio = session.wallHp / session.wallMaxHp;
+    const barW = 420;
+    const barX = (W - barW) / 2;
+    const barSY = H - session.level.wall.height - 36; // 屏幕坐标：城墙段上方
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(barX, barSY, barW, 10);
+    ctx.fillStyle = wallRatio < 0.3 ? '#FF3D71' : '#3D4470';
+    ctx.fillRect(barX, barSY, barW * wallRatio, 10);
+    ctx.fillStyle = '#F5F5FA';
+    ctx.font = '700 13px "PingFang SC", sans-serif';
+    ctx.fillText(`城防 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`, W / 2, barSY - 6);
     for (let i = floats.length - 1; i >= 0; i--) {
       const f = floats[i];
       f.life -= dtR;
