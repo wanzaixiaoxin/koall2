@@ -81,7 +81,24 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
     need(isNum(m.attackInterval) && m.attackInterval > 0, where, 'attackInterval 必须为正数');
     need(isNum(m.xp) && m.xp >= 0, where, 'xp 必须 ≥ 0');
     if (m.shape !== undefined) {
-      need(['slime', 'wolf', 'charger', 'thrower', 'bulwark', 'bat', 'shroom', 'boss', 'shaman'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
+      need(['slime', 'wolf', 'charger', 'thrower', 'bulwark', 'bat', 'shroom', 'boss', 'shaman',
+        'larva', 'roach', 'lurker', 'zqueen', 'baneling', 'ultra'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
+    }
+    if (m.burrowRegen) {
+      need(m.behavior === 'burrow_regen', where, 'burrowRegen 需搭配 behavior=burrow_regen');
+      need(isNum(m.burrowRegen.duration) && m.burrowRegen.duration > 0, where, 'burrowRegen.duration 必须为正数');
+    }
+    if (m.burrowSiege) {
+      need(m.behavior === 'burrow_siege', where, 'burrowSiege 需搭配 behavior=burrow_siege');
+      need(isNum(m.burrowSiege.dist) && m.burrowSiege.dist >= 100, where, 'burrowSiege.dist 应 ≥ 100');
+    }
+    if (m.burrowCharge) {
+      need(m.behavior === 'burrow_charge', where, 'burrowCharge 需搭配 behavior=burrow_charge');
+      need(isNum(m.burrowCharge.interval) && m.burrowCharge.interval >= 3, where, 'burrowCharge.interval 应 ≥ 3');
+      need(isNum(m.burrowCharge.dmg) && m.burrowCharge.dmg > 0, where, 'burrowCharge.dmg 必须为正数');
+    }
+    if (m.detonate) {
+      need(isNum(m.detonate.wallDamage) && m.detonate.wallDamage > 0, where, 'detonate.wallDamage 必须为正数');
     }
     if (m.healAura) {
       need(isNum(m.healAura.radius) && m.healAura.radius > 0, where, 'healAura.radius 必须为正数');

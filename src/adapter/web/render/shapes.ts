@@ -16,6 +16,13 @@ const MONSTER_COLOR: Record<string, string> = {
   shroom: '#FF6B9C',
   boss: '#B537F2',
   shaman: '#B388FF',
+  // 虫族（酸性绿族 + 紫点缀，docs/08）
+  larva: '#9CCC65',
+  roach: '#7CB342',
+  lurker: '#558B2F',
+  zqueen: '#C77DFF',
+  baneling: '#AEEA00',
+  ultra: '#69A83B',
 };
 
 export function monsterColor(m: MonsterRuntime): string {
@@ -35,13 +42,99 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
 /** 按种类绘制怪物（t = 秒，用于行走进缩与扑翼）。状态指示（冰环/火）由调用方叠加。 */
 export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t: number): void {
   const r = m.cfg.radius;
-  const moving = m.state === 'march';
   const color = monsterColor(m);
-  ctx.fillStyle = color;
   const x = m.x;
   const y = m.y;
 
+  // 钻地：地面土包 + 虚线轮廓（看得见打不到，docs/08）
+  if (m.burrowed) {
+    ctx.fillStyle = 'rgba(138,147,184,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r + 3, (r + 3) * 0.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    return;
+  }
+
+  const moving = m.state === 'march';
+  ctx.fillStyle = color;
+
   switch (m.cfg.shape) {
+    case 'larva': {
+      // 幼虫：小三角（朝下行军）
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x - r * 0.8, y + r * 0.8);
+      ctx.lineTo(x + r * 0.8, y + r * 0.8);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'roach': {
+      // 爬虫：扁圆块（可钻地）
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'lurker': {
+      // 潜伏者：竖立尖刺blade
+      ctx.beginPath();
+      ctx.moveTo(x, y + r * 0.6);
+      ctx.lineTo(x - r * 0.35, y - r);
+      ctx.lineTo(x + r * 0.35, y - r);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case 'zqueen': {
+      // 虫后：大菱形 + 头顶孵卵
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x + r * 0.8, y);
+      ctx.lineTo(x, y + r);
+      ctx.lineTo(x - r * 0.8, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#F5F5FA';
+      ctx.beginPath();
+      ctx.arc(x, y - r - 6, 4, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'baneling': {
+      // 毒爆虫：圆球 + 内核（膨胀感脉动）
+      const pulse = 1 + 0.12 * Math.sin(t * 8 + m.phase);
+      ctx.beginPath();
+      ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(11,12,29,0.5)';
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'ultra': {
+      // 雷兽：巨型五角
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (Math.PI / 5) * i - Math.PI / 2;
+        const rad = i % 2 === 0 ? r : r * 0.72;
+        const px = x + Math.cos(a) * rad;
+        const py = y + Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
     case 'wolf': {
       // 尖三角（朝下压墙）+ 冲刺拉伸
       const stretch = moving ? 1 + 0.15 * Math.sin(t * 8 + m.phase) : 1;

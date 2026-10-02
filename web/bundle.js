@@ -421,12 +421,32 @@
   // src/gamecore/monster.ts
   var RANGED_HOLD_DISTANCE = 260;
   var DASH_PERIOD = 2.2;
-  function updateMonster(m, dt, now, wallTopY, onWallHit, onRangedShot) {
+  function updateMonster(m, dt, now, wallTopY, onWallHit, onRangedShot, isCreeped) {
     const r = m.cfg.radius;
+    if (m.burrowed) {
+      m.burrowTimer -= dt;
+      if (m.cfg.burrowRegen && m.burrowTimer <= 0) {
+        m.burrowed = false;
+        m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * m.cfg.burrowRegen.heal));
+      } else if (m.cfg.burrowCharge && m.burrowTimer <= 0) {
+        m.burrowed = false;
+        m.y = wallTopY + r;
+        onWallHit(m.cfg.burrowCharge.dmg, m);
+      }
+      if (m.burrowed && m.cfg.burrowSiege) {
+        m.attackTimer -= dt;
+        if (m.attackTimer <= 0) {
+          m.attackTimer += m.cfg.attackInterval;
+          onWallHit(m.cfg.atk, m);
+        }
+      }
+      return;
+    }
     const holdY = wallTopY + (m.cfg.behavior === "ranged" ? m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE : 0) + r;
     if (m.state === "march") {
       let speed = m.cfg.speed;
       if (now < m.slowUntil) speed *= m.slowFactor;
+      if (m.cfg.creepBenefit && isCreeped && isCreeped(m.x, m.y)) speed *= 1.25;
       switch (m.cfg.behavior) {
         case "zigzag":
           m.phase += dt * 4;
@@ -443,6 +463,26 @@
           break;
       }
       m.y -= speed * dt;
+      if (m.cfg.burrowSiege && m.y <= wallTopY + m.cfg.burrowSiege.dist + r) {
+        m.burrowed = true;
+        m.y = wallTopY + m.cfg.burrowSiege.dist + r;
+        return;
+      }
+      if (m.cfg.burrowRegen && m.hp < m.maxHp * m.cfg.burrowRegen.threshold) {
+        m.burrowed = true;
+        m.burrowTimer = m.cfg.burrowRegen.duration;
+        return;
+      }
+      if (m.cfg.burrowCharge) {
+        m.attackTimer -= dt;
+        if (m.attackTimer <= 0 && m.y > wallTopY + 400) {
+          m.burrowed = true;
+          m.burrowTimer = m.cfg.burrowCharge.duration;
+          m.attackTimer = m.cfg.burrowCharge.interval;
+          return;
+        }
+        if (m.attackTimer <= 0) m.attackTimer = m.cfg.burrowCharge.interval;
+      }
       if (m.y <= holdY) {
         m.y = holdY;
         m.state = "assault";
@@ -728,7 +768,7 @@
       return out;
     }
   };
-  var GameSession = class {
+  var GameSession = class _GameSession {
     constructor(opts) {
       this.bus = new EventBus();
       this.monsters = [];
@@ -737,6 +777,9 @@
       // 怪物远程弹（可见弹道，落点结算对墙伤害）
       this.pools = [];
       this.segments = [];
+      // 光束/连线伤害场（docs/07 §4）
+      /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
+      this.creep = /* @__PURE__ */ new Map();
       // 可被 B 类卡（加固城墙）提升
       this.tick = 0;
       this.result = null;
@@ -772,6 +815,7 @@
         nearestMonster: (x, y, r, exclude) => this.nearestMonsterExcluding(x, y, r, exclude)
       };
       this.scratch = [];
+      this.targetableScratch = [];
       this._lastClearTick = 0;
       this.level = opts.level;
       this.rng = new Rng(opts.seed);
@@ -785,6 +829,12 @@
       this.wallMaxHp = opts.level.wall.hp;
       this.wallHp = opts.level.wall.hp;
       this.director = new WaveDirector(opts.level, this.rng);
+    }
+    static {
+      this.CREEP_CELL = 90;
+    }
+    static {
+      this.CREEP_LIFE = 60;
     }
     get timeSec() {
       return this.tick * TICK_DT;
@@ -811,7 +861,11 @@
         );
       }
       this.hash.rebuild(this.monsters);
-      updateWeapons(this.hero, this.monsters, this.hash, this.rng, this.fireCommands);
+      this.targetableScratch.length = 0;
+      for (const m of this.monsters) {
+        if (!m.burrowed) this.targetableScratch.push(m);
+      }
+      updateWeapons(this.hero, this.targetableScratch, this.hash, this.rng, this.fireCommands);
       for (const cmd of this.fireCommands) {
         if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
           this.doLightning(cmd);
@@ -854,8 +908,33 @@
       this.hash.rebuild(this.monsters);
       for (const m of this.monsters) {
         if (m.hp <= 0) continue;
+        if (m.burrowed) {
+          updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
+            this.wallHp = Math.max(0, this.wallHp - dmg);
+            this.totalWallDamage += dmg;
+            this.waveWallDamage += dmg;
+            this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+          }, (src) => {
+            this.spawnMonsterShot(src);
+          }, (x, y) => this.isCreeped(x, y));
+          continue;
+        }
         this.tickBurns(m, dt);
         if (m.hp <= 0) continue;
+        if (m.cfg.creepTrail && m.state === "march") {
+          m.creepTimerLeft -= dt;
+          if (m.creepTimerLeft <= 0) {
+            m.creepTimerLeft += m.cfg.creepTrail.interval;
+            this.dropCreep(m.x, m.y);
+          }
+        }
+        if (m.cfg.creepBenefit && this.isCreeped(m.x, m.y)) {
+          m.regenAcc += 2 * dt;
+          while (m.regenAcc >= 1) {
+            m.regenAcc -= 1;
+            m.hp = Math.min(m.maxHp, m.hp + 1);
+          }
+        }
         if (this.formationMove(m, dt)) continue;
         updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
           this.wallHp = Math.max(0, this.wallHp - dmg);
@@ -864,7 +943,22 @@
           this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
         }, (src) => {
           this.spawnMonsterShot(src);
-        });
+        }, (x, y) => this.isCreeped(x, y));
+      }
+      for (const m of this.monsters) {
+        if (m.cfg.detonate && m.state === "assault" && m.hp > 0) {
+          const dmg = m.cfg.detonate.wallDamage;
+          this.wallHp = Math.max(0, this.wallHp - dmg);
+          this.totalWallDamage += dmg;
+          this.waveWallDamage += dmg;
+          this.bus.emit("onExplode", { x: m.x, y: m.y, radius: 70 });
+          this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
+          m.hp = 0;
+          this.killMonster(null, m);
+        }
+      }
+      for (const [key, until] of this.creep) {
+        if (until <= now) this.creep.delete(key);
       }
       for (const m of this.monsters) {
         if (!m.cfg.splitTimer || m.hp <= 0) continue;
@@ -923,10 +1017,15 @@
           this.pools.splice(i, 1);
           continue;
         }
+        if (pool.damageType === "fire") this.burnCreep(pool.x, pool.y, pool.radius);
         this.hash.queryCircle(pool.x, pool.y, pool.radius, this.scratch);
         for (const mid of this.scratch) {
           const m = this.monsters[mid];
           if (!m || m.hp <= 0) continue;
+          if (m.burrowed) {
+            if (pool.damageType !== "fire") continue;
+            this.forceEmerge(m);
+          }
           const rr2 = pool.radius + m.cfg.radius;
           const dx = m.x - pool.x;
           const dy = m.y - pool.y;
@@ -954,6 +1053,7 @@
           if (m.hp <= 0) continue;
           const rr2 = seg.width / 2 + m.cfg.radius;
           if (distToSegment(m.x, m.y, seg.ax, seg.ay, seg.bx, seg.by) > rr2) continue;
+          if (m.burrowed) this.forceEmerge(m);
           const dmg = Math.max(1, Math.round(seg.dps * dt));
           m.hp -= dmg;
           this.totalDamage += dmg;
@@ -1058,6 +1158,10 @@
         shieldLeft: cfg.hitShield ?? 0,
         healTimer: cfg.healAura ? cfg.healAura.interval : 0,
         splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
+        burrowed: false,
+        burrowTimer: 0,
+        creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
+        regenAcc: 0,
         groupId: -1,
         formationActive: false,
         slotX: x,
@@ -1151,7 +1255,7 @@
       for (const mid of this.scratch) {
         if (!p.alive) break;
         const m = this.monsters[mid];
-        if (!m || m.hp <= 0) continue;
+        if (!m || m.hp <= 0 || m.burrowed) continue;
         if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < 0.5) continue;
         const rr2 = p.radius + m.cfg.radius;
         if (distToSegment(m.x, m.y, p.px, p.py, p.x, p.y) > rr2) continue;
@@ -1183,6 +1287,7 @@
           x: m.x,
           y: m.y
         });
+        if (p.damageType === "fire") this.burnCreep(m.x, m.y, 60);
         if (p.damageType === "fire" && p.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
           const dps = p.dmg * p.riders.burnDpsMul;
           if (m.burn && m.burn.dps >= dps) {
@@ -1278,6 +1383,38 @@
     nearestMonsterExcluding(x, y, radius, exclude) {
       return this.nearestMonsterRuntime(x, y, radius, exclude);
     }
+    // ---------- 虫苔（docs/08） ----------
+    creepKey(x, y) {
+      const c = _GameSession.CREEP_CELL;
+      return Math.floor(x / c) * 4096 + Math.floor(y / c);
+    }
+    isCreeped(x, y) {
+      const until = this.creep.get(this.creepKey(x, y));
+      return until !== void 0 && until > this.timeSec;
+    }
+    dropCreep(x, y) {
+      this.creep.set(this.creepKey(x, y), this.timeSec + _GameSession.CREEP_LIFE);
+    }
+    /** 火焰清除虫苔：清除以 (x,y) 半径 r 内所有虫苔格。 */
+    burnCreep(x, y, r) {
+      const c = _GameSession.CREEP_CELL;
+      const minCx = Math.floor((x - r) / c);
+      const maxCx = Math.floor((x + r) / c);
+      const minCy = Math.floor((y - r) / c);
+      const maxCy = Math.floor((y + r) / c);
+      for (let cx = minCx; cx <= maxCx; cx++) {
+        for (let cy = minCy; cy <= maxCy; cy++) {
+          this.creep.delete(cx * 4096 + cy);
+        }
+      }
+    }
+    /** 强制出土：钻地怪被爆炸/火焰波及立即出土。 */
+    forceEmerge(m) {
+      if (m.burrowed) {
+        m.burrowed = false;
+        m.burrowTimer = 0;
+      }
+    }
     /** 弹射：找最近的未命中过的怪物重定向弹道（按运动配置重建，保留追踪）。 */
     tryBounce(p) {
       const best = this.nearestMonsterRuntime(p.x, p.y, 520, p.hitIds);
@@ -1297,6 +1434,7 @@
       for (const mid of this.scratch) {
         const m = this.monsters[mid];
         if (!m || m.hp <= 0) continue;
+        if (m.burrowed) this.forceEmerge(m);
         const rr2 = radius + m.cfg.radius;
         const dx = m.x - p.x;
         const dy = m.y - p.y;
@@ -1319,6 +1457,7 @@
         if (res.isCrit && dealt > 0) this.totalCrits++;
         if (m.hp <= 0) this.killMonster(null, m);
       }
+      if (p.damageType === "fire") this.burnCreep(p.x, p.y, radius);
       this.pools.push({
         x: p.x,
         y: p.y,
@@ -1565,6 +1704,14 @@
       if (m.cfg.deathSplit) {
         this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
       }
+      if (m.cfg.detonate) {
+        const dmg = m.cfg.detonate.wallDamage;
+        this.wallHp = Math.max(0, this.wallHp - dmg);
+        this.totalWallDamage += dmg;
+        this.waveWallDamage += dmg;
+        this.bus.emit("onExplode", { x: m.x, y: m.y, radius: 70 });
+        this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
+      }
       if (p && p.affixes.split > 0) {
         const base = Math.atan2(p.y - p.py, p.x - p.px);
         let childTarget = null;
@@ -1715,7 +1862,14 @@
     bat: "#FF7EC7",
     shroom: "#FF6B9C",
     boss: "#B537F2",
-    shaman: "#B388FF"
+    shaman: "#B388FF",
+    // 虫族（酸性绿族 + 紫点缀，docs/08）
+    larva: "#9CCC65",
+    roach: "#7CB342",
+    lurker: "#558B2F",
+    zqueen: "#C77DFF",
+    baneling: "#AEEA00",
+    ultra: "#69A83B"
   };
   function monsterColor(m) {
     return MONSTER_COLOR[m.cfg.shape ?? "slime"] ?? "#FF6B57";
@@ -1731,12 +1885,89 @@
   }
   function drawMonster(ctx, m, t) {
     const r = m.cfg.radius;
-    const moving = m.state === "march";
     const color = monsterColor(m);
-    ctx.fillStyle = color;
     const x = m.x;
     const y = m.y;
+    if (m.burrowed) {
+      ctx.fillStyle = "rgba(138,147,184,0.4)";
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(x, y, r + 3, (r + 3) * 0.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
+    const moving = m.state === "march";
+    ctx.fillStyle = color;
     switch (m.cfg.shape) {
+      case "larva": {
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x - r * 0.8, y + r * 0.8);
+        ctx.lineTo(x + r * 0.8, y + r * 0.8);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case "roach": {
+        ctx.beginPath();
+        ctx.ellipse(x, y, r, r * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "lurker": {
+        ctx.beginPath();
+        ctx.moveTo(x, y + r * 0.6);
+        ctx.lineTo(x - r * 0.35, y - r);
+        ctx.lineTo(x + r * 0.35, y - r);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case "zqueen": {
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r * 0.8, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r * 0.8, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#F5F5FA";
+        ctx.beginPath();
+        ctx.arc(x, y - r - 6, 4, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "baneling": {
+        const pulse = 1 + 0.12 * Math.sin(t * 8 + m.phase);
+        ctx.beginPath();
+        ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(11,12,29,0.5)";
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.4, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case "ultra": {
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const a = Math.PI / 5 * i - Math.PI / 2;
+          const rad = i % 2 === 0 ? r : r * 0.72;
+          const px = x + Math.cos(a) * rad;
+          const py = y + Math.sin(a) * rad;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
       case "wolf": {
         const stretch = moving ? 1 + 0.15 * Math.sin(t * 8 + m.phase) : 1;
         ctx.save();
@@ -2320,6 +2551,13 @@
         ctx.strokeStyle = `rgba(255,90,60,${Math.min(1, alpha * 2)})`;
         ctx.lineWidth = 2;
         ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(124,179,66,0.13)";
+      const CELL = 90;
+      for (const key of session.creep.keys()) {
+        const cx = Math.floor(key / 4096);
+        const cy = key % 4096;
+        ctx.fillRect(cx * CELL + 1, cy * CELL + 1, CELL - 2, CELL - 2);
       }
       const h = session.hero;
       const breathe = Math.sin(t * 2.2) * 3;

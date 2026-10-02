@@ -1,0 +1,308 @@
+{
+  "id": "level_2_1",
+  "name": "第 2 关 · 虫巢地下",
+  "arena": {
+    "width": 1080,
+    "height": 1920
+  },
+  "wall": {
+    "height": 64,
+    "hp": 2400
+  },
+  "defenseRect": {
+    "yMin": 96,
+    "yMax": 560
+  },
+  "spawnBandY": [
+    1600,
+    1880
+  ],
+  "spawnPointsX": [
+    90,
+    202,
+    315,
+    427,
+    540,
+    652,
+    765,
+    877,
+    990
+  ],
+  "prepareSec": 2,
+  "intermissionSec": 4,
+  "waveClearBonusXp": 25,
+  "waves": [
+    {
+      "banner": "第 1 波 · 幼虫海",
+      "formation": "line",
+      "durationSec": 60,
+      "spawns": [
+        {
+          "monster": "zerg_ling",
+          "count": 90,
+          "spawnPoints": "all",
+          "releasePerTick": 3
+        }
+      ]
+    },
+    {
+      "banner": "第 2 波 · 爬虫渗透",
+      "formation": "stream",
+      "durationSec": 75,
+      "spawns": [
+        {
+          "monster": "zerg_ling",
+          "count": 60,
+          "spawnPoints": "all",
+          "releasePerTick": 3
+        },
+        {
+          "monster": "zerg_roach",
+          "count": 24,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        }
+      ]
+    },
+    {
+      "banner": "第 3 波 · 虫后现身",
+      "formation": "stream",
+      "durationSec": 80,
+      "spawns": [
+        {
+          "monster": "zerg_ling",
+          "count": 50,
+          "spawnPoints": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "releasePerTick": 3
+        },
+        {
+          "monster": "zerg_roach",
+          "count": 30,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        },
+        {
+          "monster": "zerg_queen",
+          "count": 2,
+          "spawnPoints": [
+            4
+          ],
+          "releasePerTick": 1
+        }
+      ]
+    },
+    {
+      "banner": "第 4 波 · 毒爆冲锋",
+      "formation": "stream",
+      "durationSec": 80,
+      "spawns": [
+        {
+          "monster": "zerg_ling",
+          "count": 80,
+          "spawnPoints": "all",
+          "releasePerTick": 3
+        },
+        {
+          "monster": "baneling",
+          "count": 20,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        }
+      ]
+    },
+    {
+      "banner": "第 5 波 · 潜伏刺击",
+      "formation": "line",
+      "durationSec": 95,
+      "spawns": [
+        {
+          "monster": "zerg_roach",
+          "count": 40,
+          "spawnPoints": "all",
+          "releasePerTick": 3
+        },
+        {
+          "monster": "zerg_lurker",
+          "count": 20,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        },
+        {
+          "monster": "zerg_ling",
+          "count": 40,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        }
+      ]
+    },
+    {
+      "banner": "第 6 波 · 虫群蔓延",
+      "formation": "stream",
+      "durationSec": 85,
+      "spawns": [
+        {
+          "monster": "zerg_ling",
+          "count": 70,
+          "spawnPoints": "all",
+          "releasePerTick": 3
+        },
+        {
+          "monster": "baneling",
+          "count": 30,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        },
+        {
+          "monster": "zerg_queen",
+          "count": 2,
+          "spawnPoints": [
+            2,
+            6
+          ],
+          "releasePerTick": 1
+        }
+      ]
+    },
+    {
+      "banner": "第 7 波 · 地刺矩阵",
+      "formation": "line",
+      "durationSec": 100,
+      "spawns": [
+        {
+          "monster": "zerg_roach",
+          "count": 40,
+          "spawnPoints": "all",
+          "releasePerTick": 3
+        },
+        {
+          "monster": "zerg_lurker",
+          "count": 24,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        },
+        {
+          "monster": "zerg_queen",
+          "count": 3,
+          "spawnPoints": [
+            1,
+            4,
+            7
+          ],
+          "releasePerTick": 1
+        }
+      ]
+    },
+    {
+      "banner": "第 8 波 · 毒爆风暴",
+      "formation": "stream",
+      "durationSec": 90,
+      "spawns": [
+        {
+          "monster": "zerg_ling",
+          "count": 100,
+          "spawnPoints": "all",
+          "releasePerTick": 4
+        },
+        {
+          "monster": "baneling",
+          "count": 30,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        },
+        {
+          "monster": "zerg_roach",
+          "count": 30,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        }
+      ]
+    },
+    {
+      "banner": "第 9 波 · 虫巢总攻",
+      "formation": "line",
+      "durationSec": 105,
+      "spawns": [
+        {
+          "monster": "zerg_roach",
+          "count": 50,
+          "spawnPoints": "all",
+          "releasePerTick": 3
+        },
+        {
+          "monster": "zerg_lurker",
+          "count": 30,
+          "spawnPoints": "all",
+          "releasePerTick": 3
+        },
+        {
+          "monster": "zerg_queen",
+          "count": 4,
+          "spawnPoints": [
+            0,
+            3,
+            5,
+            8
+          ],
+          "releasePerTick": 1
+        }
+      ]
+    },
+    {
+      "banner": "第 10 波 · 雷兽降临",
+      "formation": "line",
+      "durationSec": 130,
+      "spawns": [
+        {
+          "monster": "zerg_ling",
+          "count": 90,
+          "spawnPoints": "all",
+          "releasePerTick": 4
+        },
+        {
+          "monster": "zerg_roach",
+          "count": 40,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        },
+        {
+          "monster": "baneling",
+          "count": 30,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        },
+        {
+          "monster": "zerg_lurker",
+          "count": 20,
+          "spawnPoints": "all",
+          "releasePerTick": 2
+        },
+        {
+          "monster": "zerg_queen",
+          "count": 3,
+          "spawnPoints": [
+            2,
+            4,
+            6
+          ],
+          "releasePerTick": 1
+        },
+        {
+          "monster": "zerg_ultra",
+          "count": 1,
+          "spawnPoints": [
+            4
+          ],
+          "releasePerTick": 1
+        }
+      ]
+    }
+  ]
+}

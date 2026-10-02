@@ -24,13 +24,41 @@ export function updateMonster(
   wallTopY: number,
   onWallHit: (dmg: number, m: MonsterRuntime) => void,
   onRangedShot: (m: MonsterRuntime) => void,
+  isCreeped?: (x: number, y: number) => boolean,
 ): void {
   const r = m.cfg.radius;
+
+  // ---------- 钻地状态（docs/08）：不可移动/受击，按行为结算地下效果 ----------
+  if (m.burrowed) {
+    m.burrowTimer -= dt;
+    if (m.cfg.burrowRegen && m.burrowTimer <= 0) {
+      m.burrowed = false;
+      m.hp = Math.min(m.maxHp, m.hp + Math.round(m.maxHp * m.cfg.burrowRegen.heal));
+    } else if (m.cfg.burrowCharge && m.burrowTimer <= 0) {
+      // 冲锋出土：出现在墙前并重击城墙
+      m.burrowed = false;
+      m.y = wallTopY + r;
+      onWallHit(m.cfg.burrowCharge!.dmg, m);
+    }
+    // burrow_siege：地下持续刺击城墙（无计时，只能被爆炸/火焰轰出）
+    if (m.burrowed && m.cfg.burrowSiege) {
+      m.attackTimer -= dt;
+      if (m.attackTimer <= 0) {
+        m.attackTimer += m.cfg.attackInterval;
+        onWallHit(m.cfg.atk, m);
+      }
+    }
+    return;
+  }
+
   const holdY = wallTopY + (m.cfg.behavior === 'ranged' ? (m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE) : 0) + r;
 
   if (m.state === 'march') {
     let speed = m.cfg.speed;
     if (now < m.slowUntil) speed *= m.slowFactor; // 冰冻减速（C 类卡）
+
+    // 虫族虫苔加速（docs/08）：在位移前生效
+    if (m.cfg.creepBenefit && isCreeped && isCreeped(m.x, m.y)) speed *= 1.25;
 
     switch (m.cfg.behavior) {
       case 'zigzag':
@@ -49,6 +77,28 @@ export function updateMonster(
     }
 
     m.y -= speed * dt;
+
+    // 钻地触发：潜伏者到阵位永久入地；爬虫低血入地回血；雷兽周期冲锋入地
+    if (m.cfg.burrowSiege && m.y <= wallTopY + m.cfg.burrowSiege.dist + r) {
+      m.burrowed = true;
+      m.y = wallTopY + m.cfg.burrowSiege.dist + r;
+      return;
+    }
+    if (m.cfg.burrowRegen && m.hp < m.maxHp * m.cfg.burrowRegen.threshold) {
+      m.burrowed = true;
+      m.burrowTimer = m.cfg.burrowRegen.duration;
+      return;
+    }
+    if (m.cfg.burrowCharge) {
+      m.attackTimer -= dt; // 行军期复用 attackTimer 作冲锋冷却
+      if (m.attackTimer <= 0 && m.y > wallTopY + 400) {
+        m.burrowed = true;
+        m.burrowTimer = m.cfg.burrowCharge.duration;
+        m.attackTimer = m.cfg.burrowCharge.interval;
+        return;
+      }
+      if (m.attackTimer <= 0) m.attackTimer = m.cfg.burrowCharge.interval;
+    }
 
     if (m.y <= holdY) {
       m.y = holdY;

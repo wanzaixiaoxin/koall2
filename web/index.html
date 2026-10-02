@@ -62,8 +62,7 @@
   <div id="deco"><div class="line"></div><div class="tri"></div><div class="line"></div></div>
 
   <div id="panel">
-    <div class="sec">选 择 关 卡</div>
-    <div id="levels"><div style="color:rgba(245,245,250,.4);font-size:13px;">加载中…</div></div>
+    <div id="chapters"></div>
     <div class="sec">工 具</div>
     <div id="lab">🧪 卡牌实验室 · 验证每张卡的效果</div>
   </div>
@@ -72,24 +71,42 @@
 
 <script>
 (async function () {
-  const list = document.getElementById('levels');
+  const root = document.getElementById('chapters');
   try {
     const manifest = await (await fetch('/configs/levels/index.json')).json();
-    list.innerHTML = '';
+    root.innerHTML = '';
+    // 按章节分组渲染
+    const byChapter = new Map();
     for (const lv of manifest.levels) {
-      const el = document.createElement('div');
-      el.className = 'lv';
-      el.innerHTML =
-        '<div class="badge">' + lv.chapter + '-' + (manifest.levels.indexOf(lv) + 1) + '</div>' +
-        '<div class="info"><div class="name">' + lv.name + '</div>' +
-        '<div class="meta">' + lv.waves + ' 波 · ' + (lv.desc || '') + '</div></div>' +
-        '<div class="go">▶</div>';
-      el.onclick = () => { location.href = './game.html?level=' + encodeURIComponent(lv.file); };
-      list.appendChild(el);
+      const ch = lv.chapter ?? 1;
+      if (!byChapter.has(ch)) byChapter.set(ch, []);
+      byChapter.get(ch).push(lv);
     }
-    if (manifest.levels.length === 0) list.innerHTML = '<div style="color:rgba(245,245,250,.4);font-size:13px;">暂无关卡</div>';
+    const chapterNames = { 1: '第 1 章 · 森林边缘', 2: '第 2 章 · 虫巢地下' };
+    for (const [ch, levels] of [...byChapter.entries()].sort((a, b) => a[0] - b[0])) {
+      const sec = document.createElement('div');
+      sec.className = 'sec';
+      sec.textContent = chapterNames[ch] || `第 ${ch} 章`;
+      root.appendChild(sec);
+      const grid = document.createElement('div');
+      grid.id = 'levels';
+      grid.style.cssText = 'display:flex;flex-direction:column;gap:12px;margin-bottom:22px;';
+      root.appendChild(grid);
+      levels.forEach((lv, i) => {
+        const el = document.createElement('div');
+        el.className = 'lv';
+        el.innerHTML =
+          '<div class="badge">' + ch + '-' + (i + 1) + '</div>' +
+          '<div class="info"><div class="name">' + lv.name + '</div>' +
+          '<div class="meta">' + lv.waves + ' 波 · ' + (lv.desc || '') + '</div></div>' +
+          '<div class="go">▶</div>';
+        el.onclick = () => { location.href = './game.html?level=' + encodeURIComponent(lv.file); };
+        grid.appendChild(el);
+      });
+    }
+    if (manifest.levels.length === 0) root.innerHTML = '<div style="color:rgba(245,245,250,.4);font-size:13px;">暂无关卡</div>';
   } catch (e) {
-    list.innerHTML = '<div style="color:#FF6B57;font-size:13px;">关卡清单加载失败：' + e.message + '</div>';
+    root.innerHTML = '<div style="color:#FF6B57;font-size:13px;">关卡清单加载失败：' + e.message + '</div>';
   }
   document.getElementById('lab').onclick = () => { location.href = './lab.html'; };
 })();

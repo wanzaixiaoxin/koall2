@@ -197,6 +197,121 @@
       "behavior": "march",
       "xp": 2,
       "shape": "shroom"
+    },
+    {
+      "id": "zerg_ling",
+      "name": "幼虫群",
+      "hp": 8,
+      "def": 0,
+      "speed": 240,
+      "radius": 10,
+      "atk": 3,
+      "attackInterval": 1.0,
+      "behavior": "march",
+      "xp": 1,
+      "creepBenefit": true,
+      "shape": "larva"
+    },
+    {
+      "id": "zerg_roach",
+      "name": "爬虫",
+      "hp": 60,
+      "def": 2,
+      "speed": 70,
+      "radius": 22,
+      "atk": 6,
+      "attackInterval": 1.1,
+      "behavior": "burrow_regen",
+      "xp": 5,
+      "creepBenefit": true,
+      "shape": "roach",
+      "burrowRegen": {
+        "threshold": 0.3,
+        "duration": 3,
+        "heal": 0.5
+      }
+    },
+    {
+      "id": "zerg_lurker",
+      "name": "潜伏者",
+      "hp": 50,
+      "def": 0,
+      "speed": 65,
+      "radius": 20,
+      "atk": 8,
+      "attackInterval": 1.0,
+      "behavior": "burrow_siege",
+      "xp": 6,
+      "creepBenefit": true,
+      "shape": "lurker",
+      "burrowSiege": {
+        "dist": 400
+      }
+    },
+    {
+      "id": "zerg_queen",
+      "name": "虫后",
+      "hp": 200,
+      "def": 0,
+      "speed": 35,
+      "radius": 26,
+      "atk": 5,
+      "attackInterval": 1.5,
+      "behavior": "march",
+      "xp": 20,
+      "creepBenefit": true,
+      "shape": "zqueen",
+      "healAura": {
+        "radius": 300,
+        "amount": 20,
+        "interval": 2.5
+      },
+      "creepTrail": {
+        "interval": 2
+      },
+      "splitTimer": {
+        "interval": 8,
+        "baby": "zerg_ling"
+      }
+    },
+    {
+      "id": "baneling",
+      "name": "毒爆虫",
+      "hp": 15,
+      "def": 0,
+      "speed": 110,
+      "radius": 16,
+      "atk": 3,
+      "attackInterval": 1.0,
+      "behavior": "march",
+      "xp": 3,
+      "creepBenefit": true,
+      "shape": "baneling",
+      "detonate": {
+        "wallDamage": 30
+      }
+    },
+    {
+      "id": "zerg_ultra",
+      "name": "雷兽",
+      "hp": 550,
+      "def": 6,
+      "speed": 40,
+      "radius": 46,
+      "atk": 15,
+      "attackInterval": 1.4,
+      "behavior": "burrow_charge",
+      "xp": 80,
+      "creepBenefit": true,
+      "shape": "ultra",
+      "burrowCharge": {
+        "interval": 9,
+        "duration": 2,
+        "dmg": 40
+      },
+      "weak": [
+        "fire"
+      ]
     }
   ]
 }

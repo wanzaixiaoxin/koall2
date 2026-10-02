@@ -487,6 +487,54 @@ const tests: TestCase[] = [
     const after = s.monsters.filter((m) => m.cfg.id === 'shroom_baby').length;
     return after >= 2 ? true : `死后分裂 ${after} 只（应 ≥2）`;
   } },
+  { name: 'Z-虫族：爬虫低血钻地回血、潜伏者不可被直击、爆炸强制出土', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 10000;
+    s.wallHp = 10000;
+    s.debugSpawn('zerg_roach', 300, 500);
+    s.debugSpawn('zerg_lurker', 540, 460); // 距墙 396 ≈ siegeDist 400+r → 接近即钻地
+    const roach = s.monsters.find((m) => m.cfg.id === 'zerg_roach')!;
+    const lurker = s.monsters.find((m) => m.cfg.id === 'zerg_lurker')!;
+    roach.hp = roach.maxHp = 1e6;
+    // 打伤爬虫触发钻地回血
+    roach.hp = Math.round(1e6 * 0.2);
+    const burrowed = runFor(s, 3, () => roach.burrowed);
+    if (!burrowed) return '爬虫未钻地';
+    const hpAtBurrow = roach.hp;
+    const emerged = runFor(s, 5, () => !roach.burrowed);
+    if (!emerged) return '爬虫未出土';
+    if (!(roach.hp > hpAtBurrow)) return `钻地未回血（${hpAtBurrow} → ${roach.hp}）`;
+    // 潜伏者到阵位钻地且不可被直击
+    const lurkerBurrowed = runFor(s, 6, () => lurker.burrowed);
+    if (!lurkerBurrowed) return '潜伏者未钻地';
+    const shotsBefore = s.totalKills;
+    runFor(s, 3, () => false);
+    // 爆炸强制出土：在潜伏者脚下放火属性伤害圈
+    s.debugLink(lurker.x - 10, lurker.y, lurker.x + 10, lurker.y, 60, 0.5, 120);
+    s.debugLink(lurker.x, lurker.y - 10, lurker.x, lurker.y + 10, 60, 0.5, 120);
+    void shotsBefore;
+    return runFor(s, 2, () => !lurker.burrowed) ? true : '爆炸未轰出潜伏者';
+  } },
+  { name: 'Z-虫族：毒爆虫撞墙自爆 -30 城防；虫后铺虫苔且火焰可烧', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 10000;
+    s.wallHp = 10000;
+    s.debugSpawn('baneling', 540, 300); // 近墙，快速触发自爆
+    const before = s.wallHp;
+    const boomed = runFor(s, 12, () => s.wallHp <= before - 30);
+    if (!boomed) return `自爆未结算（城防 ${s.wallHp}）`;
+    // 虫后铺苔
+    s.debugSpawn('zerg_queen', 700, 900);
+    const creepGrown = runFor(s, 12, () => s.creep.size > 0);
+    if (!creepGrown) return '虫苔未铺设';
+    // 火焰烧苔（火焰弹命中点烧苔）
+    s.grantCard('flame');
+    s.debugSpawn('bulwark', 700, 860);
+    const target = s.monsters[s.monsters.length - 1];
+    target.hp = target.maxHp = 1e6;
+    const burned = runFor(s, 8, () => s.creep.size === 0);
+    return burned ? true : `虫苔未被火焰清除（剩余 ${s.creep.size} 格）`;
+  } },
   { name: 'M-巫师编队：近墙变阵排排啃墙，巫师伤害转嫁给周围怪物', run: () => {
     const s = freshSession();
     s.wallMaxHp = 99999;

@@ -428,6 +428,15 @@ async function boot(): Promise<void> {
       ctx.fill();
     }
 
+    // 虫苔地块（酸性绿半透明网格）
+    ctx.fillStyle = 'rgba(124,179,66,0.13)';
+    const CELL = 90;
+    for (const key of session.creep.keys()) {
+      const cx = Math.floor(key / 4096);
+      const cy = key % 4096;
+      ctx.fillRect(cx * CELL + 1, cy * CELL + 1, CELL - 2, CELL - 2);
+    }
+
     // 光束/连线（段场）：外发光 + 高亮芯线
     for (const seg of session.segments) {
       const left = Math.max(0, seg.until - session.timeSec);

@@ -42,7 +42,8 @@ export interface WeaponConfig {
 
 export type MonsterBehavior =
   | 'march' | 'zigzag' | 'dash' | 'fast_rush'
-  | 'ranged' | 'splitter' | 'shielded';
+  | 'ranged' | 'splitter' | 'shielded'
+  | 'burrow_regen' | 'burrow_siege' | 'burrow_charge';
 
 export interface MonsterConfig {
   id: string;
@@ -72,6 +73,18 @@ export interface MonsterConfig {
   transferAura?: { radius: number };
   /** 近墙变阵：与城墙距离小于该值时，护卫排成一排啃墙、巫师居中（docs/04 §1.2） */
   formationDist?: number;
+  /** 钻地回血（爬虫）：血量低于 maxHp×threshold 时钻地 duration 秒，出土回复 maxHp×heal */
+  burrowRegen?: { threshold: number; duration: number; heal: number };
+  /** 钻地攻墙（潜伏者）：行进到距墙 dist 时永久钻地，以 attackInterval/atk 刺击城墙，只能被爆炸/火焰轰出 */
+  burrowSiege?: { dist: number };
+  /** 钻地冲锋（雷兽）：每 interval 秒钻地 duration 秒，出现在墙前并重击城墙 dmg */
+  burrowCharge?: { interval: number; duration: number; dmg: number };
+  /** 自爆（毒爆虫）：接触城墙或死亡时爆炸，造成 wallDamage 城防伤害 */
+  detonate?: { wallDamage: number };
+  /** 虫族：经过时按 interval 秒铺设虫苔（加速/回血地形，火焰可烧） */
+  creepTrail?: { interval: number };
+  /** 虫族：站在虫苔上移速 ×1.25 且每秒回 2 血 */
+  creepBenefit?: boolean;
   xp: number;              // 经验（击杀自动吸收）
   /** 伤害类型弱点：受到该类型 ×1.25（docs/01 §2.1） */
   weak?: DamageType[];
@@ -255,6 +268,11 @@ export interface MonsterRuntime {
   shieldLeft: number;      // 剩余免伤层数（hitShield）
   healTimer: number;       // 治疗光环计时（healAura）
   splitTimerLeft: number;  // 定时分裂计时（splitTimer）
+  /** 钻地状态（docs/08）：不可索敌/不可命中/免疫DoT；burrowTimer 为地下倒计时 */
+  burrowed: boolean;
+  burrowTimer: number;
+  creepTimerLeft: number;  // 虫苔铺设计时（creepTrail）
+  regenAcc: number;        // 虫苔回血整数累计
   /** 队籍：护卫=领队巫师运行时 id；无编队为 -1（变阵系统用） */
   groupId: number;
   /** 领队：近墙变阵是否激活（护卫排一排啃墙、巫师居中） */

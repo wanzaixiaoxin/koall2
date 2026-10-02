@@ -1,5 +1,18 @@
 {
   "levels": [
-    { "file": "level_1_1.json", "name": "第 1 关 · 森林边缘", "chapter": 1, "waves": 10, "desc": "史莱姆 / 野狼 / 投矛手 / 岩甲兽" }
+    {
+      "file": "level_1_1.json",
+      "name": "第 1 关 · 森林边缘",
+      "chapter": 1,
+      "waves": 10,
+      "desc": "史莱姆 / 野狼 / 投矛手 / 岩甲兽"
+    },
+    {
+      "file": "level_2_1.json",
+      "name": "第 2 关 · 虫巢地下",
+      "chapter": 2,
+      "waves": 10,
+      "desc": "虫族：钻地 / 虫苔 / 自爆"
+    }
   ]
 }
