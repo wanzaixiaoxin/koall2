@@ -32,7 +32,7 @@
     {
       "id": "thrower",
       "name": "哥布林投矛手",
-      "hp": 25,
+      "hp": 20,
       "def": 2,
       "speed": 60,
       "radius": 18,

@@ -35,7 +35,7 @@
     {
       "banner": "第 1 波 · 史莱姆先锋（横排）",
       "formation": "line",
-      "durationSec": 60,
+      "durationSec": 85,
       "spawns": [
         {
           "monster": "slime",
@@ -48,23 +48,23 @@
     {
       "banner": "第 2 波 · 多路渗透",
       "formation": "stream",
-      "durationSec": 75,
+      "durationSec": 100,
       "spawns": [
         {
           "monster": "slime",
-          "count": 37,
+          "count": 24,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "charger",
-          "count": 17,
+          "count": 10,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "split_shroom",
-          "count": 8,
+          "count": 5,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -73,7 +73,7 @@
     {
       "banner": "第 3 波 · 野狼侧翼",
       "formation": "stream",
-      "durationSec": 80,
+      "durationSec": 105,
       "spawns": [
         {
           "monster": "slime",
@@ -119,7 +119,7 @@
         },
         {
           "monster": "thrower",
-          "count": 50,
+          "count": 30,
           "spawnPoints": "all",
           "releasePerTick": 2
         }
@@ -201,7 +201,7 @@
         },
         {
           "monster": "split_shroom",
-          "count": 10,
+          "count": 6,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -349,7 +349,7 @@
         },
         {
           "monster": "split_shroom",
-          "count": 10,
+          "count": 6,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -422,7 +422,7 @@
         },
         {
           "monster": "shaman",
-          "count": 2,
+          "count": 1,
           "spawnPoints": [
             4
           ],
