@@ -576,13 +576,15 @@ export class GameSession {
       groupId: -1,
       formationActive: false,
       slotX: x,
+      formIndex: 0,
+      formAngle: 0,
       slowUntil: 0,
       slowFactor: 1,
       shredUntil: 0,
       shredAmount: 0,
     });
 
-    // 出场护卫：巫师等带 escort 的怪，周围环形部署一圈护卫（记录队籍）
+    // 出场护卫：巫师等带 escort 的怪，周围环形部署一圈护卫（记录队籍/编队序号）
     if (cfg.escort && !skipEscort) {
       const leaderId = this.monsters[this.monsters.length - 1].id;
       for (let i = 0; i < cfg.escort.count; i++) {
@@ -592,6 +594,8 @@ export class GameSession {
         this.spawnMonster(cfg.escort.monster, ex, ey);
         const member = this.monsters[this.monsters.length - 1];
         member.groupId = leaderId;
+        member.formIndex = i;
+        member.formAngle = (Math.PI * 2 * i) / cfg.escort.count;
       }
     }
   }
@@ -881,23 +885,39 @@ export class GameSession {
     return rawAmount;
   }
 
-  /** 编队移动（变阵）：护卫驶向横排槽位、领队巫师居中；到位后啃墙。返回 true 表示本 tick 已由编队逻辑处理。 */
+  /**
+   * 编队移动（两相位）：
+   * - 行军相位：护卫紧凑环绕领队（盾环随行，防弹雨穿透）
+   * - 近墙变阵：护卫展开横排啃墙、巫师居中
+   * 返回 true 表示本 tick 已由编队逻辑处理。
+   */
   private formationMove(m: MonsterRuntime, dt: number): boolean {
     const wallTop = this.level.wall.height;
     if (m.formationActive) {
       // 领队：移到横排中央（墙前一线）
-      this.steerToSlot(m, m.x, wallTop + m.cfg.radius + 10, dt);
+      this.steerToSlot(m, m.x, wallTop + m.cfg.radius + 10, dt, true);
       return true;
     }
     if (m.groupId < 0) return false;
     const leader = this.monsters[m.groupId];
-    if (!leader || leader.hp <= 0 || !leader.formationActive) return false;
-    this.steerToSlot(m, m.slotX, wallTop + m.cfg.radius, dt);
+    if (!leader || leader.hp <= 0) return false;
+    if (!leader.formationActive) {
+      // 行军相位：紧凑盾环（周长 2π×95/10 ≈ 60 ≈ 盾径，近似无缝）
+      const tx = clamp(leader.x + Math.cos(m.formAngle) * 95, 40, this.level.arena.width - 40);
+      const ty = clamp(leader.y + Math.sin(m.formAngle) * 95, 120, this.level.arena.height - 60);
+      this.steerToSlot(m, tx, ty, dt, false);
+      return true;
+    }
+    // 变阵相位：横排（以领队当前 x 为轴心保持更新，间距 58 盾面微叠）
+    const count = leader.cfg.escort?.count ?? 1;
+    const slotX = clamp(leader.x + (m.formIndex - (count - 1) / 2) * 58, 40, this.level.arena.width - 40);
+    m.slotX = slotX;
+    this.steerToSlot(m, slotX, wallTop + m.cfg.radius, dt, true);
     return true;
   }
 
-  /** 驶向槽位；到位后转为啃墙（assault）。编队移动提速 3 倍——快速成排，减少对齐期间的防御空窗。 */
-  private steerToSlot(m: MonsterRuntime, tx: number, ty: number, dt: number): void {
+  /** 驶向槽位；到位后若为墙前位则转为啃墙（assault），否则原地待机（行军相位中场到位不隔空啃墙）。 */
+  private steerToSlot(m: MonsterRuntime, tx: number, ty: number, dt: number, atWall: boolean): void {
     let speed = m.cfg.speed * 3;
     if (this.timeSec < m.slowUntil) speed *= m.slowFactor;
     const dx = tx - m.x;
@@ -908,6 +928,10 @@ export class GameSession {
       m.x += (dx / dist) * step;
       m.y += (dy / dist) * step;
       m.state = 'march';
+      return;
+    }
+    if (!atWall) {
+      m.state = 'march'; // 行军相位到位：原地待机，不攻击城墙
       return;
     }
     m.y = ty;

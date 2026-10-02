@@ -256,6 +256,9 @@ export interface MonsterRuntime {
   formationActive: boolean;
   /** 变阵后分配的横排位（护卫用） */
   slotX: number;
+  /** 编队序号/角度：行军相位环绕领队站位、变阵相位按序号排横排 */
+  formIndex: number;
+  formAngle: number;
   slowUntil: number;       // 冰冻减速
   slowFactor: number;
   shredUntil: number;      // 破甲
