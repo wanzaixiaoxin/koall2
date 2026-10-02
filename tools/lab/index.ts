@@ -469,7 +469,7 @@ const tests: TestCase[] = [
     s.wallHp = 10000;
     s.debugSpawn('split_shroom', 540, 900);
     const parent = s.monsters[0];
-    if (parent.maxHp !== Math.round(60 * 0.88)) return `母体血量未强化 maxHp=${parent.maxHp}`;
+    if (parent.maxHp !== Math.round(60 * 0.9)) return `母体血量未强化 maxHp=${parent.maxHp}`; // waveIndex -1 → ×0.9
     // 定时分裂：6~8s 内应出现 1 只幼体
     const born = runFor(s, 9, () => s.monsters.some((m) => m.cfg.id === 'shroom_baby'));
     if (!born) return '定时分裂未发生';
