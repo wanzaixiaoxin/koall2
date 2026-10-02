@@ -15,6 +15,7 @@ const MONSTER_COLOR: Record<string, string> = {
   bat: '#FF7EC7',
   shroom: '#FF6B9C',
   boss: '#B537F2',
+  shaman: '#B388FF',
 };
 
 export function monsterColor(m: MonsterRuntime): string {
@@ -167,6 +168,22 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       ctx.restore();
       break;
     }
+    case 'shaman': {
+      // 巫师：菱形法袍 + 头顶悬浮法球（呼吸浮动）
+      const bob = Math.sin(t * 3 + m.phase) * 3;
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x + r * 0.75, y);
+      ctx.lineTo(x, y + r);
+      ctx.lineTo(x - r * 0.75, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#F5F5FA';
+      ctx.beginPath();
+      ctx.arc(x, y - r - 8 + bob, 5, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
     case 'slime':
     default: {
       // 圆角方块 squash 弹跳
@@ -316,4 +333,14 @@ export function drawMonsterShot(ctx: CanvasRenderingContext2D, s: MonsterShot): 
     ctx.lineTo(s.x + ux * 4, s.y + uy * 4 + s.height);
     ctx.stroke();
   }
+}
+
+/** 治疗光环脉冲：绿色扩散环（k = 0~1 进度）。 */
+export function drawHealPulse(ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, k: number): void {
+  const alpha = 0.5 * (1 - k);
+  ctx.strokeStyle = `rgba(124,179,66,${alpha})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(x, y, radius * (0.3 + 0.7 * k), 0, Math.PI * 2);
+  ctx.stroke();
 }

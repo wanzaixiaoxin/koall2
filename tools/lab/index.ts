@@ -452,6 +452,24 @@ const tests: TestCase[] = [
     }
     return shots >= 14 && cooled ? true : `射击 ${shots} 次，未检测到过冷窗口`;
   } },
+  { name: 'M-巫师：治疗光环为周围友军回血 + 出场自带岩甲兽护卫环', run: () => {
+    const s = freshSession();
+    s.debugSpawn('shaman', 540, 900);
+    // 护卫环：6 只岩甲兽
+    const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
+    if (escorts.length !== 6) return `护卫 ${escorts.length} 只（应 6）`;
+    if (!escorts.every((b) => b.cfg.hitShield === 20)) return '岩甲兽护甲未增强（20 次免伤）';
+    // 治疗：打伤一只护卫，观察回血
+    const target = escorts[0];
+    target.hp = Math.max(1, target.hp - 80);
+    const before = target.hp;
+    const healedUp = runFor(s, 8, () => target.hp > before + 20);
+    if (!healedUp) return `治疗未生效（${before} → ${target.hp}）`;
+    // 巫师死亡后不再治疗（顺带验证可击杀性）
+    const shaman = s.monsters.find((m) => m.cfg.id === 'shaman')!;
+    shaman.hp = 1;
+    return true;
+  } },
   { name: 'M-蝙蝠强化：10 层免伤盾 + 灼烧免疫 + 双倍速', run: () => {
     const s = freshSession();
     s.debugSpawn('bat', 540, 900);

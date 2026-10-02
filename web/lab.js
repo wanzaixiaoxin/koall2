@@ -862,6 +862,22 @@
           this.spawnMonsterShot(src);
         });
       }
+      for (const m of this.monsters) {
+        const aura = m.cfg.healAura;
+        if (!aura || m.hp <= 0) continue;
+        m.healTimer -= dt;
+        if (m.healTimer > 0) continue;
+        m.healTimer += aura.interval;
+        this.hash.queryCircle(m.x, m.y, aura.radius, this.scratch);
+        let healed = 0;
+        for (const id of this.scratch) {
+          const ally = this.monsters[id];
+          if (!ally || ally.hp <= 0 || ally.hp >= ally.maxHp) continue;
+          ally.hp = Math.min(ally.maxHp, ally.hp + Math.round(aura.amount));
+          healed++;
+        }
+        if (healed > 0) this.bus.emit("onHeal", { x: m.x, y: m.y, radius: aura.radius });
+      }
       for (let i = this.monsterShots.length - 1; i >= 0; i--) {
         const s = this.monsterShots[i];
         s.t += dt / s.dur;
@@ -1007,11 +1023,20 @@
         phase: this.rng.range(0, Math.PI * 2),
         burn: null,
         shieldLeft: cfg.hitShield ?? 0,
+        healTimer: cfg.healAura ? cfg.healAura.interval : 0,
         slowUntil: 0,
         slowFactor: 1,
         shredUntil: 0,
         shredAmount: 0
       });
+      if (cfg.escort) {
+        for (let i = 0; i < cfg.escort.count; i++) {
+          const ang = Math.PI * 2 * i / cfg.escort.count + this.rng.range(-0.2, 0.2);
+          const ex = clamp(x + Math.cos(ang) * cfg.escort.radius, 40, this.level.arena.width - 40);
+          const ey = clamp(y + Math.sin(ang) * cfg.escort.radius, 200, this.level.arena.height - 60);
+          this.spawnMonster(cfg.escort.monster, ex, ey);
+        }
+      }
     }
     spawnProjectile(cmd) {
       const { weapon, fromX, fromY, dirX, dirY, speed, range, dmg, index } = cmd;
@@ -1540,7 +1565,8 @@
     bulwark: "#8A93B8",
     bat: "#FF7EC7",
     shroom: "#FF6B9C",
-    boss: "#B537F2"
+    boss: "#B537F2",
+    shaman: "#B388FF"
   };
   function monsterColor(m) {
     return MONSTER_COLOR[m.cfg.shape ?? "slime"] ?? "#FF6B57";
@@ -1679,6 +1705,21 @@
         ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+        break;
+      }
+      case "shaman": {
+        const bob = Math.sin(t * 3 + m.phase) * 3;
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r * 0.75, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r * 0.75, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#F5F5FA";
+        ctx.beginPath();
+        ctx.arc(x, y - r - 8 + bob, 5, 0, Math.PI * 2);
+        ctx.fill();
         break;
       }
       case "slime":

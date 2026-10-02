@@ -153,6 +153,14 @@
             4
           ],
           "releasePerTick": 1
+        },
+        {
+          "monster": "shaman",
+          "count": 1,
+          "spawnPoints": [
+            4
+          ],
+          "releasePerTick": 1
         }
       ]
     },
@@ -225,6 +233,14 @@
           "monster": "bat",
           "count": 12,
           "spawnPoints": "all",
+          "releasePerTick": 1
+        },
+        {
+          "monster": "shaman",
+          "count": 1,
+          "spawnPoints": [
+            4
+          ],
           "releasePerTick": 1
         }
       ]
@@ -310,6 +326,14 @@
           "count": 25,
           "spawnPoints": "all",
           "releasePerTick": 1
+        },
+        {
+          "monster": "shaman",
+          "count": 1,
+          "spawnPoints": [
+            4
+          ],
+          "releasePerTick": 1
         }
       ]
     },
@@ -373,6 +397,14 @@
         {
           "monster": "boss_treant",
           "count": 1,
+          "spawnPoints": [
+            4
+          ],
+          "releasePerTick": 1
+        },
+        {
+          "monster": "shaman",
+          "count": 2,
           "spawnPoints": [
             4
           ],

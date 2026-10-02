@@ -14,7 +14,7 @@ import {
   Vec2,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile, drawMonsterShot } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse } from './render/shapes';
 
 const W = 1080;
 const H = 1920;
@@ -177,6 +177,12 @@ async function boot(): Promise<void> {
   // 灼烧跳伤：小橙色飘字（让点燃的定时伤害"看得见"）
   session.bus.on<{ dmg: number; x: number; y: number }>('onBurnTick', ({ dmg, x, y }) => {
     pushFloat(x, y, String(Math.round(dmg * 10) / 10), '#FF9A3C', 14);
+  });
+  // 治疗光环：绿色扩散环
+  const heals: { x: number; y: number; radius: number; life: number }[] = [];
+  session.bus.on<{ x: number; y: number; radius: number }>('onHeal', (p) => {
+    if (heals.length > 10) heals.shift();
+    heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
   });
   // 连锁闪电折线（渲染层表现，0.22s 闪现）
   const bolts: { pts: number[][]; life: number }[] = [];
@@ -370,6 +376,17 @@ async function boot(): Promise<void> {
     // 怪物远程弹（投矛/投石，警示橙）
     for (const s of session.monsterShots) {
       drawMonsterShot(ctx, s);
+    }
+
+    // 治疗光环脉冲
+    for (let i = heals.length - 1; i >= 0; i--) {
+      const h = heals[i];
+      h.life -= dtR;
+      if (h.life <= 0) {
+        heals.splice(i, 1);
+        continue;
+      }
+      drawHealPulse(ctx, h.x, h.y, h.radius, 1 - h.life / 0.5);
     }
 
     // 伤害飘字（上升 + 淡出；文字在 y 翻转坐标系下需回到标准变换绘制）

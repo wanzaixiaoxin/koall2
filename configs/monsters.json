@@ -87,7 +87,8 @@
       "weak": [
         "fire"
       ],
-      "shape": "bulwark"
+      "shape": "bulwark",
+      "hitShield": 20
     },
     {
       "id": "bulwark_king",
@@ -148,6 +149,29 @@
       "shape": "bat",
       "hitShield": 10,
       "burnImmune": true
+    },
+    {
+      "id": "shaman",
+      "name": "地精巫师",
+      "hp": 80,
+      "def": 0,
+      "speed": 45,
+      "radius": 22,
+      "atk": 5,
+      "attackInterval": 1.5,
+      "behavior": "march",
+      "xp": 15,
+      "shape": "shaman",
+      "healAura": {
+        "radius": 280,
+        "amount": 30,
+        "interval": 2.0
+      },
+      "escort": {
+        "monster": "bulwark",
+        "count": 6,
+        "radius": 140
+      }
     }
   ]
 }

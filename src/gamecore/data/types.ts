@@ -60,6 +60,10 @@ export interface MonsterConfig {
   hitShield?: number;
   /** 灼烧免疫：不可被点燃 */
   burnImmune?: boolean;
+  /** 治疗光环：每 interval 秒为半径内友军回血 amount（不可超过上限） */
+  healAura?: { radius: number; amount: number; interval: number };
+  /** 出场护卫：生成时在自身周围 radius 半径部署 count 只 escort 怪（环形站位） */
+  escort?: { monster: string; count: number; radius: number };
   xp: number;              // 经验（击杀自动吸收）
   /** 伤害类型弱点：受到该类型 ×1.25（docs/01 §2.1） */
   weak?: DamageType[];
@@ -241,6 +245,7 @@ export interface MonsterRuntime {
   /** 附着的火焰（灼烧）：定时跳伤害直至熄灭；重复命中只刷新时长，不叠加（叠加需专门卡牌） */
   burn: { dps: number; until: number; nextTick: number } | null;
   shieldLeft: number;      // 剩余免伤层数（hitShield）
+  healTimer: number;       // 治疗光环计时（healAura）
   slowUntil: number;       // 冰冻减速
   slowFactor: number;
   shredUntil: number;      // 破甲

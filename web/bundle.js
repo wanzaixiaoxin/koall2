@@ -862,6 +862,22 @@
           this.spawnMonsterShot(src);
         });
       }
+      for (const m of this.monsters) {
+        const aura = m.cfg.healAura;
+        if (!aura || m.hp <= 0) continue;
+        m.healTimer -= dt;
+        if (m.healTimer > 0) continue;
+        m.healTimer += aura.interval;
+        this.hash.queryCircle(m.x, m.y, aura.radius, this.scratch);
+        let healed = 0;
+        for (const id of this.scratch) {
+          const ally = this.monsters[id];
+          if (!ally || ally.hp <= 0 || ally.hp >= ally.maxHp) continue;
+          ally.hp = Math.min(ally.maxHp, ally.hp + Math.round(aura.amount));
+          healed++;
+        }
+        if (healed > 0) this.bus.emit("onHeal", { x: m.x, y: m.y, radius: aura.radius });
+      }
       for (let i = this.monsterShots.length - 1; i >= 0; i--) {
         const s = this.monsterShots[i];
         s.t += dt / s.dur;
@@ -1007,11 +1023,20 @@
         phase: this.rng.range(0, Math.PI * 2),
         burn: null,
         shieldLeft: cfg.hitShield ?? 0,
+        healTimer: cfg.healAura ? cfg.healAura.interval : 0,
         slowUntil: 0,
         slowFactor: 1,
         shredUntil: 0,
         shredAmount: 0
       });
+      if (cfg.escort) {
+        for (let i = 0; i < cfg.escort.count; i++) {
+          const ang = Math.PI * 2 * i / cfg.escort.count + this.rng.range(-0.2, 0.2);
+          const ex = clamp(x + Math.cos(ang) * cfg.escort.radius, 40, this.level.arena.width - 40);
+          const ey = clamp(y + Math.sin(ang) * cfg.escort.radius, 200, this.level.arena.height - 60);
+          this.spawnMonster(cfg.escort.monster, ex, ey);
+        }
+      }
     }
     spawnProjectile(cmd) {
       const { weapon, fromX, fromY, dirX, dirY, speed, range, dmg, index } = cmd;
@@ -1540,7 +1565,8 @@
     bulwark: "#8A93B8",
     bat: "#FF7EC7",
     shroom: "#FF6B9C",
-    boss: "#B537F2"
+    boss: "#B537F2",
+    shaman: "#B388FF"
   };
   function monsterColor(m) {
     return MONSTER_COLOR[m.cfg.shape ?? "slime"] ?? "#FF6B57";
@@ -1681,6 +1707,21 @@
         ctx.restore();
         break;
       }
+      case "shaman": {
+        const bob = Math.sin(t * 3 + m.phase) * 3;
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.lineTo(x + r * 0.75, y);
+        ctx.lineTo(x, y + r);
+        ctx.lineTo(x - r * 0.75, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#F5F5FA";
+        ctx.beginPath();
+        ctx.arc(x, y - r - 8 + bob, 5, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
       case "slime":
       default: {
         const sq = moving ? 1 + 0.12 * Math.sin(t * 6 + m.phase) : 1;
@@ -1813,6 +1854,14 @@
       ctx.lineTo(s.x + ux * 4, s.y + uy * 4 + s.height);
       ctx.stroke();
     }
+  }
+  function drawHealPulse(ctx, x, y, radius, k) {
+    const alpha = 0.5 * (1 - k);
+    ctx.strokeStyle = `rgba(124,179,66,${alpha})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius * (0.3 + 0.7 * k), 0, Math.PI * 2);
+    ctx.stroke();
   }
 
   // src/adapter/web/main.ts
@@ -1954,6 +2003,11 @@
     });
     session.bus.on("onBurnTick", ({ dmg, x, y }) => {
       pushFloat(x, y, String(Math.round(dmg * 10) / 10), "#FF9A3C", 14);
+    });
+    const heals = [];
+    session.bus.on("onHeal", (p) => {
+      if (heals.length > 10) heals.shift();
+      heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
     });
     const bolts = [];
     session.bus.on("onChain", ({ points }) => {
@@ -2112,6 +2166,15 @@
       }
       for (const s of session.monsterShots) {
         drawMonsterShot(ctx, s);
+      }
+      for (let i = heals.length - 1; i >= 0; i--) {
+        const h2 = heals[i];
+        h2.life -= dtR;
+        if (h2.life <= 0) {
+          heals.splice(i, 1);
+          continue;
+        }
+        drawHealPulse(ctx, h2.x, h2.y, h2.radius, 1 - h2.life / 0.5);
       }
       const dtR = Math.min(0.05, (timeMs - prevRenderMs) / 1e3 || 0.016);
       prevRenderMs = timeMs;

@@ -364,6 +364,24 @@ export class GameSession {
       });
     }
 
+    // 5c) 治疗光环：巫师为半径内友军回血（不可超过上限，满血不触发）
+    for (const m of this.monsters) {
+      const aura = m.cfg.healAura;
+      if (!aura || m.hp <= 0) continue;
+      m.healTimer -= dt;
+      if (m.healTimer > 0) continue;
+      m.healTimer += aura.interval;
+      this.hash.queryCircle(m.x, m.y, aura.radius, this.scratch);
+      let healed = 0;
+      for (const id of this.scratch) {
+        const ally = this.monsters[id];
+        if (!ally || ally.hp <= 0 || ally.hp >= ally.maxHp) continue;
+        ally.hp = Math.min(ally.maxHp, ally.hp + Math.round(aura.amount));
+        healed++;
+      }
+      if (healed > 0) this.bus.emit('onHeal', { x: m.x, y: m.y, radius: aura.radius });
+    }
+
     // 5b) 怪物远程弹推进：到达落点结算对墙伤害
     for (let i = this.monsterShots.length - 1; i >= 0; i--) {
       const s = this.monsterShots[i];
@@ -525,11 +543,22 @@ export class GameSession {
       phase: this.rng.range(0, Math.PI * 2),
       burn: null,
       shieldLeft: cfg.hitShield ?? 0,
+      healTimer: cfg.healAura ? cfg.healAura.interval : 0,
       slowUntil: 0,
       slowFactor: 1,
       shredUntil: 0,
       shredAmount: 0,
     });
+
+    // 出场护卫：巫师等带 escort 的怪，周围环形部署一圈护卫
+    if (cfg.escort) {
+      for (let i = 0; i < cfg.escort.count; i++) {
+        const ang = (Math.PI * 2 * i) / cfg.escort.count + this.rng.range(-0.2, 0.2);
+        const ex = clamp(x + Math.cos(ang) * cfg.escort.radius, 40, this.level.arena.width - 40);
+        const ey = clamp(y + Math.sin(ang) * cfg.escort.radius, 200, this.level.arena.height - 60);
+        this.spawnMonster(cfg.escort.monster, ex, ey);
+      }
+    }
   }
 
   private spawnProjectile(cmd: FireCommand): void {

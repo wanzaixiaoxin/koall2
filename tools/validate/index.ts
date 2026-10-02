@@ -81,7 +81,17 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
     need(isNum(m.attackInterval) && m.attackInterval > 0, where, 'attackInterval 必须为正数');
     need(isNum(m.xp) && m.xp >= 0, where, 'xp 必须 ≥ 0');
     if (m.shape !== undefined) {
-      need(['slime', 'wolf', 'charger', 'thrower', 'bulwark', 'bat', 'shroom', 'boss'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
+      need(['slime', 'wolf', 'charger', 'thrower', 'bulwark', 'bat', 'shroom', 'boss', 'shaman'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
+    }
+    if (m.healAura) {
+      need(isNum(m.healAura.radius) && m.healAura.radius > 0, where, 'healAura.radius 必须为正数');
+      need(isNum(m.healAura.amount) && m.healAura.amount > 0, where, 'healAura.amount 必须为正数');
+      need(isNum(m.healAura.interval) && m.healAura.interval > 0, where, 'healAura.interval 必须为正数');
+    }
+    if (m.escort) {
+      need(typeof m.escort.monster === 'string', where, 'escort.monster 缺失');
+      need(isNum(m.escort.count) && m.escort.count >= 1 && m.escort.count <= 12, where, 'escort.count 应在 1~12');
+      need(isNum(m.escort.radius) && m.escort.radius > 0, where, 'escort.radius 必须为正数');
     }
     if (m.rangedDist !== undefined) {
       need(isNum(m.rangedDist) && m.rangedDist >= 100 && m.rangedDist <= 900, where, 'rangedDist 应在 100~900');
