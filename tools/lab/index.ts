@@ -265,9 +265,13 @@ const tests: TestCase[] = [
     s.wallHp = base - 1000;
     s.grantCard('repair');
     if (Number(s.wallHp) !== base - 700) return `第 1 次修复后 ${s.wallHp}`;
-    s.grantCard('repair'); // (base-400)+300 → 封顶 base
-    if (Number(s.wallHp) !== base) return `第 2 次修复后 ${s.wallHp}（未封顶 ${base}）`;
-    s.wallHp = s.wallMaxHp - 100;
+    s.grantCard('repair');
+    if (Number(s.wallHp) !== base - 400) return `第 2 次修复后 ${s.wallHp}`;
+    s.grantCard('repair');
+    if (Number(s.wallHp) !== base - 100) return `第 3 次修复后 ${s.wallHp}`;
+    s.grantCard('repair'); // base-100+300 → 封顶 base
+    if (Number(s.wallHp) !== base) return `第 4 次修复后 ${s.wallHp}（未封顶 ${base}）`;
+    // 加固提升上限后：修复在新上限内生效
     s.grantCard('fortify');
     s.wallHp = s.wallMaxHp - 100;
     s.grantCard('repair');
