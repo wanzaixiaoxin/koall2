@@ -372,7 +372,8 @@ export class GameSession {
         m.formationActive = true;
         const members = this.monsters.filter((x) => x.groupId === m.id && x.hp > 0);
         members.forEach((mem, i) => {
-          mem.slotX = clamp(m.x + (i - (members.length - 1) / 2) * 75, 40, this.level.arena.width - 40);
+          // 间距 58px < 岩甲兽直径 60：相邻盾面微叠，横排无缝隙（防子弹雨渗透）
+          mem.slotX = clamp(m.x + (i - (members.length - 1) / 2) * 58, 40, this.level.arena.width - 40);
         });
         this.bus.emit('onFormation', { x: m.x, y: m.y });
       }
@@ -883,9 +884,9 @@ export class GameSession {
     return true;
   }
 
-  /** 驶向槽位；到位后转为啃墙（assault）。 */
+  /** 驶向槽位；到位后转为啃墙（assault）。编队移动提速 3 倍——快速成排，减少对齐期间的防御空窗。 */
   private steerToSlot(m: MonsterRuntime, tx: number, ty: number, dt: number): void {
-    let speed = m.cfg.speed;
+    let speed = m.cfg.speed * 3;
     if (this.timeSec < m.slowUntil) speed *= m.slowFactor;
     const dx = tx - m.x;
     const dy = ty - m.y;

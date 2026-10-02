@@ -476,6 +476,8 @@ const tests: TestCase[] = [
     const xs = escorts.map((e) => e.slotX).sort((a, b) => a - b);
     const spread = xs[xs.length - 1] - xs[0];
     if (spread < 400) return `横排未展开（跨度 ${spread.toFixed(0)}）`;
+    const gaps = xs.slice(1).map((v, i) => v - xs[i]);
+    if (Math.min(...gaps) > 60) return `横排存在缝隙（最小间距 ${Math.min(...gaps).toFixed(0)} > 盾径 60）`;
     // 伤害转嫁：巫师受击由护卫代伤
     shaman.hp = shaman.maxHp;
     for (const e of escorts) e.hp = e.maxHp;

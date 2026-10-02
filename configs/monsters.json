@@ -175,7 +175,7 @@
       "transferAura": {
         "radius": 320
       },
-      "formationDist": 450
+      "formationDist": 550
     }
   ]
 }
