@@ -665,7 +665,10 @@ export class GameSession {
       m.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
-      this.bus.emit('onHit', { monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, x: m.x, y: m.y });
+      this.bus.emit('onHit', {
+        monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0,
+        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y,
+      });
 
       // C 类词缀：灼烧（火焰骑士，附着定时跳伤不叠加；灼烧免疫怪不可被点燃）/ 冰冻 / 破甲
       if (p.damageType === 'fire' && p.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
@@ -730,7 +733,7 @@ export class GameSession {
       cur.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
-      this.bus.emit('onHit', { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, x: cur.x, y: cur.y });
+      this.bus.emit('onHit', { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, mitigated: dealt === 0 ? 0 : res.mitigated, x: cur.x, y: cur.y });
       if (cur.hp <= 0) this.killMonster(null, cur); // 闪电不触发分裂（无弹体）
       path.push([cur.x, cur.y]);
       strikesLeft--;

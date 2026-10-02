@@ -115,10 +115,13 @@
     const raw = attacker.atk * ctx.skillMul * (1 + attacker.dmgMul) * critMul * floatMul * typeMul;
     const defTerm = target.def + 100 + 10 * target.level;
     const reduction = target.def / defTerm;
+    const rawFinal = raw * (1 - reduction);
+    const amount = Math.max(1, Math.round(rawFinal));
     return {
-      amount: Math.max(1, Math.round(raw * (1 - reduction))),
+      amount,
       isCrit,
-      damageType: ctx.damageType
+      damageType: ctx.damageType,
+      mitigated: Math.max(0, Math.round(raw) - amount)
     };
   }
 
@@ -1126,7 +1129,15 @@
         m.hp -= dealt;
         this.totalDamage += dealt;
         if (res.isCrit && dealt > 0) this.totalCrits++;
-        this.bus.emit("onHit", { monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, x: m.x, y: m.y });
+        this.bus.emit("onHit", {
+          monsterId: m.id,
+          dmg: dealt,
+          isCrit: res.isCrit,
+          blocked: dealt === 0,
+          mitigated: dealt === 0 ? 0 : res.mitigated,
+          x: m.x,
+          y: m.y
+        });
         if (p.damageType === "fire" && p.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
           const dps = p.dmg * p.riders.burnDpsMul;
           if (m.burn && m.burn.dps >= dps) {
@@ -1184,7 +1195,7 @@
         cur.hp -= dealt;
         this.totalDamage += dealt;
         if (res.isCrit && dealt > 0) this.totalCrits++;
-        this.bus.emit("onHit", { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, x: cur.x, y: cur.y });
+        this.bus.emit("onHit", { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, mitigated: dealt === 0 ? 0 : res.mitigated, x: cur.x, y: cur.y });
         if (cur.hp <= 0) this.killMonster(null, cur);
         path.push([cur.x, cur.y]);
         strikesLeft--;

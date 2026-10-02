@@ -27,6 +27,8 @@ export interface DamageResult {
   amount: number;
   isCrit: boolean;
   damageType: DamageType;
+  /** 被目标护甲减免的伤害量（飘字"抵 X"用） */
+  mitigated: number;
 }
 
 /**
@@ -50,10 +52,13 @@ export function calcDamage(
   const defTerm = target.def + 100 + 10 * target.level;
   const reduction = target.def / defTerm;
 
+  const rawFinal = raw * (1 - reduction);
+  const amount = Math.max(1, Math.round(rawFinal));
   return {
-    amount: Math.max(1, Math.round(raw * (1 - reduction))),
+    amount,
     isCrit,
     damageType: ctx.damageType,
+    mitigated: Math.max(0, Math.round(raw) - amount),
   };
 }
 

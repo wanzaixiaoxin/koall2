@@ -155,12 +155,15 @@ async function boot(): Promise<void> {
     if (floats.length >= 40) floats.shift();
     floats.push({ x, y, text, color, size, life: 0.8, maxLife: 0.8 });
   };
-  session.bus.on<{ dmg: number; isCrit: boolean; blocked?: boolean; x: number; y: number }>(
+  session.bus.on<{ dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number }>(
     'onHit',
-    ({ dmg, isCrit, blocked, x, y }) => {
+    ({ dmg, isCrit, blocked, mitigated, x, y }) => {
       if (blocked) {
         pushFloat(x, y - 12, '挡', '#8A93B8', 16); // 免伤盾抵消
         return;
+      }
+      if (mitigated && mitigated > 0) {
+        pushFloat(x + 20, y + 34, `抵${mitigated}`, '#8A93B8', 13); // 护甲减伤量
       }
       pushFloat(
         x + (Math.random() - 0.5) * 24,
