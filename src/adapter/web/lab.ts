@@ -412,14 +412,14 @@ async function boot(): Promise<void> {
 
     const wallTop = session.level.wall.height;
     // 城墙血条（实验室实时可见怪物磨血）
-    const wr = session.wallHp / session.wallMaxHp;
+    const wallRatio = session.wallHp / session.wallMaxHp;
     const barW = 420;
     const barX = (W - barW) / 2;
     const barY = wallTop + 26;
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
     ctx.fillRect(barX, barY, barW, 10);
-    ctx.fillStyle = wr < 0.3 ? '#FF3D71' : '#3D4470';
-    ctx.fillRect(barX, barY, barW * wr, 10);
+    ctx.fillStyle = wallRatio < 0.3 ? '#FF3D71' : '#3D4470';
+    ctx.fillRect(barX, barY, barW * wallRatio, 10);
     ctx.fillStyle = '#F5F5FA';
     ctx.font = '700 13px "PingFang SC", sans-serif';
     ctx.textAlign = 'center';

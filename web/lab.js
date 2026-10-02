@@ -2131,6 +2131,9 @@
         if (heals.length > 10) heals.shift();
         heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
       });
+      session.bus.on("onWallHit", (p) => {
+        pushFloat(p.x, p.y, `-${p.dmg}`, "#FF6B57", 17);
+      });
       session.bus.on("onDamageTransfer", (p) => {
         if (transfers.length > 14) transfers.shift();
         transfers.push({ fx: p.fx, fy: p.fy, tx: p.tx, ty: p.ty, life: 0.3 });
@@ -2357,6 +2360,18 @@
       ctx.fillStyle = "rgba(53,224,195,0.05)";
       ctx.fillRect(0, session.level.defenseRect.yMin, W, session.level.defenseRect.yMax - session.level.defenseRect.yMin);
       const wallTop = session.level.wall.height;
+      const wallRatio = session.wallHp / session.wallMaxHp;
+      const barW = 420;
+      const barX = (W - barW) / 2;
+      const barY = wallTop + 26;
+      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      ctx.fillRect(barX, barY, barW, 10);
+      ctx.fillStyle = wallRatio < 0.3 ? "#FF3D71" : "#3D4470";
+      ctx.fillRect(barX, barY, barW * wallRatio, 10);
+      ctx.fillStyle = "#F5F5FA";
+      ctx.font = '700 13px "PingFang SC", sans-serif';
+      ctx.textAlign = "center";
+      ctx.fillText(`\u57CE\u9632 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`, W / 2, barY + 26);
       const segs = 12;
       const segW = W / segs;
       const wr = session.wallHp / session.wallMaxHp;
