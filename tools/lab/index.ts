@@ -481,7 +481,9 @@ const tests: TestCase[] = [
     // 伤害转嫁：把巫师提到线前使其成为最近目标（横排在物理上护住了它），受击应由护卫代伤
     shaman.hp = shaman.maxHp;
     for (const e of escorts) e.hp = e.maxHp;
-    shaman.y = 200; // 线前暴露位，且在转嫁半径 320 内
+    // 英雄压到墙前线与巫师同点：巫师必为最近目标且被领队锚定静止（瞬移会被走位甩弹）
+    s.hero.x = 540;
+    s.hero.y = 96;
     let transferSeen = false;
     s.bus.on('onDamageTransfer', () => { transferSeen = true; });
     const hpBefore = shaman.hp;
@@ -507,7 +509,8 @@ const tests: TestCase[] = [
     if (!runFor(s, 20, () => shaman.formationActive)) return '变阵未激活';
     shaman.hp = shaman.maxHp;
     for (const e of aliveEscorts) e.hp = e.maxHp;
-    shaman.y = 200;
+    s.hero.x = 540;
+    s.hero.y = 96;
     let transferSeen = false;
     s.bus.on('onDamageTransfer', () => { transferSeen = true; });
     runFor(s, 10, () => transferSeen);
