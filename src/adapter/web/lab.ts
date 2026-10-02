@@ -10,7 +10,7 @@ import {
   WeaponConfig,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile, drawMonsterShot } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer } from './render/shapes';
 
 const W = 1080;
 const H = 1920;

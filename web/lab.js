@@ -1945,6 +1945,25 @@
       ctx.stroke();
     }
   }
+  function drawHealPulse(ctx, x, y, radius, k) {
+    const alpha = 0.5 * (1 - k);
+    ctx.strokeStyle = `rgba(124,179,66,${alpha})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, radius * (0.3 + 0.7 * k), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  function drawTransfer(ctx, fx, fy, tx, ty, alpha) {
+    const mx = (fx + tx) / 2 + (Math.random() - 0.5) * 24;
+    const my = (fy + ty) / 2 + (Math.random() - 0.5) * 24;
+    ctx.strokeStyle = `rgba(179,136,255,${alpha})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(fx, fy);
+    ctx.lineTo(mx, my);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+  }
 
   // src/adapter/web/lab.ts
   var W = 1080;
