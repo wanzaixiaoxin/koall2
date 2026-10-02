@@ -187,6 +187,7 @@ const tests: TestCase[] = [
       s.debugSpawn('bulwark', 540, 680);
       s.debugSpawn('bulwark', 540, 760);
       s.debugSpawn('bulwark', 540, 840);
+      for (const b of s.monsters) b.shieldLeft = 0; // 隔离免伤盾，测穿透衰减本身
       const hits: { t: number; dmg: number }[] = [];
       // 剔除暴击样本（×1.5 会污染均值；种子固定时同一暴击位每次复现造成系统性偏差）
       s.bus.on('onHit', (p: { dmg: number; isCrit: boolean }) => {
@@ -361,6 +362,8 @@ const tests: TestCase[] = [
       const s = freshSession();
       for (const g of grants) s.grantCard(g);
       s.debugSpawn('bulwark', 540, 900);
+      const t = s.monsters[0];
+      t.shieldLeft = 0; // 隔离免伤盾，测攻击收益本身
       let dmg = 0;
       s.bus.on('onHit', (p: { dmg: number }) => { if (dmg === 0) dmg = p.dmg; });
       runFor(s, 4, () => dmg > 0);
