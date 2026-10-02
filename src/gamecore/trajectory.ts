@@ -38,7 +38,7 @@ export interface Trajectory {
 // ---------- 声明式配置（可直接进 JSON，武器/卡牌/AI 内容生成共用） ----------
 
 export type TrajectoryConfig =
-  | { type: 'straight'; speed: number; range: number }
+  | { type: 'straight'; speed: number; life: number }   // life = 子弹寿命（秒），与索敌射程解耦
   | { type: 'homing'; speed: number; range: number; turnRate: number; duration: number; retarget: boolean; home?: boolean }
   | { type: 'parabola'; speed: number; range: number; peak?: number }
   | { type: 'spiral'; speed: number; range: number; angularSpeed: number; radius: number }
@@ -69,7 +69,7 @@ export function createTrajectory(cfg: TrajectoryConfig, launch: TrajectoryLaunch
   const d = norm(launch.dirX, launch.dirY);
   switch (cfg.type) {
     case 'straight':
-      return new StraightTrajectory(d.x, d.y, cfg.speed, cfg.range);
+      return new StraightTrajectory(d.x, d.y, cfg.speed, cfg.life);
     case 'homing':
       return new HomingTrajectory(d.x, d.y, cfg.speed, cfg.range, launch.target ?? null, cfg);
     case 'parabola':
@@ -89,19 +89,19 @@ export function createTrajectory(cfg: TrajectoryConfig, launch: TrajectoryLaunch
 
 // ---------- 运动基元 ----------
 
-/** 直线：恒定方向，射程耗尽消亡。 */
+/** 直线：恒定方向，寿命耗尽消亡（寿命制：与索敌射程解耦）。 */
 export class StraightTrajectory implements Trajectory {
   private dir: { x: number; y: number };
   private traveled = 0;
 
-  constructor(dirX: number, dirY: number, private speed: number, private maxRange: number) {
+  constructor(dirX: number, dirY: number, private speed: number, private lifeSec: number) {
     this.dir = norm(dirX, dirY);
   }
 
   update(x: number, y: number, ctx: MotionContext): TrajectoryResult {
     const step = this.speed * ctx.dt;
     this.traveled += step;
-    if (this.traveled >= this.maxRange || (this.dir.x === 0 && this.dir.y === 0)) {
+    if (this.traveled >= this.speed * this.lifeSec || (this.dir.x === 0 && this.dir.y === 0)) {
       return { x, y, alive: false };
     }
     return { x: x + this.dir.x * step, y: y + this.dir.y * step, alive: true };
@@ -370,7 +370,7 @@ export function frisbeeConfig(speed: number, outRange: number, hoverSec: number,
   return {
     type: 'phased',
     phases: [
-      { motion: { type: 'straight', speed, range: outRange + 200 }, until: { kind: 'distance', value: outRange } },
+      { motion: { type: 'straight', speed, life: (outRange + 200) / speed }, until: { kind: 'distance', value: outRange } },
       { motion: { type: 'hover' }, until: { kind: 'duration', value: hoverSec } },
       {
         motion: { type: 'homing', speed: returnSpeed, range: 99999, turnRate: 720, duration: 99, retarget: false, home: true },

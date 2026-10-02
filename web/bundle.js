@@ -167,7 +167,7 @@
     const d = norm(launch.dirX, launch.dirY);
     switch (cfg.type) {
       case "straight":
-        return new StraightTrajectory(d.x, d.y, cfg.speed, cfg.range);
+        return new StraightTrajectory(d.x, d.y, cfg.speed, cfg.life);
       case "homing":
         return new HomingTrajectory(d.x, d.y, cfg.speed, cfg.range, launch.target ?? null, cfg);
       case "parabola":
@@ -185,16 +185,16 @@
     }
   }
   var StraightTrajectory = class {
-    constructor(dirX, dirY, speed, maxRange) {
+    constructor(dirX, dirY, speed, lifeSec) {
       this.speed = speed;
-      this.maxRange = maxRange;
+      this.lifeSec = lifeSec;
       this.traveled = 0;
       this.dir = norm(dirX, dirY);
     }
     update(x, y, ctx) {
       const step = this.speed * ctx.dt;
       this.traveled += step;
-      if (this.traveled >= this.maxRange || this.dir.x === 0 && this.dir.y === 0) {
+      if (this.traveled >= this.speed * this.lifeSec || this.dir.x === 0 && this.dir.y === 0) {
         return { x, y, alive: false };
       }
       return { x: x + this.dir.x * step, y: y + this.dir.y * step, alive: true };
@@ -841,6 +841,11 @@
           this.killProjectile(p);
           continue;
         }
+        const { width, height } = this.level.arena;
+        if (p.x < -60 || p.x > width + 60 || p.y < -60 || p.y > height + 60) {
+          this.killProjectile(p);
+          continue;
+        }
         this.collideProjectile(p);
       }
       this.hash.rebuild(this.monsters);
@@ -1023,7 +1028,7 @@
       const riders = weapon.riders;
       const damageType = weapon.element;
       const homing = affixes.homing > 0 && !!cmd.target;
-      let motionCfg = homing ? { type: "homing", speed, range, turnRate: 360, duration: 2.5, retarget: true } : weapon.cfg.motion ?? { type: "straight", speed, range };
+      let motionCfg = homing ? { type: "homing", speed, range, turnRate: 360, duration: 2.5, retarget: true } : weapon.cfg.motion ?? { type: "straight", speed, life: weapon.cfg.bulletLife ?? 2.5 };
       if (motionCfg.type === "phased" && weapon.mods.rangeMul !== 1) {
         motionCfg = {
           ...motionCfg,
@@ -1391,7 +1396,7 @@
           const dx = Math.cos(ang);
           const dy = Math.sin(ang);
           const childHoming = p.homing && !!childTarget;
-          const childCfg = childHoming ? { type: "homing", speed: p.speed, range: 500, turnRate: 360, duration: 2.5, retarget: true } : { type: "straight", speed: p.speed, range: 500 };
+          const childCfg = childHoming ? { type: "homing", speed: p.speed, range: 500, turnRate: 360, duration: 2.5, retarget: true } : { type: "straight", speed: p.speed, life: 2 };
           this.projectiles.push({
             id: this.nextEntityId++,
             weapon: p.weapon,

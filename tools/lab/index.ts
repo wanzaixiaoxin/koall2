@@ -499,9 +499,9 @@ const tests: TestCase[] = [
     return s.hero.level >= 2
       ? true : `等级 ${s.hero.level}（升级未发生，测试无效）`;
   } },
-  { name: 'T-直线：匀速前进，射程耗尽消亡', run: () => {
+  { name: 'T-直线：匀速前进，寿命耗尽消亡', run: () => {
     const ctx: MotionContext = { dt: 1 / 30, now: 0, ownerX: 0, ownerY: 0, nearestMonster: () => null };
-    const t: Trajectory = createTrajectory({ type: 'straight', speed: 300, range: 100 }, { dirX: 1, dirY: 0 });
+    const t: Trajectory = createTrajectory({ type: 'straight', speed: 300, life: 100 / 300 }, { dirX: 1, dirY: 0 });
     let x = 0; let y = 0; let alive = true; let steps = 0;
     let sawStep10 = false;
     while (alive && steps < 60) {

@@ -12,7 +12,10 @@ export interface WeaponConfig {
   interval: number;        // 攻击间隔（秒）
   count: number;           // 每次发射数量
   projectileSpeed: number; // px/s
-  projectileRange: number; // 最大射程 px
+  /** 索敌距离（px，锁定目标的最远距离；长枪管卡强化它）——不是子弹飞行距离 */
+  projectileRange: number;
+  /** 子弹寿命（秒）：按飞行时间存活，命中/出屏/寿尽才消失（默认 2.5s，全屏武器 3s） */
+  bulletLife?: number;
   projectileRadius: number;
   pierce: number;          // 穿透目标数（0=命中即消失）
   /** 穿透伤害衰减率（每穿透一个目标，伤害 ×(1-衰减率)）；破甲每级削减 5%，最低 0（docs/02 §2） */

@@ -336,7 +336,13 @@ export class GameSession {
       p.height = res.height ?? 0;
       p.stepLen = Math.hypot(p.x - p.px, p.y - p.py);
       if (!res.alive) {
-        this.killProjectile(p); // 射程耗尽落地（触发爆破落地圈）
+        this.killProjectile(p); // 寿命耗尽（落地/到达）——触发爆破落地
+        continue;
+      }
+      // 出屏即消亡（飞出战场边界）
+      const { width, height } = this.level.arena;
+      if (p.x < -60 || p.x > width + 60 || p.y < -60 || p.y > height + 60) {
+        this.killProjectile(p);
         continue;
       }
       this.collideProjectile(p);
@@ -547,7 +553,7 @@ export class GameSession {
     // 运动配置快照：武器声明式配置优先；追踪词缀覆盖为 homing（弹射/分裂重定向按此配置重建）
     let motionCfg: TrajectoryConfig = homing
       ? { type: 'homing', speed, range, turnRate: 360, duration: 2.5, retarget: true }
-      : (weapon.cfg.motion ?? { type: 'straight', speed, range });
+      : (weapon.cfg.motion ?? { type: 'straight', speed, life: weapon.cfg.bulletLife ?? 2.5 });
     // 阶段机（回旋镖等）：距离相位随射程倍率缩放——"长旋"等射程卡对飞出距离生效
     if (motionCfg.type === 'phased' && weapon.mods.rangeMul !== 1) {
       motionCfg = {
@@ -966,7 +972,7 @@ export class GameSession {
         const childHoming = p.homing && !!childTarget;
         const childCfg: TrajectoryConfig = childHoming
           ? { type: 'homing', speed: p.speed, range: 500, turnRate: 360, duration: 2.5, retarget: true }
-          : { type: 'straight', speed: p.speed, range: 500 };
+          : { type: 'straight', speed: p.speed, life: 2.0 };
         this.projectiles.push({
           id: this.nextEntityId++,
           weapon: p.weapon,

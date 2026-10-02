@@ -9,7 +9,7 @@
       "interval": 0.55,
       "count": 1,
       "projectileSpeed": 950,
-      "projectileRange": 1500,
+      "projectileRange": 850,
       "projectileRadius": 5,
       "pierce": 0,
       "targeting": "nearest",
@@ -18,7 +18,8 @@
       "heat": {
         "shots": 16,
         "cooldown": 2.2
-      }
+      },
+      "bulletLife": 3.0
     },
     {
       "id": "crossbow_pierce",
@@ -29,7 +30,7 @@
       "interval": 1.6,
       "count": 1,
       "projectileSpeed": 1200,
-      "projectileRange": 1700,
+      "projectileRange": 1100,
       "projectileRadius": 4,
       "pierce": 3,
       "pierceFalloff": 0.18,
@@ -39,7 +40,8 @@
       "heat": {
         "shots": 8,
         "cooldown": 2.2
-      }
+      },
+      "bulletLife": 2.2
     },
     {
       "id": "alchemist_bomb",
@@ -50,7 +52,7 @@
       "interval": 1.5,
       "count": 1,
       "projectileSpeed": 700,
-      "projectileRange": 1300,
+      "projectileRange": 950,
       "projectileRadius": 8,
       "pierce": 0,
       "targeting": "random",
@@ -71,7 +73,8 @@
       "heat": {
         "shots": 10,
         "cooldown": 2.5
-      }
+      },
+      "bulletLife": 2.2
     },
     {
       "id": "boomerang",
@@ -144,7 +147,7 @@
       "interval": 1.1,
       "count": 1,
       "projectileSpeed": 0,
-      "projectileRange": 1500,
+      "projectileRange": 950,
       "projectileRadius": 0,
       "pierce": 0,
       "targeting": "nearest",
