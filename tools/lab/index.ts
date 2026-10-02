@@ -249,21 +249,25 @@ const tests: TestCase[] = [
   } },
 
   // ===== B 类：城墙卡 =====
-  { name: 'B-加固城墙：上限 1500→1950→2535 且当前值同步', run: () => {
+  { name: 'B-加固城墙：上限 +30% 复利且当前值同步', run: () => {
     const s = freshSession();
+    const base = s.wallMaxHp; // 实验室城墙 99999，测试写成基线无关
     s.grantCard('fortify');
-    if (Number(s.wallMaxHp) !== 1950 || Number(s.wallHp) !== 1950) return `1 层后 ${s.wallHp}/${s.wallMaxHp}`;
+    const expect1 = base + Math.round(base * 0.3);
+    if (Number(s.wallMaxHp) !== expect1 || Number(s.wallHp) !== expect1) return `1 层后 ${s.wallHp}/${s.wallMaxHp}`;
     s.grantCard('fortify');
-    return Number(s.wallMaxHp) === 2535 && Number(s.wallHp) === 2535;
+    const expect2 = expect1 + Math.round(expect1 * 0.3);
+    return Number(s.wallMaxHp) === expect2 && Number(s.wallHp) === expect2;
   } },
   { name: 'B-紧急修缮：+300 且不超上限（封顶）', run: () => {
     const s = freshSession();
-    s.wallHp = 1000;
+    const base = s.wallMaxHp;
+    s.wallHp = base - 1000;
     s.grantCard('repair');
-    if (Number(s.wallHp) !== 1300) return `第 1 次修复后 ${s.wallHp}`;
-    s.grantCard('repair'); // 1300+300=1600 → 封顶 1500
-    if (Number(s.wallHp) !== 1500) return `第 2 次修复后 ${s.wallHp}（未封顶）`;
-    s.wallHp = 2000; // 加固后上限提升的场景：修复不再生效但也不穿透
+    if (Number(s.wallHp) !== base - 700) return `第 1 次修复后 ${s.wallHp}`;
+    s.grantCard('repair'); // (base-400)+300 → 封顶 base
+    if (Number(s.wallHp) !== base) return `第 2 次修复后 ${s.wallHp}（未封顶 ${base}）`;
+    s.wallHp = s.wallMaxHp - 100;
     s.grantCard('fortify');
     s.wallHp = s.wallMaxHp - 100;
     s.grantCard('repair');
@@ -454,6 +458,29 @@ const tests: TestCase[] = [
       if (lastShotT > 0 && s.timeSec - lastShotT > 1.2) cooled = true; // 0.55s 正常间隔下 >1.2s 空窗=过热冷却中
     }
     return shots >= 14 && cooled ? true : `射击 ${shots} 次，未检测到过冷窗口`;
+  } },
+  { name: 'M-巫师编队：近墙变阵排排啃墙，巫师伤害转嫁给周围怪物', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 99999;
+    s.wallHp = 99999;
+    s.debugSpawn('shaman', 540, 700);
+    const shaman = s.monsters.find((m) => m.cfg.id === 'shaman')!;
+    const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
+    const activated = runFor(s, 20, () => shaman.formationActive);
+    if (!activated) return '变阵未激活';
+    runFor(s, 6, () => escorts.every((e) => e.state === 'assault'));
+    const xs = escorts.map((e) => e.slotX).sort((a, b) => a - b);
+    const spread = xs[xs.length - 1] - xs[0];
+    if (spread < 400) return `横排未展开（跨度 ${spread.toFixed(0)}）`;
+    // 伤害转嫁：巫师受击由护卫代伤
+    shaman.hp = shaman.maxHp;
+    for (const e of escorts) e.hp = e.maxHp;
+    let transferSeen = false;
+    s.bus.on('onDamageTransfer', () => { transferSeen = true; });
+    const hpBefore = shaman.hp;
+    runFor(s, 10, () => transferSeen);
+    if (!transferSeen) return '转嫁未触发';
+    return shaman.hp >= hpBefore ? true : `巫师仍掉血（${hpBefore} → ${shaman.hp}）`;
   } },
   { name: 'M-巫师：治疗光环为周围友军回血 + 出场自带岩甲兽护卫环', run: () => {
     const s = freshSession();

@@ -64,6 +64,10 @@ export interface MonsterConfig {
   healAura?: { radius: number; amount: number; interval: number };
   /** 出场护卫：生成时在自身周围 radius 半径部署 count 只 escort 怪（环形站位） */
   escort?: { monster: string; count: number; radius: number };
+  /** 伤害转嫁（变阵后生效）：受到的直接伤害转移给半径内随机友军（无友军则自己承受） */
+  transferAura?: { radius: number };
+  /** 近墙变阵：与城墙距离小于该值时，护卫排成一排啃墙、巫师居中（docs/04 §1.2） */
+  formationDist?: number;
   xp: number;              // 经验（击杀自动吸收）
   /** 伤害类型弱点：受到该类型 ×1.25（docs/01 §2.1） */
   weak?: DamageType[];
@@ -246,6 +250,12 @@ export interface MonsterRuntime {
   burn: { dps: number; until: number; nextTick: number } | null;
   shieldLeft: number;      // 剩余免伤层数（hitShield）
   healTimer: number;       // 治疗光环计时（healAura）
+  /** 队籍：护卫=领队巫师运行时 id；无编队为 -1（变阵系统用） */
+  groupId: number;
+  /** 领队：近墙变阵是否激活（护卫排一排啃墙、巫师居中） */
+  formationActive: boolean;
+  /** 变阵后分配的横排位（护卫用） */
+  slotX: number;
   slowUntil: number;       // 冰冻减速
   slowFactor: number;
   shredUntil: number;      // 破甲

@@ -344,3 +344,23 @@ export function drawHealPulse(ctx: CanvasRenderingContext2D, x: number, y: numbe
   ctx.arc(x, y, radius * (0.3 + 0.7 * k), 0, Math.PI * 2);
   ctx.stroke();
 }
+
+/** 伤害转嫁连线：巫师 → 替伤怪物（紫色电弧，0.3s 闪现）。 */
+export function drawTransfer(
+  ctx: CanvasRenderingContext2D,
+  fx: number,
+  fy: number,
+  tx: number,
+  ty: number,
+  alpha: number,
+): void {
+  const mx = (fx + tx) / 2 + (Math.random() - 0.5) * 24;
+  const my = (fy + ty) / 2 + (Math.random() - 0.5) * 24;
+  ctx.strokeStyle = `rgba(179,136,255,${alpha})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(fx, fy);
+  ctx.lineTo(mx, my);
+  ctx.lineTo(tx, ty);
+  ctx.stroke();
+}

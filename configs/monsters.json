@@ -171,7 +171,11 @@
         "monster": "bulwark",
         "count": 10,
         "radius": 150
-      }
+      },
+      "transferAura": {
+        "radius": 320
+      },
+      "formationDist": 450
     }
   ]
 }

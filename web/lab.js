@@ -856,6 +856,7 @@
         if (m.hp <= 0) continue;
         this.tickBurns(m, dt);
         if (m.hp <= 0) continue;
+        if (this.formationMove(m, dt)) continue;
         updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
           this.wallHp = Math.max(0, this.wallHp - dmg);
           this.totalWallDamage += dmg;
@@ -864,6 +865,17 @@
         }, (src) => {
           this.spawnMonsterShot(src);
         });
+      }
+      for (const m of this.monsters) {
+        if (m.hp <= 0) continue;
+        if (m.cfg.formationDist && !m.formationActive && m.y <= this.level.wall.height + m.cfg.formationDist) {
+          m.formationActive = true;
+          const members = this.monsters.filter((x) => x.groupId === m.id && x.hp > 0);
+          members.forEach((mem, i) => {
+            mem.slotX = clamp(m.x + (i - (members.length - 1) / 2) * 75, 40, this.level.arena.width - 40);
+          });
+          this.bus.emit("onFormation", { x: m.x, y: m.y });
+        }
       }
       for (const m of this.monsters) {
         const aura = m.cfg.healAura;
@@ -1029,17 +1041,23 @@
         burn: null,
         shieldLeft: cfg.hitShield ?? 0,
         healTimer: cfg.healAura ? cfg.healAura.interval : 0,
+        groupId: -1,
+        formationActive: false,
+        slotX: x,
         slowUntil: 0,
         slowFactor: 1,
         shredUntil: 0,
         shredAmount: 0
       });
       if (cfg.escort && !skipEscort) {
+        const leaderId = this.monsters[this.monsters.length - 1].id;
         for (let i = 0; i < cfg.escort.count; i++) {
           const ang = Math.PI * 2 * i / cfg.escort.count + this.rng.range(-0.2, 0.2);
           const ex = clamp(x + Math.cos(ang) * cfg.escort.radius, 40, this.level.arena.width - 40);
           const ey = clamp(y + Math.sin(ang) * cfg.escort.radius, 200, this.level.arena.height - 60);
           this.spawnMonster(cfg.escort.monster, ex, ey);
+          const member = this.monsters[this.monsters.length - 1];
+          member.groupId = leaderId;
         }
       }
     }
@@ -1127,7 +1145,8 @@
           },
           this.rng
         );
-        const dealt = this.applyDirectHit(m, res.amount);
+        const dealt0 = this.applyDirectHit(m, res.amount);
+        const dealt = this.resolveTransfer(m, dealt0);
         m.hp -= dealt;
         this.totalDamage += dealt;
         if (res.isCrit && dealt > 0) this.totalCrits++;
@@ -1193,7 +1212,8 @@
           },
           this.rng
         );
-        const dealt = this.applyDirectHit(cur, res.amount);
+        const dealt0 = this.applyDirectHit(cur, res.amount);
+        const dealt = this.resolveTransfer(cur, dealt0);
         cur.hp -= dealt;
         this.totalDamage += dealt;
         if (res.isCrit && dealt > 0) this.totalCrits++;
@@ -1268,7 +1288,8 @@
           },
           this.rng
         );
-        const dealt = this.applyDirectHit(m, res.amount);
+        const dealt0 = this.applyDirectHit(m, res.amount);
+        const dealt = this.resolveTransfer(m, dealt0);
         m.hp -= dealt;
         this.totalDamage += dealt;
         if (res.isCrit && dealt > 0) this.totalCrits++;
@@ -1291,6 +1312,62 @@
         return 0;
       }
       return rawAmount;
+    }
+    /** 编队移动（变阵）：护卫驶向横排槽位、领队巫师居中；到位后啃墙。返回 true 表示本 tick 已由编队逻辑处理。 */
+    formationMove(m, dt) {
+      const wallTop = this.level.wall.height;
+      if (m.formationActive) {
+        this.steerToSlot(m, m.x, wallTop + m.cfg.radius + 10, dt);
+        return true;
+      }
+      if (m.groupId < 0) return false;
+      const leader = this.monsters[m.groupId];
+      if (!leader || leader.hp <= 0 || !leader.formationActive) return false;
+      this.steerToSlot(m, m.slotX, wallTop + m.cfg.radius, dt);
+      return true;
+    }
+    /** 驶向槽位；到位后转为啃墙（assault）。 */
+    steerToSlot(m, tx, ty, dt) {
+      let speed = m.cfg.speed;
+      if (this.timeSec < m.slowUntil) speed *= m.slowFactor;
+      const dx = tx - m.x;
+      const dy = ty - m.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 6) {
+        const step = Math.min(speed * dt, dist);
+        m.x += dx / dist * step;
+        m.y += dy / dist * step;
+        m.state = "march";
+        return;
+      }
+      m.y = ty;
+      m.state = "assault";
+      m.attackTimer -= dt;
+      if (m.attackTimer <= 0) {
+        m.attackTimer += m.cfg.attackInterval;
+        const dmg = m.cfg.atk;
+        this.wallHp = Math.max(0, this.wallHp - dmg);
+        this.totalWallDamage += dmg;
+        this.waveWallDamage += dmg;
+        this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
+      }
+    }
+    /** 伤害转嫁：变阵巫师的直接伤害转移给半径内随机友军（无友军则自承）。返回巫师实际承受值。 */
+    resolveTransfer(m, dealt) {
+      if (dealt <= 0 || !m.formationActive || !m.cfg.transferAura) return dealt;
+      this.hash.queryCircle(m.x, m.y, m.cfg.transferAura.radius, this.scratch);
+      const candidates = [];
+      for (const id of this.scratch) {
+        const ally = this.monsters[id];
+        if (ally && ally !== m && ally.hp > 0) candidates.push(ally);
+      }
+      if (candidates.length === 0) return dealt;
+      const target = candidates[this.rng.int(0, candidates.length - 1)];
+      target.hp -= dealt;
+      this.totalDamage += dealt;
+      this.bus.emit("onDamageTransfer", { fx: m.x, fy: m.y, tx: target.x, ty: target.y, dmg: dealt });
+      if (target.hp <= 0) this.killMonster(null, target);
+      return 0;
     }
     /** 灼烧：附着的火焰每 0.5s 跳一次伤害直至熄灭（重复命中只刷新时长，不叠加）。 */
     tickBurns(m, _dt) {
@@ -1935,6 +2012,13 @@
     window.addEventListener("keydown", (e) => input.keys.add(e.key.toLowerCase()));
     window.addEventListener("keyup", (e) => input.keys.delete(e.key.toLowerCase()));
     window.addEventListener("blur", () => input.keys.clear());
+    const floats = [];
+    const pushFloat = (x, y, text, color, size) => {
+      if (floats.length >= 40) floats.shift();
+      floats.push({ x, y, text, color, size, life: 0.8 });
+    };
+    const transfers = [];
+    const heals = [];
     const bolts = [];
     let session;
     function createSession(weaponId) {
@@ -1972,6 +2056,32 @@
       session.bus.on("onChain", ({ points }) => {
         if (bolts.length > 12) bolts.shift();
         bolts.push({ pts: points, life: 0.22 });
+      });
+      session.bus.on(
+        "onHit",
+        ({ dmg, isCrit, blocked, mitigated, x, y }) => {
+          if (blocked) {
+            pushFloat(x, y - 12, "\u6321", "#8A93B8", 16);
+            return;
+          }
+          if (mitigated && mitigated > 0) pushFloat(x + 20, y + 34, `\u62B5${mitigated}`, "#8A93B8", 13);
+          pushFloat(x, y + 20, String(Math.round(dmg)), isCrit ? "#FFD54F" : "#F5F5FA", isCrit ? 28 : 18);
+        }
+      );
+      session.bus.on("onBurnTick", ({ dmg, x, y }) => {
+        pushFloat(x, y, String(dmg), "#FF9A3C", 13);
+      });
+      session.bus.on("onHealed", (p) => {
+        pushFloat(p.x, p.y, `+${p.amount}`, "#7CB342", 15);
+      });
+      session.bus.on("onHeal", (p) => {
+        if (heals.length > 10) heals.shift();
+        heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
+      });
+      session.bus.on("onDamageTransfer", (p) => {
+        if (transfers.length > 14) transfers.shift();
+        transfers.push({ fx: p.fx, fy: p.fy, tx: p.tx, ty: p.ty, life: 0.3 });
+        pushFloat(p.tx, p.ty + 24, `\u8F6C${Math.round(p.dmg)}`, "#B388FF", 15);
       });
     }
     const cardGrid = document.getElementById("cardgrid");
@@ -2247,6 +2357,78 @@
         strokeBoltPath(ctx, b.pts);
         ctx.stroke();
       }
+      for (let i = transfers.length - 1; i >= 0; i--) {
+        const tr = transfers[i];
+        tr.life -= dtR;
+        if (tr.life <= 0) {
+          transfers.splice(i, 1);
+          continue;
+        }
+        drawTransfer(ctx, tr.fx, tr.fy, tr.tx, tr.ty, Math.min(1, tr.life / 0.18));
+      }
+      for (let i = heals.length - 1; i >= 0; i--) {
+        const h = heals[i];
+        h.life -= dtR;
+        if (h.life <= 0) {
+          heals.splice(i, 1);
+          continue;
+        }
+        drawHealPulse(ctx, h.x, h.y, h.radius, 1 - h.life / 0.5);
+      }
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.textAlign = "center";
+      for (let i = floats.length - 1; i >= 0; i--) {
+        const f = floats[i];
+        f.life -= dtR;
+        if (f.life <= 0) {
+          floats.splice(i, 1);
+          continue;
+        }
+        const k = f.life / 0.8;
+        ctx.globalAlpha = Math.min(1, k * 2);
+        ctx.font = `700 ${f.size}px "PingFang SC", sans-serif`;
+        ctx.fillStyle = f.color;
+        ctx.fillText(f.text, f.x, H - (f.y + (1 - k) * 50));
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      for (let i = transfers.length - 1; i >= 0; i--) {
+        const tr = transfers[i];
+        tr.life -= dtR;
+        if (tr.life <= 0) {
+          transfers.splice(i, 1);
+          continue;
+        }
+        drawTransfer(ctx, tr.fx, tr.fy, tr.tx, tr.ty, Math.min(1, tr.life / 0.18));
+      }
+      for (let i = heals.length - 1; i >= 0; i--) {
+        const h = heals[i];
+        h.life -= dtR;
+        if (h.life <= 0) {
+          heals.splice(i, 1);
+          continue;
+        }
+        drawHealPulse(ctx, h.x, h.y, h.radius, 1 - h.life / 0.5);
+      }
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.textAlign = "center";
+      for (let i = floats.length - 1; i >= 0; i--) {
+        const f = floats[i];
+        f.life -= dtR;
+        if (f.life <= 0) {
+          floats.splice(i, 1);
+          continue;
+        }
+        const k = f.life / 0.8;
+        ctx.globalAlpha = Math.min(1, k * 2);
+        ctx.font = `700 ${f.size}px "PingFang SC", sans-serif`;
+        ctx.fillStyle = f.color;
+        ctx.fillText(f.text, f.x, H - (f.y + (1 - k) * 50));
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
       const now = session.timeSec;
       const tNow = now;
       for (const m of session.monsters) {

@@ -14,7 +14,7 @@ import {
   Vec2,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer } from './render/shapes';
 
 const W = 1080;
 const H = 1920;
@@ -190,6 +190,16 @@ async function boot(): Promise<void> {
   session.bus.on<{ x: number; y: number; amount: number }>('onHealed', (p) => {
     pushFloat(p.x, p.y, `+${p.amount}`, '#7CB342', 15);
   });
+  // 伤害转嫁：紫色连线 + "转X"飘字
+  const transfers: { fx: number; fy: number; tx: number; ty: number; life: number }[] = [];
+  session.bus.on<{ fx: number; fy: number; tx: number; ty: number; dmg: number }>(
+    'onDamageTransfer',
+    (p) => {
+      if (transfers.length > 14) transfers.shift();
+      transfers.push({ fx: p.fx, fy: p.fy, tx: p.tx, ty: p.ty, life: 0.3 });
+      pushFloat(p.tx, p.ty + 24, `转${Math.round(p.dmg)}`, '#B388FF', 15);
+    },
+  );
   // 连锁闪电折线（渲染层表现，0.22s 闪现）
   const bolts: { pts: number[][]; life: number }[] = [];
   session.bus.on<{ points: number[][] }>('onChain', ({ points }) => {
@@ -397,6 +407,17 @@ async function boot(): Promise<void> {
         continue;
       }
       drawHealPulse(ctx, h.x, h.y, h.radius, 1 - h.life / 0.5);
+    }
+
+    // 伤害转嫁连线
+    for (let i = transfers.length - 1; i >= 0; i--) {
+      const tr = transfers[i];
+      tr.life -= dtR;
+      if (tr.life <= 0) {
+        transfers.splice(i, 1);
+        continue;
+      }
+      drawTransfer(ctx, tr.fx, tr.fy, tr.tx, tr.ty, Math.min(1, tr.life / 0.18));
     }
 
     // 伤害飘字（上升 + 淡出；文字在 y 翻转坐标系下需回到标准变换绘制）

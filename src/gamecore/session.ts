@@ -354,6 +354,7 @@ export class GameSession {
       if (m.hp <= 0) continue;
       this.tickBurns(m, dt);
       if (m.hp <= 0) continue;
+      if (this.formationMove(m, dt)) continue; // 巫师编队（变阵排排啃墙）由编队逻辑驱动
       updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
         this.wallHp = Math.max(0, this.wallHp - dmg);
         this.totalWallDamage += dmg;
@@ -364,7 +365,20 @@ export class GameSession {
       });
     }
 
-    // 5c) 治疗光环：巫师为半径内友军回血（不可超过上限，满血不触发）
+    // 5d) 巫师编队：领队近墙激活变阵（护卫排一排啃墙、巫师居中）；编队成员由 formationMove 驱动
+    for (const m of this.monsters) {
+      if (m.hp <= 0) continue;
+      if (m.cfg.formationDist && !m.formationActive && m.y <= this.level.wall.height + m.cfg.formationDist) {
+        m.formationActive = true;
+        const members = this.monsters.filter((x) => x.groupId === m.id && x.hp > 0);
+        members.forEach((mem, i) => {
+          mem.slotX = clamp(m.x + (i - (members.length - 1) / 2) * 75, 40, this.level.arena.width - 40);
+        });
+        this.bus.emit('onFormation', { x: m.x, y: m.y });
+      }
+    }
+
+    // 5e) 治疗光环：巫师为半径内友军回血（不可超过上限，满血不触发）
     for (const m of this.monsters) {
       const aura = m.cfg.healAura;
       if (!aura || m.hp <= 0) continue;
@@ -546,19 +560,25 @@ export class GameSession {
       burn: null,
       shieldLeft: cfg.hitShield ?? 0,
       healTimer: cfg.healAura ? cfg.healAura.interval : 0,
+      groupId: -1,
+      formationActive: false,
+      slotX: x,
       slowUntil: 0,
       slowFactor: 1,
       shredUntil: 0,
       shredAmount: 0,
     });
 
-    // 出场护卫：巫师等带 escort 的怪，周围环形部署一圈护卫
+    // 出场护卫：巫师等带 escort 的怪，周围环形部署一圈护卫（记录队籍）
     if (cfg.escort && !skipEscort) {
+      const leaderId = this.monsters[this.monsters.length - 1].id;
       for (let i = 0; i < cfg.escort.count; i++) {
         const ang = (Math.PI * 2 * i) / cfg.escort.count + this.rng.range(-0.2, 0.2);
         const ex = clamp(x + Math.cos(ang) * cfg.escort.radius, 40, this.level.arena.width - 40);
         const ey = clamp(y + Math.sin(ang) * cfg.escort.radius, 200, this.level.arena.height - 60);
         this.spawnMonster(cfg.escort.monster, ex, ey);
+        const member = this.monsters[this.monsters.length - 1];
+        member.groupId = leaderId;
       }
     }
   }
@@ -663,7 +683,8 @@ export class GameSession {
         },
         this.rng,
       );
-      const dealt = this.applyDirectHit(m, res.amount); // 免伤盾结算
+      const dealt0 = this.applyDirectHit(m, res.amount); // 免伤盾结算
+      const dealt = this.resolveTransfer(m, dealt0); // 巫师变阵：伤害转嫁
       m.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
@@ -731,7 +752,8 @@ export class GameSession {
         },
         this.rng,
       );
-      const dealt = this.applyDirectHit(cur, res.amount); // 免伤盾结算
+      const dealt0 = this.applyDirectHit(cur, res.amount); // 免伤盾结算
+      const dealt = this.resolveTransfer(cur, dealt0); // 巫师变阵：伤害转嫁
       cur.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
@@ -818,7 +840,8 @@ export class GameSession {
         },
         this.rng,
       );
-      const dealt = this.applyDirectHit(m, res.amount); // 免伤盾结算
+      const dealt0 = this.applyDirectHit(m, res.amount); // 免伤盾结算
+      const dealt = this.resolveTransfer(m, dealt0); // 巫师变阵：伤害转嫁
       m.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
@@ -843,6 +866,66 @@ export class GameSession {
       return 0;
     }
     return rawAmount;
+  }
+
+  /** 编队移动（变阵）：护卫驶向横排槽位、领队巫师居中；到位后啃墙。返回 true 表示本 tick 已由编队逻辑处理。 */
+  private formationMove(m: MonsterRuntime, dt: number): boolean {
+    const wallTop = this.level.wall.height;
+    if (m.formationActive) {
+      // 领队：移到横排中央（墙前一线）
+      this.steerToSlot(m, m.x, wallTop + m.cfg.radius + 10, dt);
+      return true;
+    }
+    if (m.groupId < 0) return false;
+    const leader = this.monsters[m.groupId];
+    if (!leader || leader.hp <= 0 || !leader.formationActive) return false;
+    this.steerToSlot(m, m.slotX, wallTop + m.cfg.radius, dt);
+    return true;
+  }
+
+  /** 驶向槽位；到位后转为啃墙（assault）。 */
+  private steerToSlot(m: MonsterRuntime, tx: number, ty: number, dt: number): void {
+    let speed = m.cfg.speed;
+    if (this.timeSec < m.slowUntil) speed *= m.slowFactor;
+    const dx = tx - m.x;
+    const dy = ty - m.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 6) {
+      const step = Math.min(speed * dt, dist);
+      m.x += (dx / dist) * step;
+      m.y += (dy / dist) * step;
+      m.state = 'march';
+      return;
+    }
+    m.y = ty;
+    m.state = 'assault';
+    m.attackTimer -= dt;
+    if (m.attackTimer <= 0) {
+      m.attackTimer += m.cfg.attackInterval;
+      const dmg = m.cfg.atk;
+      this.wallHp = Math.max(0, this.wallHp - dmg);
+      this.totalWallDamage += dmg;
+      this.waveWallDamage += dmg;
+      this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
+    }
+  }
+
+  /** 伤害转嫁：变阵巫师的直接伤害转移给半径内随机友军（无友军则自承）。返回巫师实际承受值。 */
+  private resolveTransfer(m: MonsterRuntime, dealt: number): number {
+    if (dealt <= 0 || !m.formationActive || !m.cfg.transferAura) return dealt;
+    this.hash.queryCircle(m.x, m.y, m.cfg.transferAura.radius, this.scratch);
+    const candidates: MonsterRuntime[] = [];
+    for (const id of this.scratch) {
+      const ally = this.monsters[id];
+      if (ally && ally !== m && ally.hp > 0) candidates.push(ally);
+    }
+    if (candidates.length === 0) return dealt;
+    const target = candidates[this.rng.int(0, candidates.length - 1)];
+    target.hp -= dealt;
+    this.totalDamage += dealt;
+    this.bus.emit('onDamageTransfer', { fx: m.x, fy: m.y, tx: target.x, ty: target.y, dmg: dealt });
+    if (target.hp <= 0) this.killMonster(null, target);
+    return 0;
   }
 
   /** 灼烧：附着的火焰每 0.5s 跳一次伤害直至熄灭（重复命中只刷新时长，不叠加）。 */

@@ -91,6 +91,16 @@ async function boot(): Promise<void> {
   window.addEventListener('keyup', (e) => input.keys.delete(e.key.toLowerCase()));
   window.addEventListener('blur', () => input.keys.clear());
 
+  // 伤害飘字 + 转嫁连线 + 治疗环（与主游戏同款表现；监听随会话重建见 createSession）
+  interface LabFloat { x: number; y: number; text: string; color: string; size: number; life: number }
+  const floats: LabFloat[] = [];
+  const pushFloat = (x: number, y: number, text: string, color: string, size: number): void => {
+    if (floats.length >= 40) floats.shift();
+    floats.push({ x, y, text, color, size, life: 0.8 });
+  };
+  const transfers: { fx: number; fy: number; tx: number; ty: number; life: number }[] = [];
+  const heals: { x: number; y: number; radius: number; life: number }[] = [];
+
   // 连锁闪电折线（跨会话共享渲染缓冲；监听随会话重建）
   const bolts: { pts: number[][]; life: number }[] = [];
 
@@ -131,6 +141,33 @@ async function boot(): Promise<void> {
     session.bus.on<{ points: number[][] }>('onChain', ({ points }) => {
       if (bolts.length > 12) bolts.shift();
       bolts.push({ pts: points, life: 0.22 });
+    });
+    // 与主游戏同款飘字表现
+    session.bus.on<{ dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number }>(
+      'onHit',
+      ({ dmg, isCrit, blocked, mitigated, x, y }) => {
+        if (blocked) {
+          pushFloat(x, y - 12, '挡', '#8A93B8', 16);
+          return;
+        }
+        if (mitigated && mitigated > 0) pushFloat(x + 20, y + 34, `抵${mitigated}`, '#8A93B8', 13);
+        pushFloat(x, y + 20, String(Math.round(dmg)), isCrit ? '#FFD54F' : '#F5F5FA', isCrit ? 28 : 18);
+      },
+    );
+    session.bus.on<{ dmg: number; x: number; y: number }>('onBurnTick', ({ dmg, x, y }) => {
+      pushFloat(x, y, String(dmg), '#FF9A3C', 13);
+    });
+    session.bus.on<{ x: number; y: number; amount: number }>('onHealed', (p) => {
+      pushFloat(p.x, p.y, `+${p.amount}`, '#7CB342', 15);
+    });
+    session.bus.on<{ x: number; y: number; radius: number }>('onHeal', (p) => {
+      if (heals.length > 10) heals.shift();
+      heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
+    });
+    session.bus.on<{ fx: number; fy: number; tx: number; ty: number; dmg: number }>('onDamageTransfer', (p) => {
+      if (transfers.length > 14) transfers.shift();
+      transfers.push({ fx: p.fx, fy: p.fy, tx: p.tx, ty: p.ty, life: 0.3 });
+      pushFloat(p.tx, p.ty + 24, `转${Math.round(p.dmg)}`, '#B388FF', 15);
     });
   }
 
@@ -423,6 +460,82 @@ async function boot(): Promise<void> {
       strokeBoltPath(ctx, b.pts);
       ctx.stroke();
     }
+
+    // 转嫁连线 + 治疗环 + 飘字（与主游戏同款表现）
+    for (let i = transfers.length - 1; i >= 0; i--) {
+      const tr = transfers[i];
+      tr.life -= dtR;
+      if (tr.life <= 0) {
+        transfers.splice(i, 1);
+        continue;
+      }
+      drawTransfer(ctx, tr.fx, tr.fy, tr.tx, tr.ty, Math.min(1, tr.life / 0.18));
+    }
+    for (let i = heals.length - 1; i >= 0; i--) {
+      const h = heals[i];
+      h.life -= dtR;
+      if (h.life <= 0) {
+        heals.splice(i, 1);
+        continue;
+      }
+      drawHealPulse(ctx, h.x, h.y, h.radius, 1 - h.life / 0.5);
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.textAlign = 'center';
+    for (let i = floats.length - 1; i >= 0; i--) {
+      const f = floats[i];
+      f.life -= dtR;
+      if (f.life <= 0) {
+        floats.splice(i, 1);
+        continue;
+      }
+      const k = f.life / 0.8;
+      ctx.globalAlpha = Math.min(1, k * 2);
+      ctx.font = `700 ${f.size}px "PingFang SC", sans-serif`;
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, H - (f.y + (1 - k) * 50));
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // 转嫁连线 + 治疗环 + 飘字（与主游戏同款）
+    for (let i = transfers.length - 1; i >= 0; i--) {
+      const tr = transfers[i];
+      tr.life -= dtR;
+      if (tr.life <= 0) {
+        transfers.splice(i, 1);
+        continue;
+      }
+      drawTransfer(ctx, tr.fx, tr.fy, tr.tx, tr.ty, Math.min(1, tr.life / 0.18));
+    }
+    for (let i = heals.length - 1; i >= 0; i--) {
+      const h = heals[i];
+      h.life -= dtR;
+      if (h.life <= 0) {
+        heals.splice(i, 1);
+        continue;
+      }
+      drawHealPulse(ctx, h.x, h.y, h.radius, 1 - h.life / 0.5);
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.textAlign = 'center';
+    for (let i = floats.length - 1; i >= 0; i--) {
+      const f = floats[i];
+      f.life -= dtR;
+      if (f.life <= 0) {
+        floats.splice(i, 1);
+        continue;
+      }
+      const k = f.life / 0.8;
+      ctx.globalAlpha = Math.min(1, k * 2);
+      ctx.font = `700 ${f.size}px "PingFang SC", sans-serif`;
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, H - (f.y + (1 - k) * 50));
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
 
     const now = session.timeSec;
     const tNow = now; // 渲染动效时钟与逻辑时钟一致（实验室确定性优先）
