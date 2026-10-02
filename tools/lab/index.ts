@@ -472,7 +472,7 @@ const tests: TestCase[] = [
     const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
     const activated = runFor(s, 20, () => shaman.formationActive);
     if (!activated) return '变阵未激活';
-    runFor(s, 6, () => escorts.every((e) => e.state === 'assault'));
+    runFor(s, 12, () => escorts.every((e) => e.state === 'assault')); // ×3 编队速度下全队列对齐约需 9~11s
     const xs = escorts.map((e) => e.slotX).sort((a, b) => a - b);
     const spread = xs[xs.length - 1] - xs[0];
     if (spread < 400) return `横排未展开（跨度 ${spread.toFixed(0)}）`;
