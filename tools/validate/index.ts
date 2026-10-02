@@ -93,6 +93,14 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
       need(isNum(m.escort.count) && m.escort.count >= 1 && m.escort.count <= 12, where, 'escort.count 应在 1~12');
       need(isNum(m.escort.radius) && m.escort.radius > 0, where, 'escort.radius 必须为正数');
     }
+    if (m.splitTimer) {
+      need(isNum(m.splitTimer.interval) && m.splitTimer.interval >= 2, where, 'splitTimer.interval 应 ≥ 2');
+      need(typeof m.splitTimer.baby === 'string', where, 'splitTimer.baby 缺失');
+    }
+    if (m.deathSplit) {
+      need(isNum(m.deathSplit.count) && m.deathSplit.count >= 1 && m.deathSplit.count <= 4, where, 'deathSplit.count 应在 1~4');
+      need(typeof m.deathSplit.baby === 'string', where, 'deathSplit.baby 缺失');
+    }
     if (m.rangedDist !== undefined) {
       need(isNum(m.rangedDist) && m.rangedDist >= 100 && m.rangedDist <= 900, where, 'rangedDist 应在 100~900');
       need(m.behavior === 'ranged', where, '声明 rangedDist 的怪物 behavior 应为 ranged');

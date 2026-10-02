@@ -867,6 +867,13 @@
         });
       }
       for (const m of this.monsters) {
+        if (!m.cfg.splitTimer || m.hp <= 0) continue;
+        m.splitTimerLeft -= dt;
+        if (m.splitTimerLeft > 0) continue;
+        m.splitTimerLeft += m.cfg.splitTimer.interval;
+        this.spawnBaby(m, m.cfg.splitTimer.baby, 1);
+      }
+      for (const m of this.monsters) {
         if (m.hp <= 0) continue;
         if (m.cfg.formationDist && !m.formationActive && m.y <= this.level.wall.height + m.cfg.formationDist) {
           m.formationActive = true;
@@ -1050,6 +1057,7 @@
         burn: null,
         shieldLeft: cfg.hitShield ?? 0,
         healTimer: cfg.healAura ? cfg.healAura.interval : 0,
+        splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
         groupId: -1,
         formationActive: false,
         slotX: x,
@@ -1535,11 +1543,28 @@
       this.cardPickLog.push(`${picked.name}(Lv${this.cardStacks.get(picked.id)})`);
       this.bus.emit("onLevelUp", { level: this.hero.level, picked: picked.id });
     }
+    /** 分裂幼体：血条与母体一致（maxHp 覆盖），速度取幼体配置（更快），不可再分裂。 */
+    spawnBaby(parent, babyKey, count) {
+      for (let i = 0; i < count; i++) {
+        const ang = this.rng.range(0, Math.PI * 2);
+        const bx = clamp(parent.x + Math.cos(ang) * (parent.cfg.radius + 20), 40, this.level.arena.width - 40);
+        const by = clamp(parent.y + Math.sin(ang) * (parent.cfg.radius + 20), 120, this.level.arena.height - 60);
+        const before = this.monsters.length;
+        this.spawnMonster(babyKey, bx, by);
+        const baby = this.monsters[this.monsters.length - 1];
+        if (this.monsters.length > before) {
+          baby.hp = baby.maxHp = parent.maxHp;
+        }
+      }
+    }
     killMonster(p, m) {
       this.totalKills++;
       this.waveKills++;
       this.hero.xp += m.cfg.xp;
       this.bus.emit("onKill", { monsterId: m.id, key: m.cfg.id });
+      if (m.cfg.deathSplit) {
+        this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
+      }
       if (p && p.affixes.split > 0) {
         const base = Math.atan2(p.y - p.py, p.x - p.px);
         let childTarget = null;

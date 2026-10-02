@@ -62,6 +62,10 @@ export interface MonsterConfig {
   burnImmune?: boolean;
   /** 治疗光环：每 interval 秒为半径内友军回血 amount（不可超过上限） */
   healAura?: { radius: number; amount: number; interval: number };
+  /** 定时分裂：每 interval 秒在身旁分裂 1 只 splitBaby（幼体不可再分裂） */
+  splitTimer?: { interval: number; baby: string };
+  /** 死亡分裂：死亡时分裂为 count 只 splitBaby（splitter 行为） */
+  deathSplit?: { count: number; baby: string };
   /** 出场护卫：生成时在自身周围 radius 半径部署 count 只 escort 怪（环形站位） */
   escort?: { monster: string; count: number; radius: number };
   /** 伤害转嫁（始终生效）：受到的直接伤害转移给半径内随机友军（无友军则自己承受） */
@@ -250,6 +254,7 @@ export interface MonsterRuntime {
   burn: { dps: number; until: number; nextTick: number } | null;
   shieldLeft: number;      // 剩余免伤层数（hitShield）
   healTimer: number;       // 治疗光环计时（healAura）
+  splitTimerLeft: number;  // 定时分裂计时（splitTimer）
   /** 队籍：护卫=领队巫师运行时 id；无编队为 -1（变阵系统用） */
   groupId: number;
   /** 领队：近墙变阵是否激活（护卫排一排啃墙、巫师居中） */

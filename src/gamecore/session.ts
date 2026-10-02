@@ -365,6 +365,15 @@ export class GameSession {
       });
     }
 
+    // 5c) 定时分裂：分裂菇周期性分出幼体（幼体血条与母体一致、速度更快、不可再分裂）
+    for (const m of this.monsters) {
+      if (!m.cfg.splitTimer || m.hp <= 0) continue;
+      m.splitTimerLeft -= dt;
+      if (m.splitTimerLeft > 0) continue;
+      m.splitTimerLeft += m.cfg.splitTimer.interval;
+      this.spawnBaby(m, m.cfg.splitTimer.baby, 1);
+    }
+
     // 5d) 巫师编队：领队近墙激活变阵（护卫排一排啃墙、巫师居中）；编队成员由 formationMove 驱动
     for (const m of this.monsters) {
       if (m.hp <= 0) continue;
@@ -573,6 +582,7 @@ export class GameSession {
       burn: null,
       shieldLeft: cfg.hitShield ?? 0,
       healTimer: cfg.healAura ? cfg.healAura.interval : 0,
+      splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
       groupId: -1,
       formationActive: false,
       slotX: x,
@@ -1115,11 +1125,31 @@ export class GameSession {
     this.bus.emit('onLevelUp', { level: this.hero.level, picked: picked.id });
   }
 
+  /** 分裂幼体：血条与母体一致（maxHp 覆盖），速度取幼体配置（更快），不可再分裂。 */
+  private spawnBaby(parent: MonsterRuntime, babyKey: string, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const ang = this.rng.range(0, Math.PI * 2);
+      const bx = clamp(parent.x + Math.cos(ang) * (parent.cfg.radius + 20), 40, this.level.arena.width - 40);
+      const by = clamp(parent.y + Math.sin(ang) * (parent.cfg.radius + 20), 120, this.level.arena.height - 60);
+      const before = this.monsters.length;
+      this.spawnMonster(babyKey, bx, by);
+      const baby = this.monsters[this.monsters.length - 1];
+      if (this.monsters.length > before) {
+        baby.hp = baby.maxHp = parent.maxHp; // 血条一样
+      }
+    }
+  }
+
   private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime): void {
     this.totalKills++;
     this.waveKills++;
     this.hero.xp += m.cfg.xp; // 经验自动吸收（击杀即入账，无拾取环节）
     this.bus.emit('onKill', { monsterId: m.id, key: m.cfg.id });
+
+    // 死亡分裂：splitter 死亡裂为 N 只幼体（不可再分裂）
+    if (m.cfg.deathSplit) {
+      this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
+    }
 
     // C 类词缀：击杀分裂（子弹继承追踪/火/冰/破甲，但不继承分裂/弹射/爆破，防指数爆炸）
     if (p && p.affixes.split > 0) {

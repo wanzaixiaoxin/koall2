@@ -463,6 +463,27 @@ const tests: TestCase[] = [
     }
     return shots >= 14 && cooled ? true : `射击 ${shots} 次，未检测到过冷窗口`;
   } },
+  { name: 'M-分裂菇强化：定时分裂 + 死后裂双 + 幼体同血条更快且不可再分裂', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 10000;
+    s.wallHp = 10000;
+    s.debugSpawn('split_shroom', 540, 900);
+    const parent = s.monsters[0];
+    if (parent.maxHp !== Math.round(60 * 0.88)) return `母体血量未强化 maxHp=${parent.maxHp}`;
+    // 定时分裂：6~8s 内应出现 1 只幼体
+    const born = runFor(s, 9, () => s.monsters.some((m) => m.cfg.id === 'shroom_baby'));
+    if (!born) return '定时分裂未发生';
+    const baby = s.monsters.find((m) => m.cfg.id === 'shroom_baby')!;
+    if (baby.maxHp !== parent.maxHp) return `幼体血条不一致（${baby.maxHp}/${parent.maxHp}）`;
+    if (!(baby.cfg.speed > parent.cfg.speed)) return `幼体未提速（${baby.cfg.speed} vs ${parent.cfg.speed}）`;
+    if (baby.cfg.splitTimer || baby.cfg.deathSplit) return '幼体可再分裂（应不可）';
+    // 死后裂双：打死母体 → 2 只幼体
+    const before = s.monsters.filter((m) => m.cfg.id === 'shroom_baby').length;
+    parent.hp = 1;
+    runFor(s, 3, () => false);
+    const after = s.monsters.filter((m) => m.cfg.id === 'shroom_baby').length;
+    return after >= before + 2 ? true : `死后分裂 ${after - before} 只（应 +2）`;
+  } },
   { name: 'M-巫师编队：近墙变阵排排啃墙，巫师伤害转嫁给周围怪物', run: () => {
     const s = freshSession();
     s.wallMaxHp = 99999;

@@ -125,7 +125,7 @@
     {
       "id": "split_shroom",
       "name": "分裂菇",
-      "hp": 30,
+      "hp": 60,
       "def": 0,
       "speed": 65,
       "radius": 20,
@@ -133,7 +133,15 @@
       "attackInterval": 1.0,
       "behavior": "splitter",
       "xp": 4,
-      "shape": "shroom"
+      "shape": "shroom",
+      "splitTimer": {
+        "interval": 6,
+        "baby": "shroom_baby"
+      },
+      "deathSplit": {
+        "count": 2,
+        "baby": "shroom_baby"
+      }
     },
     {
       "id": "bat",
@@ -176,6 +184,19 @@
         "radius": 320
       },
       "formationDist": 550
+    },
+    {
+      "id": "shroom_baby",
+      "name": "分裂菇幼体",
+      "hp": 60,
+      "def": 0,
+      "speed": 95,
+      "radius": 16,
+      "atk": 3,
+      "attackInterval": 1.0,
+      "behavior": "march",
+      "xp": 2,
+      "shape": "shroom"
     }
   ]
 }

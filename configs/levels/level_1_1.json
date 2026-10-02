@@ -61,6 +61,12 @@
           "count": 17,
           "spawnPoints": "all",
           "releasePerTick": 2
+        },
+        {
+          "monster": "split_shroom",
+          "count": 8,
+          "spawnPoints": "all",
+          "releasePerTick": 1
         }
       ]
     },
@@ -192,6 +198,12 @@
           "count": 25,
           "spawnPoints": "all",
           "releasePerTick": 2
+        },
+        {
+          "monster": "split_shroom",
+          "count": 10,
+          "spawnPoints": "all",
+          "releasePerTick": 1
         }
       ]
     },
@@ -333,6 +345,12 @@
           "spawnPoints": [
             4
           ],
+          "releasePerTick": 1
+        },
+        {
+          "monster": "split_shroom",
+          "count": 10,
+          "spawnPoints": "all",
           "releasePerTick": 1
         }
       ]
