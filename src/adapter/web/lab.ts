@@ -164,6 +164,9 @@ async function boot(): Promise<void> {
       if (heals.length > 10) heals.shift();
       heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
     });
+    session.bus.on<{ dmg: number; x: number; y: number }>('onWallHit', (p) => {
+      pushFloat(p.x, p.y, `-${p.dmg}`, '#FF6B57', 17); // 怪物攻墙伤害飘字
+    });
     session.bus.on<{ fx: number; fy: number; tx: number; ty: number; dmg: number }>('onDamageTransfer', (p) => {
       if (transfers.length > 14) transfers.shift();
       transfers.push({ fx: p.fx, fy: p.fy, tx: p.tx, ty: p.ty, life: 0.3 });
@@ -408,6 +411,19 @@ async function boot(): Promise<void> {
     ctx.fillRect(0, session.level.defenseRect.yMin, W, session.level.defenseRect.yMax - session.level.defenseRect.yMin);
 
     const wallTop = session.level.wall.height;
+    // 城墙血条（实验室实时可见怪物磨血）
+    const wr = session.wallHp / session.wallMaxHp;
+    const barW = 420;
+    const barX = (W - barW) / 2;
+    const barY = wallTop + 26;
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(barX, barY, barW, 10);
+    ctx.fillStyle = wr < 0.3 ? '#FF3D71' : '#3D4470';
+    ctx.fillRect(barX, barY, barW * wr, 10);
+    ctx.fillStyle = '#F5F5FA';
+    ctx.font = '700 13px "PingFang SC", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`城防 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`, W / 2, barY + 26);
     const segs = 12;
     const segW = W / segs;
     const wr = session.wallHp / session.wallMaxHp;
