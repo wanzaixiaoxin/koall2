@@ -477,12 +477,14 @@ const tests: TestCase[] = [
     if (baby.maxHp !== parent.maxHp) return `幼体血条不一致（${baby.maxHp}/${parent.maxHp}）`;
     if (!(baby.cfg.speed > parent.cfg.speed)) return `幼体未提速（${baby.cfg.speed} vs ${parent.cfg.speed}）`;
     if (baby.cfg.splitTimer || baby.cfg.deathSplit) return '幼体可再分裂（应不可）';
-    // 死后裂双：打死母体 → 2 只幼体
-    const before = s.monsters.filter((m) => m.cfg.id === 'shroom_baby').length;
+    // 死后裂双：清掉幼体使母体成为唯一目标，打死母体 → 2 只幼体
+    for (const m of s.monsters) if (m !== parent) m.hp = 0;
+    runFor(s, 1, () => false);
     parent.hp = 1;
-    runFor(s, 3, () => false);
+    const killed = runFor(s, 4, () => s.monsters.filter((m) => m.cfg.id === 'split_shroom').length === 0);
+    if (!killed) return '母体未被打死';
     const after = s.monsters.filter((m) => m.cfg.id === 'shroom_baby').length;
-    return after >= before + 2 ? true : `死后分裂 ${after - before} 只（应 +2）`;
+    return after >= 2 ? true : `死后分裂 ${after} 只（应 ≥2）`;
   } },
   { name: 'M-巫师编队：近墙变阵排排啃墙，巫师伤害转嫁给周围怪物', run: () => {
     const s = freshSession();
