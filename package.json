@@ -8,7 +8,7 @@
     "sim": "npm run build && node dist/tools/sim/index.js",
     "validate": "npm run build && node dist/tools/validate/index.js",
     "lint": "eslint src tools",
-    "build:web": "esbuild src/adapter/web/main.ts --bundle --outfile=web/bundle.js && esbuild src/adapter/web/lab.ts --bundle --outfile=web/lab.js",
+    "build:web": "esbuild src/adapter/web/main.ts --bundle --outfile=web/bundle.js && esbuild src/adapter/web/lab.ts --bundle --outfile=web/lab.js && node tools/check-web.js",
     "play": "npm run build:web && node tools/serve.js",
     "lab": "npm run build && node dist/tools/lab/index.js",
     "test": "npm run build && node dist/tools/lab/index.js --all"
