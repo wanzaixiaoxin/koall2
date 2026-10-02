@@ -56,8 +56,7 @@ async function boot(): Promise<void> {
     fetchJson<{ weapons: WeaponConfig[] }>('/configs/weapons.json'),
     fetchJson<{ monsters: MonsterConfig[] }>('/configs/monsters.json'),
     fetchJson<{ cards: CardConfig[] }>('/configs/cards.json'),
-    fetchJson<LevelConfig>(`/configs/levels/${new URLSearchParams(location.search).get('level') ?? 'level_1_1.json'}`),
-  ]);
+    fetchJson<LevelConfig>(`/configs/levels/${new URLSearchParams(location.search).get('level') ?? 'level_1_1.json'}`),  ]);
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   canvas.width = W;
@@ -130,7 +129,10 @@ async function boot(): Promise<void> {
   // ---------- 会话 ----------
   const session = new GameSession({
     level,
-    weaponConfigs: [weaponsFile.weapons[0]],
+    weaponConfigs: [
+      weaponsFile.weapons.find((w) => w.id === new URLSearchParams(location.search).get('weapon'))
+        ?? weaponsFile.weapons[0],
+    ],
     monsterConfigs: new Map(monstersFile.monsters.map((m) => [m.id, m])),
     cardConfigs: cardsFile.cards,
     seed: (Date.now() % 100000) | 0,

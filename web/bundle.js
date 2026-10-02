@@ -2352,7 +2352,9 @@
     };
     const session = new GameSession({
       level,
-      weaponConfigs: [weaponsFile.weapons[0]],
+      weaponConfigs: [
+        weaponsFile.weapons.find((w) => w.id === new URLSearchParams(location.search).get("weapon")) ?? weaponsFile.weapons[0]
+      ],
       monsterConfigs: new Map(monstersFile.monsters.map((m) => [m.id, m])),
       cardConfigs: cardsFile.cards,
       seed: Date.now() % 1e5 | 0,

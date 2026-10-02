@@ -31,6 +31,18 @@
   .sec { font-size: 13px; letter-spacing: .3em; color: rgba(245,245,250,.55); margin-bottom: 14px; align-self: flex-start; }
   #panel { width: min(520px, 90vw); display: flex; flex-direction: column; }
   #levels { display: flex; flex-direction: column; gap: 12px; margin-bottom: 26px; }
+  #weapons { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 24px; }
+  .wp {
+    padding: 12px 14px; border-radius: 12px; cursor: pointer; text-align: center;
+    border: 1.5px solid #3D4470; background: rgba(18,20,43,.8);
+    transition: transform .12s, border-color .12s, box-shadow .12s;
+  }
+  .wp:hover { transform: translateY(-2px); border-color: #35E0C3; }
+  .wp.sel { border-color: #35E0C3; box-shadow: 0 0 0 1px #35E0C3, 0 6px 20px rgba(53,224,195,.2); background: rgba(53,224,195,.07); }
+  .wp .wn { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .wp .wr { font-size: 11px; color: rgba(245,245,250,.55); }
+  .wp .tag-sel { display: none; font-size: 10px; color: #35E0C3; letter-spacing: .2em; margin-top: 6px; }
+  .wp.sel .tag-sel { display: block; }
   .lv {
     display: flex; align-items: center; gap: 16px; padding: 16px 20px;
     border: 1.5px solid #3D4470; border-radius: 14px; cursor: pointer;
@@ -62,6 +74,8 @@
   <div id="deco"><div class="line"></div><div class="tri"></div><div class="line"></div></div>
 
   <div id="panel">
+    <div class="sec">武 器 库 · 选 择 上 阵 武 器</div>
+    <div id="weapons"></div>
     <div id="chapters"></div>
     <div class="sec">工 具</div>
     <div id="lab">🧪 卡牌实验室 · 验证每张卡的效果</div>
@@ -71,6 +85,32 @@
 
 <script>
 (async function () {
+  // ---------- 武器库：选择上阵武器（带到关卡） ----------
+  let selectedWeapon = localStorage.getItem('koall_weapon') || 'gun_rifle';
+  const wpRoot = document.getElementById('weapons');
+  const renderWeapons = (list) => {
+    wpRoot.innerHTML = '';
+    for (const w of list) {
+      const el = document.createElement('div');
+      el.className = 'wp' + (w.id === selectedWeapon ? ' sel' : '');
+      el.innerHTML = `<div class="wn">${w.name}</div><div class="wr">${w.role || ''}</div><div class="tag-sel">✓ 上阵</div>`;
+      el.onclick = () => {
+        selectedWeapon = w.id;
+        localStorage.setItem('koall_weapon', w.id);
+        renderWeapons(list);
+      };
+      wpRoot.appendChild(el);
+    }
+  };
+  let weaponList = [];
+  try {
+    weaponList = (await (await fetch('/configs/weapons.json')).json()).weapons;
+    renderWeapons(weaponList);
+  } catch (e) {
+    wpRoot.innerHTML = '<div style="color:#FF6B57;font-size:12px;">武器库加载失败</div>';
+  }
+
+  // ---------- 章节关卡 ----------
   const root = document.getElementById('chapters');
   try {
     const manifest = await (await fetch('/configs/levels/index.json')).json();
@@ -100,7 +140,9 @@
           '<div class="info"><div class="name">' + lv.name + '</div>' +
           '<div class="meta">' + lv.waves + ' 波 · ' + (lv.desc || '') + '</div></div>' +
           '<div class="go">▶</div>';
-        el.onclick = () => { location.href = './game.html?level=' + encodeURIComponent(lv.file); };
+        el.onclick = () => {
+          location.href = './game.html?level=' + encodeURIComponent(lv.file) + '&weapon=' + encodeURIComponent(selectedWeapon);
+        };
         grid.appendChild(el);
       });
     }
@@ -108,7 +150,7 @@
   } catch (e) {
     root.innerHTML = '<div style="color:#FF6B57;font-size:13px;">关卡清单加载失败：' + e.message + '</div>';
   }
-  document.getElementById('lab').onclick = () => { location.href = './lab.html'; };
+  document.getElementById('lab').onclick = () => { location.href = './lab.html?weapon=' + encodeURIComponent(selectedWeapon); };
 })();
 </script>
 </body>
