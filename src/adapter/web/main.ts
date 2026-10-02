@@ -181,11 +181,14 @@ async function boot(): Promise<void> {
   session.bus.on<{ dmg: number; x: number; y: number }>('onBurnTick', ({ dmg, x, y }) => {
     pushFloat(x, y, String(Math.round(dmg * 10) / 10), '#FF9A3C', 14);
   });
-  // 治疗光环：绿色扩散环
+  // 治疗光环：绿色扩散环 + 每个回血单位的 "+N" 绿字
   const heals: { x: number; y: number; radius: number; life: number }[] = [];
   session.bus.on<{ x: number; y: number; radius: number }>('onHeal', (p) => {
     if (heals.length > 10) heals.shift();
     heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
+  });
+  session.bus.on<{ x: number; y: number; amount: number }>('onHealed', (p) => {
+    pushFloat(p.x, p.y, `+${p.amount}`, '#7CB342', 15);
   });
   // 连锁闪电折线（渲染层表现，0.22s 闪现）
   const bolts: { pts: number[][]; life: number }[] = [];

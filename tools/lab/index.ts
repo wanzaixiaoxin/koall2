@@ -458,9 +458,9 @@ const tests: TestCase[] = [
   { name: 'M-巫师：治疗光环为周围友军回血 + 出场自带岩甲兽护卫环', run: () => {
     const s = freshSession();
     s.debugSpawn('shaman', 540, 900);
-    // 护卫环：6 只岩甲兽
+    // 护卫环：10 只岩甲兽
     const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
-    if (escorts.length !== 6) return `护卫 ${escorts.length} 只（应 6）`;
+    if (escorts.length !== 10) return `护卫 ${escorts.length} 只（应 10）`;
     if (!escorts.every((b) => b.cfg.hitShield === 20)) return '岩甲兽护甲未增强（20 次免伤）';
     // 治疗：打伤一只护卫，观察回血
     const target = escorts[0];

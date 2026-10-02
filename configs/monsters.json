@@ -153,7 +153,7 @@
     {
       "id": "shaman",
       "name": "地精巫师",
-      "hp": 80,
+      "hp": 300,
       "def": 0,
       "speed": 30,
       "radius": 22,
@@ -169,8 +169,8 @@
       },
       "escort": {
         "monster": "bulwark",
-        "count": 6,
-        "radius": 140
+        "count": 10,
+        "radius": 150
       }
     }
   ]

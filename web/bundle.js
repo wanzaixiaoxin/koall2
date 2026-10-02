@@ -876,8 +876,10 @@
         for (const id of this.scratch) {
           const ally = this.monsters[id];
           if (!ally || ally.hp <= 0 || ally.hp >= ally.maxHp) continue;
-          ally.hp = Math.min(ally.maxHp, ally.hp + Math.round(aura.amount));
+          const amount = Math.round(aura.amount);
+          ally.hp = Math.min(ally.maxHp, ally.hp + amount);
           healed++;
+          this.bus.emit("onHealed", { x: ally.x, y: ally.y + ally.cfg.radius + 8, amount });
         }
         if (healed > 0) this.bus.emit("onHeal", { x: m.x, y: m.y, radius: aura.radius });
       }
@@ -2022,6 +2024,9 @@
     session.bus.on("onHeal", (p) => {
       if (heals.length > 10) heals.shift();
       heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
+    });
+    session.bus.on("onHealed", (p) => {
+      pushFloat(p.x, p.y, `+${p.amount}`, "#7CB342", 15);
     });
     const bolts = [];
     session.bus.on("onChain", ({ points }) => {
