@@ -1082,10 +1082,13 @@
         const step = Math.ceil(index / 2);
         fan = side * step * (weapon.cfg.spread ?? 0.1);
       }
+      const rawLen = Math.hypot(dirX, dirY);
+      const baseDirX = rawLen > 1e-6 ? dirX : 0;
+      const baseDirY = rawLen > 1e-6 ? dirY : 1;
       const cos = Math.cos(fan);
       const sin = Math.sin(fan);
-      const dx = dirX * cos - dirY * sin;
-      const dy = dirX * sin + dirY * cos;
+      const dx = baseDirX * cos - baseDirY * sin;
+      const dy = baseDirX * sin + baseDirY * cos;
       const affixes = weapon.affixes;
       const riders = weapon.riders;
       const damageType = weapon.element;
