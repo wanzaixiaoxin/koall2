@@ -65,9 +65,9 @@
       },
       "blastBase": {
         "radius": 90,
-        "dmgMul": 0.6,
-        "poolDpsMul": 0.3,
-        "poolSec": 2
+        "dmgMul": 0.35,
+        "poolDpsMul": 0.15,
+        "poolSec": 1.5
       },
       "shape": "bomb",
       "heat": {
