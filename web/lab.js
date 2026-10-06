@@ -2678,7 +2678,7 @@
       </table>
       <h3>\u6B66\u5668\u9762\u677F\uFF08${w.cfg.name}\uFF09</h3>
       <table>
-        <tr><td>\u5355\u53D1\u4F24\u5BB3</td><td>${w.cfg.ghost ? "0\uFF08\u7EAF\u8303\u56F4\uFF09" : fmt(w.damage * w.mods.damageMul)}</td><td>\u653B\u51FB\u95F4\u9694</td><td>${fmt(w.cfg.interval / h.stats.aspd)}s</td></tr>
+        <tr><td>\u5355\u53D1\u4F24\u5BB3</td><td>${w.cfg.ghost && w.cfg.blastBase ? `\u6C60 ${fmt(w.damage * w.mods.damageMul * w.cfg.blastBase.poolDpsMul)}/s \xD7 ${w.cfg.blastBase.poolSec}s` : w.cfg.ghost ? "0\uFF08\u7EAF\u8303\u56F4\uFF09" : fmt(w.damage * w.mods.damageMul)}</td><td>\u653B\u51FB\u95F4\u9694</td><td>${fmt(w.cfg.interval / h.stats.aspd)}s</td></tr>
         <tr><td>\u5F39\u901F</td><td>${fmt(w.cfg.projectileSpeed * w.mods.projSpeedMul)}</td><td>\u5C04\u7A0B</td><td>${fmt(w.cfg.projectileRange * w.mods.rangeMul)}</td></tr>
         <tr><td>\u9F50\u5C04</td><td>${w.cfg.count + w.mods.extraCount} \u53D1</td><td>\u8FDE\u5C04</td><td>+${w.mods.burst} \u53D1</td></tr>
         <tr><td>\u5143\u7D20</td><td>${w.element}</td><td>\u7A7F\u900F</td><td>${w.cfg.pierce}\uFF08\u8870\u51CF ${Math.round((w.cfg.pierceFalloff ?? 0.15) * 100)}%/\u6B21\uFF09</td></tr>
