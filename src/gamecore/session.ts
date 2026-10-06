@@ -703,6 +703,11 @@ export class GameSession {
     let motionCfg: TrajectoryConfig = homing
       ? { type: 'homing', speed, range, turnRate: 360, duration: 2.5, retarget: true }
       : (weapon.cfg.motion ?? { type: 'straight', speed, life: weapon.cfg.bulletLife ?? 2.5 });
+    // 抛物线（炸弹）：落点 = 索敌目标位置快照（发射时刻锁定），而非固定射程
+    if (motionCfg.type === 'parabola' && cmd.target) {
+      const dist = Math.hypot(cmd.target.x - fromX, cmd.target.y - fromY);
+      motionCfg = { ...motionCfg, range: Math.max(120, dist) };
+    }
     // 阶段机（回旋镖等）：距离相位随射程倍率缩放——"长旋"等射程卡对飞出距离生效
     if (motionCfg.type === 'phased' && weapon.mods.rangeMul !== 1) {
       motionCfg = {

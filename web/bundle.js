@@ -1207,6 +1207,10 @@
       const damageType = weapon.element;
       const homing = affixes.homing > 0 && !!cmd.target;
       let motionCfg = homing ? { type: "homing", speed, range, turnRate: 360, duration: 2.5, retarget: true } : weapon.cfg.motion ?? { type: "straight", speed, life: weapon.cfg.bulletLife ?? 2.5 };
+      if (motionCfg.type === "parabola" && cmd.target) {
+        const dist = Math.hypot(cmd.target.x - fromX, cmd.target.y - fromY);
+        motionCfg = { ...motionCfg, range: Math.max(120, dist) };
+      }
       if (motionCfg.type === "phased" && weapon.mods.rangeMul !== 1) {
         motionCfg = {
           ...motionCfg,
