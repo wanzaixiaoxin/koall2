@@ -504,6 +504,7 @@ export class GameSession {
         const dmg = Math.max(1, Math.round(pool.dps * dt)); // 整数结算
         m.hp -= dmg;
         this.totalDamage += dmg;
+        this.bus.emit('onPoolTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg }); // 弹坑跳字
         if (m.hp <= 0) this.killMonster(null, m);
       }
     }

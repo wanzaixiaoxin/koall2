@@ -157,6 +157,9 @@ async function boot(): Promise<void> {
     session.bus.on<{ dmg: number; x: number; y: number }>('onBurnTick', ({ dmg, x, y }) => {
       pushFloat(x, y, String(dmg), '#FF9A3C', 13);
     });
+    session.bus.on<{ dmg: number; x: number; y: number }>('onPoolTick', ({ dmg, x, y }) => {
+      pushFloat(x, y, String(dmg), '#FF6B57', 13);
+    });
     session.bus.on<{ x: number; y: number; amount: number }>('onHealed', (p) => {
       pushFloat(p.x, p.y, `+${p.amount}`, '#7CB342', 15);
     });

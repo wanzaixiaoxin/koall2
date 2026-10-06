@@ -183,6 +183,10 @@ async function boot(): Promise<void> {
   session.bus.on<{ dmg: number; x: number; y: number }>('onBurnTick', ({ dmg, x, y }) => {
     pushFloat(x, y, String(Math.round(dmg * 10) / 10), '#FF9A3C', 14);
   });
+  // 弹坑池跳字（纯范围武器的主要伤害来源）
+  session.bus.on<{ dmg: number; x: number; y: number }>('onPoolTick', ({ dmg, x, y }) => {
+    pushFloat(x, y, String(dmg), '#FF6B57', 13);
+  });
   // 治疗光环：绿色扩散环 + 每个回血单位的 "+N" 绿字
   const heals: { x: number; y: number; radius: number; life: number }[] = [];
   session.bus.on<{ x: number; y: number; radius: number }>('onHeal', (p) => {

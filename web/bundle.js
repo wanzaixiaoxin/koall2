@@ -1034,6 +1034,7 @@
           const dmg = Math.max(1, Math.round(pool.dps * dt));
           m.hp -= dmg;
           this.totalDamage += dmg;
+          this.bus.emit("onPoolTick", { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
           if (m.hp <= 0) this.killMonster(null, m);
         }
       }
@@ -2437,6 +2438,9 @@
     });
     session.bus.on("onBurnTick", ({ dmg, x, y }) => {
       pushFloat(x, y, String(Math.round(dmg * 10) / 10), "#FF9A3C", 14);
+    });
+    session.bus.on("onPoolTick", ({ dmg, x, y }) => {
+      pushFloat(x, y, String(dmg), "#FF6B57", 13);
     });
     const heals = [];
     session.bus.on("onHeal", (p) => {
