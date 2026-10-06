@@ -431,6 +431,7 @@ async function boot(): Promise<void> {
         <tr><td>弹速</td><td>${fmt(w.cfg.projectileSpeed * w.mods.projSpeedMul)}</td><td>射程</td><td>${fmt(w.cfg.projectileRange * w.mods.rangeMul)}</td></tr>
         <tr><td>齐射</td><td>${w.cfg.count + w.mods.extraCount} 发</td><td>连射</td><td>+${w.mods.burst} 发</td></tr>
         <tr><td>元素</td><td>${w.element}</td><td>穿透</td><td>${w.cfg.pierce}（衰减 ${Math.round((w.cfg.pierceFalloff ?? 0.15) * 100)}%/次）</td></tr>
+        <tr><td>爆破本体</td><td colspan="3">${w.cfg.blastBase ? `r${w.cfg.blastBase.radius} · 爆发 ${Math.round(w.cfg.blastBase.dmgMul * 100)}% · 地面 ${Math.round(w.cfg.blastBase.poolDpsMul * 100)}%/s × ${w.cfg.blastBase.poolSec}s` : '—（可拿"扩爆"卡获得）'}</td></tr>
       </table>
       <h3>形态词缀</h3>
       <table>
