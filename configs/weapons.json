@@ -64,17 +64,18 @@
         "peak": 160
       },
       "blastBase": {
-        "radius": 90,
-        "dmgMul": 0.35,
-        "poolDpsMul": 0.15,
-        "poolSec": 1.5
+        "radius": 95,
+        "dmgMul": 0.25,
+        "poolDpsMul": 0.5,
+        "poolSec": 3
       },
       "shape": "bomb",
       "heat": {
         "shots": 10,
         "cooldown": 2.5
       },
-      "bulletLife": 2.2
+      "bulletLife": 2.2,
+      "ghost": true
     },
     {
       "id": "boomerang",

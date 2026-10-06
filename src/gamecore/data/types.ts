@@ -16,6 +16,8 @@ export interface WeaponConfig {
   projectileRange: number;
   /** 子弹寿命（秒）：按飞行时间存活，命中/出屏/寿尽才消失（默认 2.5s，全屏武器 3s） */
   bulletLife?: number;
+  /** 幽灵弹：不与怪物碰撞，直飞至寿命尽头爆炸/生效（纯范围武器如炼金炸弹） */
+  ghost?: boolean;
   projectileRadius: number;
   pierce: number;          // 穿透目标数（0=命中即消失）
   /** 穿透伤害衰减率（每穿透一个目标，伤害 ×(1-衰减率)）；破甲每级削减 5%，最低 0（docs/02 §2） */

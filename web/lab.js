@@ -903,6 +903,7 @@
           this.killProjectile(p);
           continue;
         }
+        if (p.weapon.cfg.ghost) continue;
         this.collideProjectile(p);
       }
       this.hash.rebuild(this.monsters);
@@ -2254,6 +2255,39 @@
     ctx.lineTo(tx, ty);
     ctx.stroke();
   }
+  function drawPool(ctx, pool, t) {
+    const left = Math.max(0, pool.until - t);
+    const lifeK = Math.min(1, left * 0.8);
+    const r = pool.radius;
+    ctx.fillStyle = `rgba(11,12,29,${0.55 * lifeK})`;
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, r + 6, 0, Math.PI * 2);
+    ctx.fill();
+    const pulse = 0.85 + 0.15 * Math.sin(t * 6 + pool.x * 0.05);
+    ctx.fillStyle = `rgba(255,90,60,${0.4 * lifeK})`;
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, r * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,170,60,${0.35 * lifeK})`;
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, r * 0.55 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,90,60,${0.8 * lifeK})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      const seed = pool.x * 0.13 + pool.y * 0.07 + i * 2.4;
+      const k = (t * 0.9 + seed) % 1;
+      const ex = pool.x + Math.sin(seed * 7 + k * 3) * r * 0.6 * (1 - k);
+      const ey = pool.y + (0.5 - k) * r * 1.2;
+      ctx.fillStyle = `rgba(255,213,79,${(1 - k) * 0.8 * lifeK})`;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 
   // src/adapter/web/lab.ts
   var W = 1080;
@@ -2636,11 +2670,11 @@
       </table>
       <h3>\u6B66\u5668\u9762\u677F\uFF08${w.cfg.name}\uFF09</h3>
       <table>
-        <tr><td>\u5355\u53D1\u4F24\u5BB3</td><td>${fmt(w.damage * w.mods.damageMul)}</td><td>\u653B\u51FB\u95F4\u9694</td><td>${fmt(w.cfg.interval / h.stats.aspd)}s</td></tr>
+        <tr><td>\u5355\u53D1\u4F24\u5BB3</td><td>${w.cfg.ghost ? "0\uFF08\u7EAF\u8303\u56F4\uFF09" : fmt(w.damage * w.mods.damageMul)}</td><td>\u653B\u51FB\u95F4\u9694</td><td>${fmt(w.cfg.interval / h.stats.aspd)}s</td></tr>
         <tr><td>\u5F39\u901F</td><td>${fmt(w.cfg.projectileSpeed * w.mods.projSpeedMul)}</td><td>\u5C04\u7A0B</td><td>${fmt(w.cfg.projectileRange * w.mods.rangeMul)}</td></tr>
         <tr><td>\u9F50\u5C04</td><td>${w.cfg.count + w.mods.extraCount} \u53D1</td><td>\u8FDE\u5C04</td><td>+${w.mods.burst} \u53D1</td></tr>
         <tr><td>\u5143\u7D20</td><td>${w.element}</td><td>\u7A7F\u900F</td><td>${w.cfg.pierce}\uFF08\u8870\u51CF ${Math.round((w.cfg.pierceFalloff ?? 0.15) * 100)}%/\u6B21\uFF09</td></tr>
-        <tr><td>\u7206\u7834\u672C\u4F53</td><td colspan="3">${w.cfg.blastBase ? `r${w.cfg.blastBase.radius} \xB7 \u7206\u53D1 ${Math.round(w.cfg.blastBase.dmgMul * 100)}% \xB7 \u5730\u9762 ${Math.round(w.cfg.blastBase.poolDpsMul * 100)}%/s \xD7 ${w.cfg.blastBase.poolSec}s` : '\u2014\uFF08\u53EF\u62FF"\u6269\u7206"\u5361\u83B7\u5F97\uFF09'}</td></tr>
+        <tr><td>\u7206\u7834\u672C\u4F53</td><td colspan="3">${w.cfg.blastBase ? `r${w.cfg.blastBase.radius} \xB7 \u7206\u53D1 ${Math.round(w.cfg.blastBase.dmgMul * 100)}% \xB7 \u5730\u9762 ${Math.round(w.cfg.blastBase.poolDpsMul * 100)}%/s \xD7 ${w.cfg.blastBase.poolSec}s\uFF08\u6C60\u603B\u4F24 \u2248 ${fmt(w.damage * w.mods.damageMul * w.cfg.blastBase.poolDpsMul * w.cfg.blastBase.poolSec)}\uFF09` : '\u2014\uFF08\u53EF\u62FF"\u6269\u7206"\u5361\u83B7\u5F97\uFF09'}</td></tr>
       </table>
       <h3>\u5F62\u6001\u8BCD\u7F00</h3>
       <table>
@@ -2697,10 +2731,7 @@
         ctx.fill();
       }
       for (const pool of session.pools) {
-        ctx.fillStyle = "rgba(255,90,60,0.3)";
-        ctx.beginPath();
-        ctx.arc(pool.x, pool.y, pool.radius, 0, Math.PI * 2);
-        ctx.fill();
+        drawPool(ctx, pool, session.timeSec);
       }
       ctx.fillStyle = "rgba(124,179,66,0.13)";
       const CELL = 90;

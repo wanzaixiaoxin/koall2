@@ -903,6 +903,7 @@
           this.killProjectile(p);
           continue;
         }
+        if (p.weapon.cfg.ghost) continue;
         this.collideProjectile(p);
       }
       this.hash.rebuild(this.monsters);
@@ -2254,6 +2255,39 @@
     ctx.lineTo(tx, ty);
     ctx.stroke();
   }
+  function drawPool(ctx, pool, t) {
+    const left = Math.max(0, pool.until - t);
+    const lifeK = Math.min(1, left * 0.8);
+    const r = pool.radius;
+    ctx.fillStyle = `rgba(11,12,29,${0.55 * lifeK})`;
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, r + 6, 0, Math.PI * 2);
+    ctx.fill();
+    const pulse = 0.85 + 0.15 * Math.sin(t * 6 + pool.x * 0.05);
+    ctx.fillStyle = `rgba(255,90,60,${0.4 * lifeK})`;
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, r * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,170,60,${0.35 * lifeK})`;
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, r * 0.55 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,90,60,${0.8 * lifeK})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 4; i++) {
+      const seed = pool.x * 0.13 + pool.y * 0.07 + i * 2.4;
+      const k = (t * 0.9 + seed) % 1;
+      const ex = pool.x + Math.sin(seed * 7 + k * 3) * r * 0.6 * (1 - k);
+      const ey = pool.y + (0.5 - k) * r * 1.2;
+      ctx.fillStyle = `rgba(255,213,79,${(1 - k) * 0.8 * lifeK})`;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 
   // src/adapter/web/main.ts
   var W = 1080;
@@ -2544,15 +2578,7 @@
         }
       }
       for (const pool of session.pools) {
-        const left = Math.max(0, pool.until - session.timeSec);
-        const alpha = Math.min(0.35, left * 0.5);
-        ctx.fillStyle = `rgba(255,90,60,${alpha})`;
-        ctx.beginPath();
-        ctx.arc(pool.x, pool.y, pool.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = `rgba(255,90,60,${Math.min(1, alpha * 2)})`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        drawPool(ctx, pool, session.timeSec);
       }
       ctx.fillStyle = "rgba(124,179,66,0.13)";
       const CELL = 90;

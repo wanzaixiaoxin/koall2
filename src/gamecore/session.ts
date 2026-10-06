@@ -354,6 +354,7 @@ export class GameSession {
         this.killProjectile(p);
         continue;
       }
+      if (p.weapon.cfg.ghost) continue; // 幽灵弹不碰撞（纯范围武器直飞落点）
       this.collideProjectile(p);
     }
 

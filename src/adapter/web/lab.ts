@@ -10,7 +10,7 @@ import {
   WeaponConfig,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool } from './render/shapes';
 
 const W = 1080;
 const H = 1920;
@@ -427,11 +427,11 @@ async function boot(): Promise<void> {
       </table>
       <h3>武器面板（${w.cfg.name}）</h3>
       <table>
-        <tr><td>单发伤害</td><td>${fmt(w.damage * w.mods.damageMul)}</td><td>攻击间隔</td><td>${fmt(w.cfg.interval / h.stats.aspd)}s</td></tr>
+        <tr><td>单发伤害</td><td>${w.cfg.ghost ? '0（纯范围）' : fmt(w.damage * w.mods.damageMul)}</td><td>攻击间隔</td><td>${fmt(w.cfg.interval / h.stats.aspd)}s</td></tr>
         <tr><td>弹速</td><td>${fmt(w.cfg.projectileSpeed * w.mods.projSpeedMul)}</td><td>射程</td><td>${fmt(w.cfg.projectileRange * w.mods.rangeMul)}</td></tr>
         <tr><td>齐射</td><td>${w.cfg.count + w.mods.extraCount} 发</td><td>连射</td><td>+${w.mods.burst} 发</td></tr>
         <tr><td>元素</td><td>${w.element}</td><td>穿透</td><td>${w.cfg.pierce}（衰减 ${Math.round((w.cfg.pierceFalloff ?? 0.15) * 100)}%/次）</td></tr>
-        <tr><td>爆破本体</td><td colspan="3">${w.cfg.blastBase ? `r${w.cfg.blastBase.radius} · 爆发 ${Math.round(w.cfg.blastBase.dmgMul * 100)}% · 地面 ${Math.round(w.cfg.blastBase.poolDpsMul * 100)}%/s × ${w.cfg.blastBase.poolSec}s` : '—（可拿"扩爆"卡获得）'}</td></tr>
+        <tr><td>爆破本体</td><td colspan="3">${w.cfg.blastBase ? `r${w.cfg.blastBase.radius} · 爆发 ${Math.round(w.cfg.blastBase.dmgMul * 100)}% · 地面 ${Math.round(w.cfg.blastBase.poolDpsMul * 100)}%/s × ${w.cfg.blastBase.poolSec}s（池总伤 ≈ ${fmt(w.damage * w.mods.damageMul * w.cfg.blastBase.poolDpsMul * w.cfg.blastBase.poolSec)}）` : '—（可拿"扩爆"卡获得）'}</td></tr>
       </table>
       <h3>形态词缀</h3>
       <table>
@@ -484,10 +484,7 @@ async function boot(): Promise<void> {
     }
 
     for (const pool of session.pools) {
-      ctx.fillStyle = 'rgba(255,90,60,0.3)';
-      ctx.beginPath();
-      ctx.arc(pool.x, pool.y, pool.radius, 0, Math.PI * 2);
-      ctx.fill();
+      drawPool(ctx, pool, session.timeSec);
     }
 
     // 虫苔地块（酸性绿半透明网格）

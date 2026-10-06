@@ -14,7 +14,7 @@ import {
   Vec2,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool } from './render/shapes';
 
 const W = 1080;
 const H = 1920;
@@ -357,17 +357,9 @@ async function boot(): Promise<void> {
       }
     }
 
-    // 落地范围伤害圈（持续 DoT 区域）
+    // 落地范围伤害圈（弹坑强化绘制）
     for (const pool of session.pools) {
-      const left = Math.max(0, pool.until - session.timeSec);
-      const alpha = Math.min(0.35, left * 0.5);
-      ctx.fillStyle = `rgba(255,90,60,${alpha})`;
-      ctx.beginPath();
-      ctx.arc(pool.x, pool.y, pool.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = `rgba(255,90,60,${Math.min(1, alpha * 2)})`;
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      drawPool(ctx, pool, session.timeSec);
     }
 
     // 虫苔地块（docs/08：酸性绿半透明网格）

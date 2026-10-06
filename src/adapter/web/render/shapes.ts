@@ -457,3 +457,46 @@ export function drawTransfer(
   ctx.lineTo(tx, ty);
   ctx.stroke();
 }
+
+/** 弹坑（持续伤害圈）强化绘制：焦黑坑缘 + 熔核脉动 + 上升火星（t = 秒）。 */
+export function drawPool(ctx: CanvasRenderingContext2D, pool: import('../../gamecore').DamagePool, t: number): void {
+  const left = Math.max(0, pool.until - t);
+  const lifeK = Math.min(1, left * 0.8); // 收尾渐隐
+  const r = pool.radius;
+
+  // 焦土坑缘（深色外环）
+  ctx.fillStyle = `rgba(11,12,29,${0.55 * lifeK})`;
+  ctx.beginPath();
+  ctx.arc(pool.x, pool.y, r + 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 熔岩盘（双层：外圈橙红 + 内圈亮黄，随时间脉动）
+  const pulse = 0.85 + 0.15 * Math.sin(t * 6 + pool.x * 0.05);
+  ctx.fillStyle = `rgba(255,90,60,${0.4 * lifeK})`;
+  ctx.beginPath();
+  ctx.arc(pool.x, pool.y, r * pulse, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = `rgba(255,170,60,${0.35 * lifeK})`;
+  ctx.beginPath();
+  ctx.arc(pool.x, pool.y, r * 0.55 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 裂纹描边
+  ctx.strokeStyle = `rgba(255,90,60,${0.8 * lifeK})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(pool.x, pool.y, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 上升火星（位置基于伪随机相位，确定性）
+  for (let i = 0; i < 4; i++) {
+    const seed = pool.x * 0.13 + pool.y * 0.07 + i * 2.4;
+    const k = (t * 0.9 + seed) % 1;
+    const ex = pool.x + Math.sin(seed * 7 + k * 3) * r * 0.6 * (1 - k);
+    const ey = pool.y + (0.5 - k) * r * 1.2;
+    ctx.fillStyle = `rgba(255,213,79,${(1 - k) * 0.8 * lifeK})`;
+    ctx.beginPath();
+    ctx.arc(ex, ey, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
