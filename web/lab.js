@@ -2465,6 +2465,73 @@
       return "\u672A\u6EE1\u8DB3";
     };
     const monGrid = document.getElementById("mongrid");
+    const monTip = document.getElementById("mon-tip");
+    const mechanismLines = (m) => {
+      const out = [];
+      switch (m.behavior) {
+        case "dash":
+          out.push({ text: "\u51B2\u523A\uFF1A\u524D\u6447 0.4s \u540E 3.2 \u500D\u901F\u7A81\u8FDB" });
+          break;
+        case "zigzag":
+          out.push({ text: "\u86C7\u5F62\u884C\u8FDB\uFF1A\u6446\u52A8\u8EB2\u907F\u76F4\u7EBF\u5F39\u9053" });
+          break;
+        case "ranged":
+          out.push({ text: `\u8FDC\u7A0B\uFF1A\u8DDD\u5899 ${m.rangedDist ?? 260}px \u505C\u9A7B\u629B\u5C04\uFF08\u5F39\u9053\u53EF\u88AB\u8D70\u4F4D\u89C4\u907F\uFF09` });
+          break;
+        case "burrow_regen":
+          out.push({ text: `\u94BB\u5730\u56DE\u8840\uFF1A\u8840\u91CF <${Math.round((m.burrowRegen?.threshold ?? 0) * 100)}% \u65F6\u5165\u5730 ${m.burrowRegen?.duration}s\uFF0C\u51FA\u571F\u56DE\u590D ${Math.round((m.burrowRegen?.heal ?? 0) * 100)}%`, warn: true });
+          break;
+        case "burrow_siege":
+          out.push({ text: `\u94BB\u5730\u653B\u5899\uFF1A\u8DDD\u5899 ${m.burrowSiege?.dist}px \u6C38\u4E45\u5165\u5730\uFF08\u6253\u4E0D\u5230\uFF01\uFF09\uFF0C\u5730\u4E0B\u6301\u7EED\u523A\u51FB\u57CE\u5899`, warn: true });
+          break;
+        case "burrow_charge":
+          out.push({ text: `\u94BB\u5730\u51B2\u950B\uFF1A\u6BCF ${m.burrowCharge?.interval}s \u5165\u5730 ${m.burrowCharge?.duration}s\uFF0C\u5899\u524D\u51FA\u571F\u91CD\u51FB -${m.burrowCharge?.dmg} \u57CE\u9632`, warn: true });
+          break;
+        case "splitter":
+          out.push({ text: "\u589E\u6B96\uFF1A\u5B9A\u65F6\u5206\u88C2 + \u6B7B\u540E\u88C2\u53CC" });
+          break;
+        default:
+          break;
+      }
+      if (m.hitShield) out.push({ text: `\u62A4\u7532\uFF1A${m.hitShield} \u6B21\u514D\u4F24\uFF08\u76F4\u63A5\u547D\u4E2D\u6D88\u8017\uFF0CDoT/\u4F24\u5BB3\u5708\u4E0D\u6D88\u8017\uFF09` });
+      if (m.burnImmune) out.push({ text: "\u707C\u70E7\u514D\u75AB\uFF1A\u4E0D\u53EF\u88AB\u70B9\u71C3" });
+      if (m.healAura) out.push({ text: `\u6CBB\u7597\u5149\u73AF\uFF1A\u534A\u5F84 ${m.healAura.radius} \u6BCF ${m.healAura.interval}s \u56DE ${m.healAura.amount}`, warn: true });
+      if (m.splitTimer) out.push({ text: `\u5B9A\u65F6\u5206\u88C2\uFF1A\u6BCF ${m.splitTimer.interval}s \u5206\u51FA 1 \u53EA\u5E7C\u4F53\uFF08\u540C\u8840\u6761/\u66F4\u5FEB/\u4E0D\u53EF\u518D\u5206\u88C2\uFF09` });
+      if (m.deathSplit) out.push({ text: `\u6B7B\u4EA1\u5206\u88C2\uFF1A\u88C2\u4E3A ${m.deathSplit.count} \u53EA\u5E7C\u4F53` });
+      if (m.escort) out.push({ text: `\u51FA\u573A\u62A4\u536B\uFF1A${m.escort.count} \u53EA${m.escort.monster === "bulwark" ? "\u5CA9\u7532\u517D" : m.escort.monster}\u73AF\u5F62\u62A4\u536B` });
+      if (m.transferAura) out.push({ text: `\u4F24\u5BB3\u8F6C\u5AC1\uFF1A\u53D7\u51FB\u8F6C\u79FB\u7ED9 ${m.transferAura.radius}px \u5185\u53CB\u519B\u4EE3\u4F24`, warn: true });
+      if (m.formationDist) out.push({ text: `\u8FD1\u5899\u53D8\u9635\uFF08${m.formationDist}px\uFF09\uFF1A\u62A4\u536B\u5C55\u5F00\u6A2A\u6392\u3001\u672C\u4F53\u5C45\u4E2D` });
+      if (m.detonate) out.push({ text: `\u81EA\u7206\uFF1A\u649E\u5899\u6216\u6B7B\u4EA1\uFF0C\u57CE\u9632 -${m.detonate.wallDamage}`, warn: true });
+      if (m.creepTrail) out.push({ text: `\u94FA\u866B\u82D4\uFF1A\u6BCF ${m.creepTrail.interval}s \u4E00\u5757\uFF08\u866B\u65CF\u52A0\u901F 25% \u56DE\u8840 2/s\uFF09` });
+      if (m.creepBenefit) out.push({ text: "\u866B\u65CF\uFF1A\u7AD9\u4E0A\u866B\u82D4\u52A0\u901F +25%\u3001\u56DE\u8840 2/s" });
+      if (m.weak?.length) out.push({ text: `\u5F31\u70B9\uFF1A${m.weak.join("/")} \u4F24\u5BB3 \xD71.25` });
+      if (m.resist?.length) out.push({ text: `\u6297\u6027\uFF1A${m.resist.join("/")} \u4F24\u5BB3 \xD70.75` });
+      return out;
+    };
+    const showMonTip = (m, e) => {
+      const mech = mechanismLines(m);
+      monTip.innerHTML = `<div class="t-name">${m.name}</div><div class="t-stats">HP ${m.hp} \xB7 \u653B ${m.atk}/${m.attackInterval}s \xB7 \u901F ${m.speed} \xB7 \u9632 ${m.def} \xB7 \u7ECF\u9A8C ${m.xp}</div><ul class="t-mech" style="margin:0;padding-left:16px;">` + mech.map((l) => `<li${l.warn ? ' class="warn"' : ""}>${l.text}</li>`).join("") + (mech.length === 0 ? "<li>\u65E0\u7279\u6B8A\u673A\u5236\uFF08\u57FA\u7840\u538B\u5899\u602A\uFF09</li>" : "") + "</ul>";
+      monTip.style.display = "block";
+      moveMonTip(e);
+    };
+    const moveMonTip = (e) => {
+      const pad = 14;
+      const rect = monTip.getBoundingClientRect();
+      let x = e.clientX + pad;
+      let y = e.clientY + pad;
+      if (x + rect.width > window.innerWidth - 8) x = e.clientX - rect.width - pad;
+      if (y + rect.height > window.innerHeight - 8) y = e.clientY - rect.height - pad;
+      monTip.style.left = `${x}px`;
+      monTip.style.top = `${y}px`;
+    };
+    const hideMonTip = () => {
+      monTip.style.display = "none";
+    };
+    const bindMonTip = (btn, m) => {
+      btn.addEventListener("mouseenter", (e) => showMonTip(m, e));
+      btn.addEventListener("mousemove", moveMonTip);
+      btn.addEventListener("mouseleave", hideMonTip);
+    };
     for (const m of monstersFile.monsters) {
       const btn = document.createElement("button");
       btn.className = "mbtn";
@@ -2475,11 +2542,14 @@
         session.debugSpawn(m.id, x, y);
         log(`+ \u751F\u6210 ${m.name}${m.escort ? " + \u62A4\u536B\u73AF" : ""} @ (${x.toFixed(0)}, ${y.toFixed(0)})`);
       };
+      bindMonTip(btn, m);
       monGrid.appendChild(btn);
     }
     const soloShaman = document.createElement("button");
     soloShaman.className = "mbtn";
     soloShaman.textContent = "+ \u5DEB\u5E08\uFF08\u5355\u72EC\uFF09";
+    const shamanCfg = monstersFile.monsters.find((x) => x.id === "shaman");
+    if (shamanCfg) bindMonTip(soloShaman, shamanCfg);
     soloShaman.onclick = () => {
       const x = 200 + Math.random() * (W - 400);
       const y = 1e3 + Math.random() * 400;

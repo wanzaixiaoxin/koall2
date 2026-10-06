@@ -252,6 +252,64 @@ async function boot(): Promise<void> {
 
   // ---------- 测试怪按钮 ----------
   const monGrid = document.getElementById('mongrid')!;
+  // ---------- 怪物悬停详情浮层 ----------
+  const monTip = document.getElementById('mon-tip')!;
+  const mechanismLines = (m: MonsterConfig): { text: string; warn?: boolean }[] => {
+    const out: { text: string; warn?: boolean }[] = [];
+    switch (m.behavior) {
+      case 'dash': out.push({ text: '冲刺：前摇 0.4s 后 3.2 倍速突进' }); break;
+      case 'zigzag': out.push({ text: '蛇形行进：摆动躲避直线弹道' }); break;
+      case 'ranged': out.push({ text: `远程：距墙 ${m.rangedDist ?? 260}px 停驻抛射（弹道可被走位规避）` }); break;
+      case 'burrow_regen': out.push({ text: `钻地回血：血量 <${Math.round((m.burrowRegen?.threshold ?? 0) * 100)}% 时入地 ${m.burrowRegen?.duration}s，出土回复 ${Math.round((m.burrowRegen?.heal ?? 0) * 100)}%`, warn: true }); break;
+      case 'burrow_siege': out.push({ text: `钻地攻墙：距墙 ${m.burrowSiege?.dist}px 永久入地（打不到！），地下持续刺击城墙`, warn: true }); break;
+      case 'burrow_charge': out.push({ text: `钻地冲锋：每 ${m.burrowCharge?.interval}s 入地 ${m.burrowCharge?.duration}s，墙前出土重击 -${m.burrowCharge?.dmg} 城防`, warn: true }); break;
+      case 'splitter': out.push({ text: '增殖：定时分裂 + 死后裂双' }); break;
+      default: break;
+    }
+    if (m.hitShield) out.push({ text: `护甲：${m.hitShield} 次免伤（直接命中消耗，DoT/伤害圈不消耗）` });
+    if (m.burnImmune) out.push({ text: '灼烧免疫：不可被点燃' });
+    if (m.healAura) out.push({ text: `治疗光环：半径 ${m.healAura.radius} 每 ${m.healAura.interval}s 回 ${m.healAura.amount}`, warn: true });
+    if (m.splitTimer) out.push({ text: `定时分裂：每 ${m.splitTimer.interval}s 分出 1 只幼体（同血条/更快/不可再分裂）` });
+    if (m.deathSplit) out.push({ text: `死亡分裂：裂为 ${m.deathSplit.count} 只幼体` });
+    if (m.escort) out.push({ text: `出场护卫：${m.escort.count} 只${m.escort.monster === 'bulwark' ? '岩甲兽' : m.escort.monster}环形护卫` });
+    if (m.transferAura) out.push({ text: `伤害转嫁：受击转移给 ${m.transferAura.radius}px 内友军代伤`, warn: true });
+    if (m.formationDist) out.push({ text: `近墙变阵（${m.formationDist}px）：护卫展开横排、本体居中` });
+    if (m.detonate) out.push({ text: `自爆：撞墙或死亡，城防 -${m.detonate.wallDamage}`, warn: true });
+    if (m.creepTrail) out.push({ text: `铺虫苔：每 ${m.creepTrail.interval}s 一块（虫族加速 25% 回血 2/s）` });
+    if (m.creepBenefit) out.push({ text: '虫族：站上虫苔加速 +25%、回血 2/s' });
+    if (m.weak?.length) out.push({ text: `弱点：${m.weak.join('/')} 伤害 ×1.25` });
+    if (m.resist?.length) out.push({ text: `抗性：${m.resist.join('/')} 伤害 ×0.75` });
+    return out;
+  };
+  const showMonTip = (m: MonsterConfig, e: MouseEvent): void => {
+    const mech = mechanismLines(m);
+    monTip.innerHTML =
+      `<div class="t-name">${m.name}</div>` +
+      `<div class="t-stats">HP ${m.hp} · 攻 ${m.atk}/${m.attackInterval}s · 速 ${m.speed} · 防 ${m.def} · 经验 ${m.xp}</div>` +
+      `<ul class="t-mech" style="margin:0;padding-left:16px;">` +
+      mech.map((l) => `<li${l.warn ? ' class="warn"' : ''}>${l.text}</li>`).join('') +
+      (mech.length === 0 ? '<li>无特殊机制（基础压墙怪）</li>' : '') +
+      '</ul>';
+    monTip.style.display = 'block';
+    moveMonTip(e);
+  };
+  const moveMonTip = (e: MouseEvent): void => {
+    const pad = 14;
+    const rect = monTip.getBoundingClientRect();
+    let x = e.clientX + pad;
+    let y = e.clientY + pad;
+    if (x + rect.width > window.innerWidth - 8) x = e.clientX - rect.width - pad;
+    if (y + rect.height > window.innerHeight - 8) y = e.clientY - rect.height - pad;
+    monTip.style.left = `${x}px`;
+    monTip.style.top = `${y}px`;
+  };
+  const hideMonTip = (): void => { monTip.style.display = 'none'; };
+  const bindMonTip = (btn: HTMLButtonElement, m: MonsterConfig): void => {
+    btn.addEventListener('mouseenter', (e) => showMonTip(m, e));
+    btn.addEventListener('mousemove', moveMonTip);
+    btn.addEventListener('mouseleave', hideMonTip);
+  };
+
   for (const m of monstersFile.monsters) {
     const btn = document.createElement('button');
     btn.className = 'mbtn';
@@ -262,12 +320,15 @@ async function boot(): Promise<void> {
       session.debugSpawn(m.id, x, y);
       log(`+ 生成 ${m.name}${m.escort ? ' + 护卫环' : ''} @ (${x.toFixed(0)}, ${y.toFixed(0)})`);
     };
+    bindMonTip(btn, m);
     monGrid.appendChild(btn);
   }
   // 特殊：单独巫师（不带护卫环，测治疗本体）
   const soloShaman = document.createElement('button');
   soloShaman.className = 'mbtn';
   soloShaman.textContent = '+ 巫师（单独）';
+  const shamanCfg = monstersFile.monsters.find((x) => x.id === 'shaman');
+  if (shamanCfg) bindMonTip(soloShaman, shamanCfg);
   soloShaman.onclick = () => {
     const x = 200 + Math.random() * (W - 400);
     const y = 1000 + Math.random() * 400;

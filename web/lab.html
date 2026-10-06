@@ -61,6 +61,17 @@
   #log { margin-top: 12px; font-size: 12px; color: rgba(245,245,250,.6); max-height: 180px; overflow-y: auto; }
   #log div { padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,.05); }
   a { color: #35E0C3; }
+  /* 怪物悬停详情浮层 */
+  #mon-tip {
+    position: fixed; display: none; z-index: 99; pointer-events: none;
+    min-width: 220px; max-width: 300px; padding: 12px 14px; border-radius: 12px;
+    background: rgba(11,12,29,.96); border: 1.5px solid #3D4470;
+    font-size: 12px; line-height: 1.6; box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  }
+  #mon-tip .t-name { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  #mon-tip .t-stats { color: rgba(245,245,250,.75); margin-bottom: 6px; }
+  #mon-tip .t-mech li { color: #35E0C3; }
+  #mon-tip .t-mech li.warn { color: #FF9A3C; }
 </style>
 </head>
 <body>
@@ -73,8 +84,9 @@
       <div id="wprofile"></div>
       <div class="sec">卡牌（随武器构筑切换）</div>
       <div id="cardgrid"></div>
-      <div class="sec">测试怪（生成在射程外，可观行军与索敌）</div>
+      <div class="sec">测试怪（生成在射程外，可观行军与索敌；悬停查看机制）</div>
       <div id="mongrid"></div>
+      <div id="mon-tip"></div>
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <button id="clear">清场</button>
         <button id="autospawn">连续出怪：关</button>
