@@ -2818,20 +2818,6 @@
       ctx.fillStyle = "#F5F5FA";
       ctx.font = '700 13px "PingFang SC", sans-serif';
       ctx.fillText(`\u57CE\u9632 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`, W / 2, barSY - 6);
-      for (let i = floats.length - 1; i >= 0; i--) {
-        const f = floats[i];
-        f.life -= dtR;
-        if (f.life <= 0) {
-          floats.splice(i, 1);
-          continue;
-        }
-        const k = f.life / 0.8;
-        ctx.globalAlpha = Math.min(1, k * 2);
-        ctx.font = `700 ${f.size}px "PingFang SC", sans-serif`;
-        ctx.fillStyle = f.color;
-        ctx.fillText(f.text, f.x, H - (f.y + (1 - k) * 50));
-      }
-      ctx.globalAlpha = 1;
       ctx.restore();
       for (let i = transfers.length - 1; i >= 0; i--) {
         const tr = transfers[i];

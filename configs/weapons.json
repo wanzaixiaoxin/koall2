@@ -55,7 +55,7 @@
       "projectileRange": 950,
       "projectileRadius": 8,
       "pierce": 0,
-      "targeting": "random",
+      "targeting": "nearest",
       "trajectory": "straight",
       "motion": {
         "type": "parabola",
