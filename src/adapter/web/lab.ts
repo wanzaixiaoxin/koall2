@@ -457,6 +457,7 @@ async function boot(): Promise<void> {
       <table>
         <tr><td>场上怪物</td><td>${session.monsters.length}</td><td>投射物</td><td>${session.projectiles.length}</td></tr>
         <tr><td>伤害圈</td><td>${session.pools.length}</td><td>总伤害</td><td>${Math.round(session.totalDamage)}</td></tr>
+        <tr><td>飘字缓冲</td><td>${floats.length}</td><td>虫苔格</td><td>${session.creep.size}</td></tr>
       </table>`;
   };
   createSession(currentWeapon);

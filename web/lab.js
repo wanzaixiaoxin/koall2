@@ -2701,6 +2701,7 @@
       <table>
         <tr><td>\u573A\u4E0A\u602A\u7269</td><td>${session.monsters.length}</td><td>\u6295\u5C04\u7269</td><td>${session.projectiles.length}</td></tr>
         <tr><td>\u4F24\u5BB3\u5708</td><td>${session.pools.length}</td><td>\u603B\u4F24\u5BB3</td><td>${Math.round(session.totalDamage)}</td></tr>
+        <tr><td>\u98D8\u5B57\u7F13\u51B2</td><td>${floats.length}</td><td>\u866B\u82D4\u683C</td><td>${session.creep.size}</td></tr>
       </table>`;
     };
     createSession(currentWeapon);
