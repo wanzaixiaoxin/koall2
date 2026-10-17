@@ -250,6 +250,7 @@ export class GameSession {
   totalCrits = 0;
   totalKills = 0;
   totalWallDamage = 0;
+  totalSpawned = 0; // 实际出场怪数（含分裂/产卵/护卫，> 配置怪池）
   maxMonsters = 0;
   maxProjectiles = 0;
   cardPickLog: string[] = [];
@@ -277,6 +278,11 @@ export class GameSession {
 
   get timeSec(): number {
     return this.tick * TICK_DT;
+  }
+
+  /** 当前波次序号（0 起；-1 = 准备阶段尚未开波）——供报表/AI 工具读取"玩到第几波"。 */
+  get currentWaveIndex(): number {
+    return this.director.waveIndex;
   }
 
   /** 推进一个固定逻辑帧。 */
@@ -636,6 +642,7 @@ export class GameSession {
   private spawnMonster(key: string, spawnX: number, spawnY?: number, skipEscort = false): void {
     const cfg = this.monsterCfgs.get(key);
     if (!cfg) throw new Error(`未知怪物配置: ${key}`);
+    this.totalSpawned++;
     const x = clamp(spawnX, 40, this.level.arena.width - 40);
     const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
     // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 10%×n)，血量随波次显著增强
@@ -657,6 +664,7 @@ export class GameSession {
       splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
       burrowed: false,
       burrowTimer: 0,
+      dead: false,
       creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
       regenAcc: 0,
       groupId: -1,
@@ -1271,6 +1279,8 @@ export class GameSession {
   }
 
   private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime): void {
+    if (m.dead) return; // 同 tick 多伤害源（连锁跳数/灼烧/弹坑）守护：击杀只结算一次
+    m.dead = true;
     this.totalKills++;
     this.waveKills++;
     this.hero.xp += m.cfg.xp; // 经验自动吸收（击杀即入账，无拾取环节）

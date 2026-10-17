@@ -60,8 +60,9 @@ export const greedyDpsPolicy: CardPolicy = (choices, _hero, _rng, session) => {
 export const randomPolicy: CardPolicy = (choices, _hero, rng: Rng) =>
   choices[rng.int(0, choices.length - 1)];
 
-export type PolicyName = 'greedy' | 'random' | 'casual';
+/** 选卡策略名（--cards）：与走位策略（--move）相互独立，方便做 走位×构筑 对照矩阵。 */
+export type CardPolicyName = 'greedy' | 'random';
 
-export function getPolicy(name: PolicyName): CardPolicy {
+export function getPolicy(name: CardPolicyName): CardPolicy {
   return name === 'greedy' ? greedyDpsPolicy : randomPolicy;
 }

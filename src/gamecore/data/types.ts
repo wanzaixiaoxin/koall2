@@ -274,6 +274,8 @@ export interface MonsterRuntime {
   /** 钻地状态（docs/08）：不可索敌/不可命中/免疫DoT；burrowTimer 为地下倒计时 */
   burrowed: boolean;
   burrowTimer: number;
+  /** 本 tick 已结算击杀（防止连锁/DoT/弹坑等多伤害源同 tick 重复计数） */
+  dead: boolean;
   creepTimerLeft: number;  // 虫苔铺设计时（creepTrail）
   regenAcc: number;        // 虫苔回血整数累计
   /** 队籍：护卫=领队巫师运行时 id；无编队为 -1（变阵系统用） */

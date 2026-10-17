@@ -6,8 +6,8 @@ import {
   MonsterConfig,
   WeaponConfig,
 } from '../../src/gamecore';
-import { SimAIController } from './controller';
-import { getPolicy, PolicyName } from './policies';
+import { createController, MoveName } from './agents';
+import { getPolicy, CardPolicyName } from './policies';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -15,7 +15,7 @@ const COLS = 54;
 const ROWS = 30;
 
 export async function runWatch(
-  args: { seed: number; weapon: string; policy: PolicyName },
+  args: { seed: number; weapon: string; move: MoveName; cards: CardPolicyName },
   level: LevelConfig,
   weaponCfg: WeaponConfig,
   monsterMap: ReadonlyMap<string, MonsterConfig>,
@@ -27,8 +27,8 @@ export async function runWatch(
     monsterConfigs: monsterMap,
     cardConfigs: cards,
     seed: args.seed,
-    controller: new SimAIController(),
-    cardPolicy: getPolicy(args.policy),
+    controller: createController(args.move, args.seed),
+    cardPolicy: getPolicy(args.cards),
   });
 
   const cw = level.arena.width / COLS;
@@ -71,7 +71,8 @@ export async function runWatch(
     console.log(
       `\n  结果: ${s.result === 'victory' ? '胜利' : '城破失败'}` +
       ` · 击杀 ${s.totalKills} · 等级 ${s.hero.level} · 用时 ${s.timeSec.toFixed(1)}s` +
-      ` · 城防 ${Math.ceil(s.wallHp)}/${s.wallMaxHp} · 峰值怪 ${s.maxMonsters}`,
+      ` · 城防 ${Math.ceil(s.wallHp)}/${s.wallMaxHp} · 峰值怪 ${s.maxMonsters}` +
+      ` · 走位 ${args.move} / 选卡 ${args.cards}`,
     );
   } finally {
     process.stdout.write('\x1b[?25h'); // 恢复光标
