@@ -354,7 +354,7 @@ export class GameSession {
         this.killProjectile(p);
         continue;
       }
-      if (p.weapon.cfg.ghost) continue; // 幽灵弹不碰撞（纯范围武器直飞落点）
+      if (p.ghost) continue; // 幽灵弹不碰撞（纯范围武器直飞落点）
       this.collideProjectile(p);
     }
 
@@ -385,7 +385,7 @@ export class GameSession {
         }
       }
       if (m.cfg.creepBenefit && this.isCreeped(m.x, m.y)) {
-        m.regenAcc += 2 * dt;
+        m.regenAcc += 20 * dt;
         while (m.regenAcc >= 1) {
           m.regenAcc -= 1;
           m.hp = Math.min(m.maxHp, m.hp + 1);
@@ -481,14 +481,19 @@ export class GameSession {
       s.height = Math.sin(s.t * Math.PI) * (s.kind === 'rock' ? 140 : 40);
     }
 
-    // 6) 落地范围伤害圈（火焰圈：波及钻地怪强制出土 + 烧虫苔；其余圈不伤害钻地）
+    // 6) 落地范围伤害圈（0.5s 节奏跳伤，与灼烧同律；火焰圈：波及钻地怪强制出土 + 烧虫苔；其余圈不伤害钻地）
+    //    跳伤在过期清理之前结算：寿命终点那一跳（覆盖最后一个 0.5s 窗口）照常生效
     for (let i = this.pools.length - 1; i >= 0; i--) {
       const pool = this.pools[i];
-      if (now >= pool.until) {
-        this.pools.splice(i, 1);
-        continue;
-      }
       if (pool.damageType === 'fire') this.burnCreep(pool.x, pool.y, pool.radius); // 火焰烧虫苔
+      const tick = now >= pool.nextTick;
+      let dmg = 0;
+      if (tick) {
+        pool.nextTick = now + 0.5;
+        pool.acc += pool.dps * 0.5;
+        dmg = Math.floor(pool.acc); // 整数结算，零头结转下一跳（总伤 = dps×时长，取整不丢）
+        pool.acc -= dmg;
+      }
       this.hash.queryCircle(pool.x, pool.y, pool.radius, this.scratch);
       for (const mid of this.scratch) {
         const m = this.monsters[mid];
@@ -501,11 +506,15 @@ export class GameSession {
         const dx = m.x - pool.x;
         const dy = m.y - pool.y;
         if (dx * dx + dy * dy > rr * rr) continue;
-        const dmg = Math.max(1, Math.round(pool.dps * dt)); // 整数结算
+        if (!tick || dmg <= 0) continue; // 出土判定逐帧生效，伤害按节奏结算
         m.hp -= dmg;
         this.totalDamage += dmg;
         this.bus.emit('onPoolTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg }); // 弹坑跳字
-        if (m.hp <= 0) this.killMonster(null, m);
+        if (m.hp <= 0) this.killMonster(pool.src, m); // 弹坑击杀带来源弹体：触发"弹片"击杀分裂
+      }
+      if (now >= pool.until) {
+        this.pools.splice(i, 1);
+        continue;
       }
     }
 
@@ -755,6 +764,7 @@ export class GameSession {
       homing,
       motionCfg,
       blast,
+      ghost: weapon.cfg.ghost ?? false,
     });
     this.bus.emit('onShoot', {});
   }
@@ -987,7 +997,11 @@ export class GameSession {
       m.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
-      if (m.hp <= 0) this.killMonster(null, m);
+      this.bus.emit('onHit', {
+        monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0,
+        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y,
+      });
+      if (m.hp <= 0) this.killMonster(p, m); // 爆炸击杀带弹体：触发"弹片"击杀分裂
     }
     if (p.damageType === 'fire') this.burnCreep(p.x, p.y, radius); // 火焰爆炸烧虫苔
     // 持续伤害圈
@@ -998,6 +1012,9 @@ export class GameSession {
       dps: p.dmg * poolDpsMul,
       until: now + poolSec,
       damageType: p.damageType,
+      nextTick: now + 0.5,
+      acc: 0,
+      src: p, // 弹坑击杀同样可触发"弹片"分裂
     });
     this.bus.emit('onExplode', { x: p.x, y: p.y, radius });
   }
@@ -1320,6 +1337,7 @@ export class GameSession {
           homing: childHoming,
           motionCfg: childCfg,
           blast: null,
+          ghost: false, // 弹片是可碰撞实体弹（即使母体是幽灵弹）
         });
       }
     }

@@ -502,9 +502,9 @@
   }
 
   // src/gamecore/hero.ts
-  var BASE_ATK = 10;
+  var BASE_ATK = 100;
   function xpNeed(level) {
-    return Math.round(8 + 4 * level + 0.6 * level * level);
+    return Math.round(80 + 40 * level + 6 * level * level);
   }
   function createHero(x, y, weaponCfgs) {
     return {
@@ -527,7 +527,7 @@
         cooldown: 0.3,
         // 开局小延迟，避免第一帧齐射
         shotsSinceCool: 0,
-        mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0 },
+        mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1 },
         element: cfg.damageType,
         riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
         affixes: { homing: 0, bounce: 0, split: 0, shred: 0, blast: 0, chain: 0 }
@@ -552,7 +552,7 @@
       const range = w.cfg.projectileRange * mods.rangeMul;
       const target = acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng);
       if (!target) continue;
-      w.cooldown = w.cfg.interval / hero.stats.aspd;
+      w.cooldown = w.cfg.interval * mods.intervalMul / hero.stats.aspd;
       if (w.cfg.heat) {
         w.shotsSinceCool++;
         if (w.shotsSinceCool >= w.cfg.heat.shots) {
@@ -632,6 +632,9 @@
         break;
       case "pierce":
         m.pierceAdd = op === "add" ? m.pierceAdd + value : m.pierceAdd * (1 + value);
+        break;
+      case "interval":
+        m.intervalMul = op === "add" ? m.intervalMul + value : m.intervalMul * (1 + value);
         break;
     }
   }
@@ -903,7 +906,7 @@
           this.killProjectile(p);
           continue;
         }
-        if (p.weapon.cfg.ghost) continue;
+        if (p.ghost) continue;
         this.collideProjectile(p);
       }
       this.hash.rebuild(this.monsters);
@@ -930,7 +933,7 @@
           }
         }
         if (m.cfg.creepBenefit && this.isCreeped(m.x, m.y)) {
-          m.regenAcc += 2 * dt;
+          m.regenAcc += 20 * dt;
           while (m.regenAcc >= 1) {
             m.regenAcc -= 1;
             m.hp = Math.min(m.maxHp, m.hp + 1);
@@ -1014,11 +1017,15 @@
       }
       for (let i = this.pools.length - 1; i >= 0; i--) {
         const pool = this.pools[i];
-        if (now >= pool.until) {
-          this.pools.splice(i, 1);
-          continue;
-        }
         if (pool.damageType === "fire") this.burnCreep(pool.x, pool.y, pool.radius);
+        const tick = now >= pool.nextTick;
+        let dmg = 0;
+        if (tick) {
+          pool.nextTick = now + 0.5;
+          pool.acc += pool.dps * 0.5;
+          dmg = Math.floor(pool.acc);
+          pool.acc -= dmg;
+        }
         this.hash.queryCircle(pool.x, pool.y, pool.radius, this.scratch);
         for (const mid of this.scratch) {
           const m = this.monsters[mid];
@@ -1031,11 +1038,15 @@
           const dx = m.x - pool.x;
           const dy = m.y - pool.y;
           if (dx * dx + dy * dy > rr2 * rr2) continue;
-          const dmg = Math.max(1, Math.round(pool.dps * dt));
+          if (!tick || dmg <= 0) continue;
           m.hp -= dmg;
           this.totalDamage += dmg;
           this.bus.emit("onPoolTick", { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
-          if (m.hp <= 0) this.killMonster(null, m);
+          if (m.hp <= 0) this.killMonster(pool.src, m);
+        }
+        if (now >= pool.until) {
+          this.pools.splice(i, 1);
+          continue;
         }
       }
       for (let i = this.segments.length - 1; i >= 0; i--) {
@@ -1250,7 +1261,8 @@
         riders,
         homing,
         motionCfg,
-        blast
+        blast,
+        ghost: weapon.cfg.ghost ?? false
       });
       this.bus.emit("onShoot", {});
     }
@@ -1461,7 +1473,16 @@
         m.hp -= dealt;
         this.totalDamage += dealt;
         if (res.isCrit && dealt > 0) this.totalCrits++;
-        if (m.hp <= 0) this.killMonster(null, m);
+        this.bus.emit("onHit", {
+          monsterId: m.id,
+          dmg: dealt,
+          isCrit: res.isCrit,
+          blocked: dealt === 0,
+          mitigated: dealt === 0 ? 0 : res.mitigated,
+          x: m.x,
+          y: m.y
+        });
+        if (m.hp <= 0) this.killMonster(p, m);
       }
       if (p.damageType === "fire") this.burnCreep(p.x, p.y, radius);
       this.pools.push({
@@ -1470,7 +1491,11 @@
         radius,
         dps: p.dmg * poolDpsMul,
         until: now + poolSec,
-        damageType: p.damageType
+        damageType: p.damageType,
+        nextTick: now + 0.5,
+        acc: 0,
+        src: p
+        // 弹坑击杀同样可触发"弹片"分裂
       });
       this.bus.emit("onExplode", { x: p.x, y: p.y, radius });
     }
@@ -1759,7 +1784,9 @@
             riders: p.riders,
             homing: childHoming,
             motionCfg: childCfg,
-            blast: null
+            blast: null,
+            ghost: false
+            // 弹片是可碰撞实体弹（即使母体是幽灵弹）
           });
         }
       }
@@ -2440,7 +2467,7 @@
       pushFloat(x, y, String(Math.round(dmg * 10) / 10), "#FF9A3C", 14);
     });
     session.bus.on("onPoolTick", ({ dmg, x, y }) => {
-      pushFloat(x, y, String(dmg), "#FF6B57", 13);
+      pushFloat(x, y, String(dmg), "#FF6B57", 16);
     });
     const heals = [];
     session.bus.on("onHeal", (p) => {
@@ -2686,10 +2713,19 @@
         setTimeout(() => canvas.classList.remove("shake"), 120);
       }
     }
+    let gameSpeed = 1;
+    const speedBtn = document.getElementById("speedbtn");
+    const SPEED_STEPS = [1, 1.5, 2];
+    speedBtn.onclick = () => {
+      const next = (SPEED_STEPS.indexOf(gameSpeed) + 1) % SPEED_STEPS.length;
+      gameSpeed = SPEED_STEPS[next];
+      speedBtn.textContent = `${gameSpeed}x`;
+      speedBtn.classList.toggle("fast", gameSpeed !== 1);
+    };
     let last = performance.now();
     let acc = 0;
     function frame(now) {
-      acc += Math.min((now - last) / 1e3, 0.25);
+      acc += Math.min((now - last) / 1e3, 0.25) * gameSpeed;
       last = now;
       const paused = session.pendingLevelChoices.length > 0 || session.result !== null;
       while (acc >= TICK_DT && !paused) {

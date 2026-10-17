@@ -502,9 +502,9 @@
   }
 
   // src/gamecore/hero.ts
-  var BASE_ATK = 10;
+  var BASE_ATK = 100;
   function xpNeed(level) {
-    return Math.round(8 + 4 * level + 0.6 * level * level);
+    return Math.round(80 + 40 * level + 6 * level * level);
   }
   function createHero(x, y, weaponCfgs) {
     return {
@@ -527,7 +527,7 @@
         cooldown: 0.3,
         // 开局小延迟，避免第一帧齐射
         shotsSinceCool: 0,
-        mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0 },
+        mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1 },
         element: cfg.damageType,
         riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
         affixes: { homing: 0, bounce: 0, split: 0, shred: 0, blast: 0, chain: 0 }
@@ -552,7 +552,7 @@
       const range = w.cfg.projectileRange * mods.rangeMul;
       const target = acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng);
       if (!target) continue;
-      w.cooldown = w.cfg.interval / hero.stats.aspd;
+      w.cooldown = w.cfg.interval * mods.intervalMul / hero.stats.aspd;
       if (w.cfg.heat) {
         w.shotsSinceCool++;
         if (w.shotsSinceCool >= w.cfg.heat.shots) {
@@ -632,6 +632,9 @@
         break;
       case "pierce":
         m.pierceAdd = op === "add" ? m.pierceAdd + value : m.pierceAdd * (1 + value);
+        break;
+      case "interval":
+        m.intervalMul = op === "add" ? m.intervalMul + value : m.intervalMul * (1 + value);
         break;
     }
   }
@@ -903,7 +906,7 @@
           this.killProjectile(p);
           continue;
         }
-        if (p.weapon.cfg.ghost) continue;
+        if (p.ghost) continue;
         this.collideProjectile(p);
       }
       this.hash.rebuild(this.monsters);
@@ -930,7 +933,7 @@
           }
         }
         if (m.cfg.creepBenefit && this.isCreeped(m.x, m.y)) {
-          m.regenAcc += 2 * dt;
+          m.regenAcc += 20 * dt;
           while (m.regenAcc >= 1) {
             m.regenAcc -= 1;
             m.hp = Math.min(m.maxHp, m.hp + 1);
@@ -1014,11 +1017,15 @@
       }
       for (let i = this.pools.length - 1; i >= 0; i--) {
         const pool = this.pools[i];
-        if (now >= pool.until) {
-          this.pools.splice(i, 1);
-          continue;
-        }
         if (pool.damageType === "fire") this.burnCreep(pool.x, pool.y, pool.radius);
+        const tick = now >= pool.nextTick;
+        let dmg = 0;
+        if (tick) {
+          pool.nextTick = now + 0.5;
+          pool.acc += pool.dps * 0.5;
+          dmg = Math.floor(pool.acc);
+          pool.acc -= dmg;
+        }
         this.hash.queryCircle(pool.x, pool.y, pool.radius, this.scratch);
         for (const mid of this.scratch) {
           const m = this.monsters[mid];
@@ -1031,11 +1038,15 @@
           const dx = m.x - pool.x;
           const dy = m.y - pool.y;
           if (dx * dx + dy * dy > rr2 * rr2) continue;
-          const dmg = Math.max(1, Math.round(pool.dps * dt));
+          if (!tick || dmg <= 0) continue;
           m.hp -= dmg;
           this.totalDamage += dmg;
           this.bus.emit("onPoolTick", { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
-          if (m.hp <= 0) this.killMonster(null, m);
+          if (m.hp <= 0) this.killMonster(pool.src, m);
+        }
+        if (now >= pool.until) {
+          this.pools.splice(i, 1);
+          continue;
         }
       }
       for (let i = this.segments.length - 1; i >= 0; i--) {
@@ -1250,7 +1261,8 @@
         riders,
         homing,
         motionCfg,
-        blast
+        blast,
+        ghost: weapon.cfg.ghost ?? false
       });
       this.bus.emit("onShoot", {});
     }
@@ -1461,7 +1473,16 @@
         m.hp -= dealt;
         this.totalDamage += dealt;
         if (res.isCrit && dealt > 0) this.totalCrits++;
-        if (m.hp <= 0) this.killMonster(null, m);
+        this.bus.emit("onHit", {
+          monsterId: m.id,
+          dmg: dealt,
+          isCrit: res.isCrit,
+          blocked: dealt === 0,
+          mitigated: dealt === 0 ? 0 : res.mitigated,
+          x: m.x,
+          y: m.y
+        });
+        if (m.hp <= 0) this.killMonster(p, m);
       }
       if (p.damageType === "fire") this.burnCreep(p.x, p.y, radius);
       this.pools.push({
@@ -1470,7 +1491,11 @@
         radius,
         dps: p.dmg * poolDpsMul,
         until: now + poolSec,
-        damageType: p.damageType
+        damageType: p.damageType,
+        nextTick: now + 0.5,
+        acc: 0,
+        src: p
+        // 弹坑击杀同样可触发"弹片"分裂
       });
       this.bus.emit("onExplode", { x: p.x, y: p.y, radius });
     }
@@ -1759,7 +1784,9 @@
             riders: p.riders,
             homing: childHoming,
             motionCfg: childCfg,
-            blast: null
+            blast: null,
+            ghost: false
+            // 弹片是可碰撞实体弹（即使母体是幽灵弹）
           });
         }
       }
@@ -2420,7 +2447,7 @@
         pushFloat(x, y, String(dmg), "#FF9A3C", 13);
       });
       session.bus.on("onPoolTick", ({ dmg, x, y }) => {
-        pushFloat(x, y, String(dmg), "#FF6B57", 13);
+        pushFloat(x, y, String(dmg), "#FF6B57", 16);
       });
       session.bus.on("onHealed", (p) => {
         pushFloat(p.x, p.y, `+${p.amount}`, "#7CB342", 15);
@@ -2462,7 +2489,7 @@
         h.textContent = title;
         cardGrid.appendChild(h);
         for (const c of list) {
-          const targetTag = !c.target || c.target.kind === "any" ? "\u516C\u5171" : `${elementNames[c.target.element] ?? "\u5143\u7D20"}\xB7\u5143\u7D20`;
+          const targetTag = !c.target || c.target.kind === "any" ? "\u516C\u5171" : c.target.kind === "weapon" ? weaponNames.get(c.target.weaponType) ?? c.target.weaponType : `${elementNames[c.target.element] ?? "\u5143\u7D20"}\xB7\u5143\u7D20`;
           const btn = document.createElement("button");
           btn.className = `cbtn t-${c.type}`;
           const cnt = document.createElement("span");
@@ -2544,8 +2571,8 @@
       if (m.transferAura) out.push({ text: `\u4F24\u5BB3\u8F6C\u5AC1\uFF1A\u53D7\u51FB\u8F6C\u79FB\u7ED9 ${m.transferAura.radius}px \u5185\u53CB\u519B\u4EE3\u4F24`, warn: true });
       if (m.formationDist) out.push({ text: `\u8FD1\u5899\u53D8\u9635\uFF08${m.formationDist}px\uFF09\uFF1A\u62A4\u536B\u5C55\u5F00\u6A2A\u6392\u3001\u672C\u4F53\u5C45\u4E2D` });
       if (m.detonate) out.push({ text: `\u81EA\u7206\uFF1A\u649E\u5899\u6216\u6B7B\u4EA1\uFF0C\u57CE\u9632 -${m.detonate.wallDamage}`, warn: true });
-      if (m.creepTrail) out.push({ text: `\u94FA\u866B\u82D4\uFF1A\u6BCF ${m.creepTrail.interval}s \u4E00\u5757\uFF08\u866B\u65CF\u52A0\u901F 25% \u56DE\u8840 2/s\uFF09` });
-      if (m.creepBenefit) out.push({ text: "\u866B\u65CF\uFF1A\u7AD9\u4E0A\u866B\u82D4\u52A0\u901F +25%\u3001\u56DE\u8840 2/s" });
+      if (m.creepTrail) out.push({ text: `\u94FA\u866B\u82D4\uFF1A\u6BCF ${m.creepTrail.interval}s \u4E00\u5757\uFF08\u866B\u65CF\u52A0\u901F 25% \u56DE\u8840 20/s\uFF09` });
+      if (m.creepBenefit) out.push({ text: "\u866B\u65CF\uFF1A\u7AD9\u4E0A\u866B\u82D4\u52A0\u901F +25%\u3001\u56DE\u8840 20/s" });
       if (m.weak?.length) out.push({ text: `\u5F31\u70B9\uFF1A${m.weak.join("/")} \u4F24\u5BB3 \xD71.25` });
       if (m.resist?.length) out.push({ text: `\u6297\u6027\uFF1A${m.resist.join("/")} \u4F24\u5BB3 \xD70.75` });
       return out;
@@ -2606,13 +2633,13 @@
       log("\u6E05\u573A");
     };
     document.getElementById("beam").onclick = () => {
-      session.debugBeam(Math.PI / 2, 1400, 60, 3);
-      log("\u26A1 \u5149\u675F\uFF1A\u82F1\u96C4\u6B63\u4E0A\u65B9 1400px\uFF0C60 dps \xD7 3s");
+      session.debugBeam(Math.PI / 2, 1400, 600, 3);
+      log("\u26A1 \u5149\u675F\uFF1A\u82F1\u96C4\u6B63\u4E0A\u65B9 1400px\uFF0C600 dps \xD7 3s");
     };
     document.getElementById("link").onclick = () => {
       const y = 700 + Math.random() * 600;
-      session.debugLink(100, y, W - 100, y, 60, 3);
-      log(`\u26A1 \u7535\u7F51\u8FDE\u7EBF\uFF1Ay=${y.toFixed(0)}\uFF0C60 dps \xD7 3s`);
+      session.debugLink(100, y, W - 100, y, 600, 3);
+      log(`\u26A1 \u7535\u7F51\u8FDE\u7EBF\uFF1Ay=${y.toFixed(0)}\uFF0C600 dps \xD7 3s`);
     };
     document.getElementById("reset").onclick = () => location.reload();
     const weaponSelect = document.getElementById("weaponselect");
@@ -2678,7 +2705,7 @@
       </table>
       <h3>\u6B66\u5668\u9762\u677F\uFF08${w.cfg.name}\uFF09</h3>
       <table>
-        <tr><td>\u5355\u53D1\u4F24\u5BB3</td><td>${w.cfg.ghost && w.cfg.blastBase ? `\u6C60 ${fmt(w.damage * w.mods.damageMul * w.cfg.blastBase.poolDpsMul)}/s \xD7 ${w.cfg.blastBase.poolSec}s` : w.cfg.ghost ? "0\uFF08\u7EAF\u8303\u56F4\uFF09" : fmt(w.damage * w.mods.damageMul)}</td><td>\u653B\u51FB\u95F4\u9694</td><td>${fmt(w.cfg.interval / h.stats.aspd)}s</td></tr>
+        <tr><td>\u5355\u53D1\u4F24\u5BB3</td><td>${w.cfg.ghost && w.cfg.blastBase ? `\u6C60 ${fmt(w.damage * w.mods.damageMul * w.cfg.blastBase.poolDpsMul)}/s \xD7 ${w.cfg.blastBase.poolSec}s` : w.cfg.ghost ? "0\uFF08\u7EAF\u8303\u56F4\uFF09" : fmt(w.damage * w.mods.damageMul)}</td><td>\u653B\u51FB\u95F4\u9694</td><td>${fmt(w.cfg.interval * w.mods.intervalMul / h.stats.aspd)}s</td></tr>
         <tr><td>\u5F39\u901F</td><td>${fmt(w.cfg.projectileSpeed * w.mods.projSpeedMul)}</td><td>\u5C04\u7A0B</td><td>${fmt(w.cfg.projectileRange * w.mods.rangeMul)}</td></tr>
         <tr><td>\u9F50\u5C04</td><td>${w.cfg.count + w.mods.extraCount} \u53D1</td><td>\u8FDE\u5C04</td><td>+${w.mods.burst} \u53D1</td></tr>
         <tr><td>\u5143\u7D20</td><td>${w.element}</td><td>\u7A7F\u900F</td><td>${w.cfg.pierce}\uFF08\u8870\u51CF ${Math.round((w.cfg.pierceFalloff ?? 0.15) * 100)}%/\u6B21\uFF09</td></tr>
@@ -2902,12 +2929,19 @@
       ctx.closePath();
       ctx.fill();
     }
+    let gameSpeed = 1;
+    const speedBtn = document.getElementById("speed");
+    speedBtn.onclick = () => {
+      gameSpeed = gameSpeed === 1 ? 1.5 : gameSpeed === 1.5 ? 2 : 1;
+      speedBtn.textContent = `\u500D\u901F\uFF1A${gameSpeed}x`;
+      log(`\u6E38\u620F\u500D\u901F \u2192 ${gameSpeed}x`);
+    };
     let acc = 0;
     let last = performance.now();
     let lastStats = 0;
     function frame(nowMs) {
       const dtF = Math.min((nowMs - last) / 1e3, 0.25);
-      acc += dtF;
+      acc += dtF * gameSpeed;
       last = nowMs;
       while (acc >= 1 / 30) {
         session.step();

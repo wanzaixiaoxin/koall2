@@ -133,7 +133,7 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
 function validateCards(cards: CardConfig[]): void {
   const ids = new Set<string>();
   const passiveStats = ['atk', 'aspd', 'moveSpeed', 'critChance', 'critDmg', 'dmgMul'];
-  const bulletStats = ['count', 'burst', 'projSpeed', 'damage', 'range', 'pierce'];
+  const bulletStats = ['count', 'burst', 'projSpeed', 'damage', 'range', 'pierce', 'interval'];
   const wallStats = ['wallMax', 'wallRepair'];
   const formIds = ['homing', 'bounce', 'split', 'shred', 'blast', 'chain'];
   const damageTypes = ['physical', 'fire', 'frost', 'lightning', 'poison'];

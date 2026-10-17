@@ -7,7 +7,7 @@
   },
   "wall": {
     "height": 64,
-    "hp": 2200
+    "hp": 22000
   },
   "defenseRect": {
     "yMin": 96,
@@ -28,14 +28,14 @@
     877,
     990
   ],
-  "prepareSec": 2,
-  "intermissionSec": 4,
-  "waveClearBonusXp": 30,
+  "prepareSec": 1,
+  "intermissionSec": 2,
+  "waveClearBonusXp": 300,
   "waves": [
     {
       "banner": "第 1 波 · 史莱姆先锋（横排）",
       "formation": "line",
-      "durationSec": 85,
+      "durationSec": 45,
       "spawns": [
         {
           "monster": "slime",
@@ -48,7 +48,7 @@
     {
       "banner": "第 2 波 · 多路渗透",
       "formation": "stream",
-      "durationSec": 100,
+      "durationSec": 50,
       "spawns": [
         {
           "monster": "slime",
@@ -73,7 +73,7 @@
     {
       "banner": "第 3 波 · 野狼侧翼",
       "formation": "stream",
-      "durationSec": 105,
+      "durationSec": 55,
       "spawns": [
         {
           "monster": "slime",
@@ -109,7 +109,7 @@
     {
       "banner": "第 4 波 · 投矛手中军",
       "formation": "line",
-      "durationSec": 90,
+      "durationSec": 60,
       "spawns": [
         {
           "monster": "slime",
@@ -128,7 +128,7 @@
     {
       "banner": "第 5 波 · 重甲压境（岩甲魔王登场）",
       "formation": "stream",
-      "durationSec": 95,
+      "durationSec": 60,
       "spawns": [
         {
           "monster": "slime",
@@ -173,7 +173,7 @@
     {
       "banner": "第 6 波 · 狼群奔袭",
       "formation": "line",
-      "durationSec": 80,
+      "durationSec": 65,
       "spawns": [
         {
           "monster": "wolf",
@@ -210,7 +210,7 @@
     {
       "banner": "第 7 波 · 钳形攻势",
       "formation": "line",
-      "durationSec": 95,
+      "durationSec": 65,
       "spawns": [
         {
           "monster": "slime",
@@ -260,7 +260,7 @@
     {
       "banner": "第 8 波 · 混合横压（岩甲魔王再临）",
       "formation": "stream",
-      "durationSec": 105,
+      "durationSec": 65,
       "spawns": [
         {
           "monster": "slime",
@@ -299,7 +299,7 @@
     {
       "banner": "第 9 波 · 狼群总攻",
       "formation": "line",
-      "durationSec": 95,
+      "durationSec": 70,
       "spawns": [
         {
           "monster": "slime",
@@ -358,7 +358,7 @@
     {
       "banner": "第 10 波 · 森林之怒（腐化树人）",
       "formation": "line",
-      "durationSec": 125,
+      "durationSec": 80,
       "spawns": [
         {
           "monster": "slime",

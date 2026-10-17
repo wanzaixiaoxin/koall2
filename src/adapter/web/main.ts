@@ -185,7 +185,7 @@ async function boot(): Promise<void> {
   });
   // 弹坑池跳字（纯范围武器的主要伤害来源）
   session.bus.on<{ dmg: number; x: number; y: number }>('onPoolTick', ({ dmg, x, y }) => {
-    pushFloat(x, y, String(dmg), '#FF6B57', 13);
+    pushFloat(x, y, String(dmg), '#FF6B57', 16);
   });
   // 治疗光环：绿色扩散环 + 每个回血单位的 "+N" 绿字
   const heals: { x: number; y: number; radius: number; life: number }[] = [];
@@ -487,10 +487,21 @@ async function boot(): Promise<void> {
   }
 
   // ---------- 主循环：固定 30Hz 逻辑 + 每帧渲染 ----------
+  // 倍速：accumulator 按倍率累积（1x/1.5x/2x 循环切换），渲染/飘字动效仍按真实时间
+  let gameSpeed = 1;
+  const speedBtn = document.getElementById('speedbtn')!;
+  const SPEED_STEPS = [1, 1.5, 2];
+  speedBtn.onclick = () => {
+    const next = (SPEED_STEPS.indexOf(gameSpeed) + 1) % SPEED_STEPS.length;
+    gameSpeed = SPEED_STEPS[next];
+    speedBtn.textContent = `${gameSpeed}x`;
+    speedBtn.classList.toggle('fast', gameSpeed !== 1);
+  };
+
   let last = performance.now();
   let acc = 0;
   function frame(now: number): void {
-    acc += Math.min((now - last) / 1000, 0.25);
+    acc += Math.min((now - last) / 1000, 0.25) * gameSpeed;
     last = now;
     const paused = session.pendingLevelChoices.length > 0 || session.result !== null;
     while (acc >= TICK_DT && !paused) {

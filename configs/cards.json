@@ -156,8 +156,8 @@
       "desc": "每次投掷 +1 枚炸弹（扇形散布）"
     },
     {
-      "id": "bomb_powder",
-      "name": "大装药",
+      "id": "bomb_rapid",
+      "name": "速掷",
       "rarity": "common",
       "type": "bullet",
       "target": {
@@ -165,46 +165,12 @@
         "weaponType": "alchemist_bomb"
       },
       "effect": {
-        "bullet": "damage",
+        "bullet": "interval",
         "op": "mul",
-        "value": 0.2
+        "value": -0.12
       },
       "maxStack": 3,
-      "desc": "炸弹伤害 +20%"
-    },
-    {
-      "id": "bomb_lob",
-      "name": "远投",
-      "rarity": "common",
-      "type": "bullet",
-      "target": {
-        "kind": "weapon",
-        "weaponType": "alchemist_bomb"
-      },
-      "effect": {
-        "bullet": "range",
-        "op": "mul",
-        "value": 0.15
-      },
-      "maxStack": 3,
-      "desc": "炸弹投掷距离 +15%"
-    },
-    {
-      "id": "bomb_fuse",
-      "name": "速燃",
-      "rarity": "common",
-      "type": "bullet",
-      "target": {
-        "kind": "weapon",
-        "weaponType": "alchemist_bomb"
-      },
-      "effect": {
-        "bullet": "projSpeed",
-        "op": "mul",
-        "value": 0.15
-      },
-      "maxStack": 3,
-      "desc": "炸弹飞行速度 +15%（更快落地轰击）"
+      "desc": "炸弹投掷间隔 -12%（伤害频率提升）"
     },
     {
       "id": "boom_edge",
@@ -317,10 +283,10 @@
       "effect": {
         "wall": "wallRepair",
         "op": "add",
-        "value": 300
+        "value": 3000
       },
       "maxStack": 99,
-      "desc": "立即修复 300 城防"
+      "desc": "立即修复 3000 城防"
     },
     {
       "id": "homing",
@@ -353,22 +319,6 @@
       },
       "maxStack": 3,
       "desc": "弩箭命中后弹向附近敌人（贯穿系武器特性）"
-    },
-    {
-      "id": "split",
-      "name": "弹片",
-      "rarity": "rare",
-      "type": "form",
-      "target": {
-        "kind": "weapon",
-        "weaponType": "alchemist_bomb"
-      },
-      "effect": {
-        "form": "split",
-        "value": 1
-      },
-      "maxStack": 2,
-      "desc": "炸弹击杀时迸射 2 枚弹片（爆破系武器特性）"
     },
     {
       "id": "shred",

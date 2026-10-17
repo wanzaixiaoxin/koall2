@@ -158,7 +158,7 @@ async function boot(): Promise<void> {
       pushFloat(x, y, String(dmg), '#FF9A3C', 13);
     });
     session.bus.on<{ dmg: number; x: number; y: number }>('onPoolTick', ({ dmg, x, y }) => {
-      pushFloat(x, y, String(dmg), '#FF6B57', 13);
+      pushFloat(x, y, String(dmg), '#FF6B57', 16);
     });
     session.bus.on<{ x: number; y: number; amount: number }>('onHealed', (p) => {
       pushFloat(p.x, p.y, `+${p.amount}`, '#7CB342', 15);
@@ -202,7 +202,9 @@ async function boot(): Promise<void> {
       for (const c of list) {
         const targetTag = !c.target || c.target.kind === 'any'
           ? '公共'
-          : `${elementNames[(c.target as { element: string }).element] ?? '元素'}·元素`;
+          : c.target.kind === 'weapon'
+            ? (weaponNames.get(c.target.weaponType) ?? c.target.weaponType)
+            : `${elementNames[c.target.element] ?? '元素'}·元素`;
         const btn = document.createElement('button');
         btn.className = `cbtn t-${c.type}`;
         const cnt = document.createElement('span');
@@ -278,8 +280,8 @@ async function boot(): Promise<void> {
     if (m.transferAura) out.push({ text: `伤害转嫁：受击转移给 ${m.transferAura.radius}px 内友军代伤`, warn: true });
     if (m.formationDist) out.push({ text: `近墙变阵（${m.formationDist}px）：护卫展开横排、本体居中` });
     if (m.detonate) out.push({ text: `自爆：撞墙或死亡，城防 -${m.detonate.wallDamage}`, warn: true });
-    if (m.creepTrail) out.push({ text: `铺虫苔：每 ${m.creepTrail.interval}s 一块（虫族加速 25% 回血 2/s）` });
-    if (m.creepBenefit) out.push({ text: '虫族：站上虫苔加速 +25%、回血 2/s' });
+    if (m.creepTrail) out.push({ text: `铺虫苔：每 ${m.creepTrail.interval}s 一块（虫族加速 25% 回血 20/s）` });
+    if (m.creepBenefit) out.push({ text: '虫族：站上虫苔加速 +25%、回血 20/s' });
     if (m.weak?.length) out.push({ text: `弱点：${m.weak.join('/')} 伤害 ×1.25` });
     if (m.resist?.length) out.push({ text: `抗性：${m.resist.join('/')} 伤害 ×0.75` });
     return out;
@@ -344,13 +346,13 @@ async function boot(): Promise<void> {
     log('清场');
   };
   document.getElementById('beam')!.onclick = () => {
-    session.debugBeam(Math.PI / 2, 1400, 60, 3);
-    log('⚡ 光束：英雄正上方 1400px，60 dps × 3s');
+    session.debugBeam(Math.PI / 2, 1400, 600, 3);
+    log('⚡ 光束：英雄正上方 1400px，600 dps × 3s');
   };
   document.getElementById('link')!.onclick = () => {
     const y = 700 + Math.random() * 600;
-    session.debugLink(100, y, W - 100, y, 60, 3);
-    log(`⚡ 电网连线：y=${y.toFixed(0)}，60 dps × 3s`);
+    session.debugLink(100, y, W - 100, y, 600, 3);
+    log(`⚡ 电网连线：y=${y.toFixed(0)}，600 dps × 3s`);
   };
   document.getElementById('reset')!.onclick = () => location.reload();
 
@@ -434,7 +436,7 @@ async function boot(): Promise<void> {
           w.cfg.ghost && w.cfg.blastBase
             ? `池 ${fmt(w.damage * w.mods.damageMul * w.cfg.blastBase.poolDpsMul)}/s × ${w.cfg.blastBase.poolSec}s`
             : w.cfg.ghost ? '0（纯范围）' : fmt(w.damage * w.mods.damageMul)
-        }</td><td>攻击间隔</td><td>${fmt(w.cfg.interval / h.stats.aspd)}s</td></tr>
+        }</td><td>攻击间隔</td><td>${fmt((w.cfg.interval * w.mods.intervalMul) / h.stats.aspd)}s</td></tr>
         <tr><td>弹速</td><td>${fmt(w.cfg.projectileSpeed * w.mods.projSpeedMul)}</td><td>射程</td><td>${fmt(w.cfg.projectileRange * w.mods.rangeMul)}</td></tr>
         <tr><td>齐射</td><td>${w.cfg.count + w.mods.extraCount} 发</td><td>连射</td><td>+${w.mods.burst} 发</td></tr>
         <tr><td>元素</td><td>${w.element}</td><td>穿透</td><td>${w.cfg.pierce}（衰减 ${Math.round((w.cfg.pierceFalloff ?? 0.15) * 100)}%/次）</td></tr>
@@ -659,12 +661,21 @@ async function boot(): Promise<void> {
     ctx.fill();
   }
 
+  // 倍速切换：1x → 1.5x → 2x 循环（逻辑帧累加按倍率缩放，渲染动效仍按真实时间）
+  let gameSpeed = 1;
+  const speedBtn = document.getElementById('speed') as HTMLButtonElement;
+  speedBtn.onclick = () => {
+    gameSpeed = gameSpeed === 1 ? 1.5 : gameSpeed === 1.5 ? 2 : 1;
+    speedBtn.textContent = `倍速：${gameSpeed}x`;
+    log(`游戏倍速 → ${gameSpeed}x`);
+  };
+
   let acc = 0;
   let last = performance.now();
   let lastStats = 0;
   function frame(nowMs: number): void {
     const dtF = Math.min((nowMs - last) / 1000, 0.25);
-    acc += dtF;
+    acc += dtF * gameSpeed;
     last = nowMs;
     while (acc >= 1 / 30) {
       session.step();

@@ -7,7 +7,7 @@
   },
   "wall": {
     "height": 64,
-    "hp": 2400
+    "hp": 24000
   },
   "defenseRect": {
     "yMin": 96,
@@ -30,7 +30,7 @@
   ],
   "prepareSec": 2,
   "intermissionSec": 4,
-  "waveClearBonusXp": 25,
+  "waveClearBonusXp": 250,
   "waves": [
     {
       "banner": "第 1 波 · 幼虫海",

@@ -259,21 +259,21 @@ const tests: TestCase[] = [
     const expect2 = expect1 + Math.round(expect1 * 0.3);
     return Number(s.wallMaxHp) === expect2 && Number(s.wallHp) === expect2;
   } },
-  { name: 'B-紧急修缮：+300 且不超上限（封顶）', run: () => {
+  { name: 'B-紧急修缮：+3000 且不超上限（封顶）', run: () => {
     const s = freshSession();
     const base = s.wallMaxHp;
-    s.wallHp = base - 1000;
+    s.wallHp = base - 10000;
     s.grantCard('repair');
-    if (Number(s.wallHp) !== base - 700) return `第 1 次修复后 ${s.wallHp}`;
+    if (Number(s.wallHp) !== base - 7000) return `第 1 次修复后 ${s.wallHp}`;
     s.grantCard('repair');
-    if (Number(s.wallHp) !== base - 400) return `第 2 次修复后 ${s.wallHp}`;
+    if (Number(s.wallHp) !== base - 4000) return `第 2 次修复后 ${s.wallHp}`;
     s.grantCard('repair');
-    if (Number(s.wallHp) !== base - 100) return `第 3 次修复后 ${s.wallHp}`;
-    s.grantCard('repair'); // base-100+300 → 封顶 base
+    if (Number(s.wallHp) !== base - 1000) return `第 3 次修复后 ${s.wallHp}`;
+    s.grantCard('repair'); // base-1000+3000 → 封顶 base
     if (Number(s.wallHp) !== base) return `第 4 次修复后 ${s.wallHp}（未封顶 ${base}）`;
     // 加固提升上限后：修复在新上限内生效
     s.grantCard('fortify');
-    s.wallHp = s.wallMaxHp - 100;
+    s.wallHp = s.wallMaxHp - 1000;
     s.grantCard('repair');
     return Number(s.wallHp) === s.wallMaxHp;
   } },
@@ -293,16 +293,15 @@ const tests: TestCase[] = [
     if (rifle.grantCard('ricochet')) return '步枪不应能拿跳箭';
     return true;
   } },
-  { name: 'C-弹片/扩爆（炸弹专属）：分裂成长 + 在本体爆破上放大半径', run: () => {
-    const s = freshSession(1, 2); // alchemist_bomb（本体爆破 r90）
-    s.grantCard('split'); s.grantCard('split');
+  { name: 'C-扩爆（炸弹专属）：在本体爆破上放大半径', run: () => {
+    const s = freshSession(1, 2); // alchemist_bomb（本体爆破 r95）
     s.grantCard('blast');
     const a = s.hero.weapons[0].affixes;
-    if (!(a.split === 2 && a.blast === 1)) return `split=${a.split} blast=${a.blast}`;
+    if (!(a.blast === 1)) return `blast=${a.blast}`;
     s.debugSpawn('slime', 540, 1100); // 远目标，射程尽头落地爆炸
     const ok = runFor(s, 6, () => s.pools.length > 0);
     if (!ok) return '伤害圈未出现';
-    return s.pools[0].radius >= 90 ? true : `半径 ${s.pools[0].radius}（应 ≥ 本体 90）`;
+    return s.pools[0].radius >= 95 ? true : `半径 ${s.pools[0].radius}（应 ≥ 本体 95）`;
   } },
   { name: 'C-元素：赋予解锁骑士效果、加持成长、互斥与门控', run: () => {
     // 门控：未携带元素时加持卡不可授予
@@ -469,8 +468,8 @@ const tests: TestCase[] = [
     s.wallHp = 10000;
     s.debugSpawn('split_shroom', 540, 900);
     const parent = s.monsters[0];
-    if (parent.cfg.hp !== 60) return `母体血量未强化 cfg.hp=${parent.cfg.hp}`;
-    parent.hp = parent.maxHp = 1e6; // 测试靶：防止被步枪提前打死（54 血撑不过 6s 分裂周期）
+    if (parent.cfg.hp !== 600) return `母体血量未强化 cfg.hp=${parent.cfg.hp}`;
+    parent.hp = parent.maxHp = 1e6; // 测试靶：防止被步枪提前打死（600 血撑不过 6s 分裂周期）
     // 定时分裂：6~9s 内应出现幼体
     const born = runFor(s, 10, () => s.monsters.some((m) => m.cfg.id === 'shroom_baby'));
     if (!born) return '定时分裂未发生';
@@ -815,7 +814,7 @@ const tests: TestCase[] = [
     const s = freshSession();
     s.grantCard('power'); s.grantCard('haste'); s.grantCard('eagle'); s.grantCard('rage'); s.grantCard('focus');
     const st = s.hero.stats;
-    return approx(st.atk, 10.8) && approx(st.aspd, 1.07) && approx(st.critChance, 0.10)
+    return approx(st.atk, 108) && approx(st.aspd, 1.07) && approx(st.critChance, 0.10)
       && approx(st.critDmg, 1.62) && approx(st.dmgMul, 0.05);
   } },
 

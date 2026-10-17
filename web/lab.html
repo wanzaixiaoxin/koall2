@@ -41,11 +41,11 @@
   .cbtn.t-form { border-color: #B388FF; }
   .cbtn.t-wall { border-color: #3D4470; }
   #mongrid { display: flex; flex-wrap: wrap; gap: 8px; }
-  .mbtn, #clear, #reset {
+  .mbtn, #clear, #reset, #speed {
     padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(245,245,250,.3);
     background: transparent; color: #F5F5FA; cursor: pointer; font-size: 13px;
   }
-  .mbtn:hover, #clear:hover, #reset:hover { background: rgba(255,255,255,.08); }
+  .mbtn:hover, #clear:hover, #reset:hover, #speed:hover { background: rgba(255,255,255,.08); }
   #weaponselect { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
   .wbtn {
     padding: 8px 16px; border-radius: 10px; cursor: pointer; font-size: 14px;
@@ -90,6 +90,7 @@
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
         <button id="clear">清场</button>
         <button id="autospawn">连续出怪：关</button>
+        <button id="speed">倍速：1x</button>
         <button id="beam">⚡ 光束（向上3s）</button>
         <button id="link">⚡ 电网连线（随机横线3s）</button>
         <button id="reset">重置全部</button>
@@ -100,6 +101,6 @@
       <div id="log"></div>
     </div>
   </div>
-  <script src="./lab.js?v=7"></script>
+  <script src="./lab.js?v=16"></script>
 </body>
 </html>

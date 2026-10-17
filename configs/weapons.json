@@ -5,7 +5,7 @@
       "name": "符文步枪",
       "role": "速射系 · 弹幕雨",
       "damageType": "physical",
-      "baseDamage": 7,
+      "baseDamage": 70,
       "interval": 0.55,
       "count": 1,
       "projectileSpeed": 950,
@@ -19,14 +19,14 @@
         "shots": 16,
         "cooldown": 2.2
       },
-      "bulletLife": 3.0
+      "bulletLife": 3
     },
     {
       "id": "crossbow_pierce",
       "name": "穿透弩",
       "role": "贯穿系 · 重狙穿线",
       "damageType": "physical",
-      "baseDamage": 24,
+      "baseDamage": 240,
       "interval": 1.6,
       "count": 1,
       "projectileSpeed": 1200,
@@ -48,7 +48,7 @@
       "name": "炼金炸弹",
       "role": "爆破系 · 抛物轰击",
       "damageType": "fire",
-      "baseDamage": 25,
+      "baseDamage": 250,
       "interval": 1.5,
       "count": 1,
       "projectileSpeed": 700,
@@ -82,7 +82,7 @@
       "name": "回旋镖",
       "role": "回旋系 · 血滴子",
       "damageType": "physical",
-      "baseDamage": 8,
+      "baseDamage": 80,
       "interval": 1.2,
       "count": 1,
       "projectileSpeed": 550,
@@ -111,7 +111,7 @@
             },
             "until": {
               "kind": "duration",
-              "value": 2.0
+              "value": 2
             }
           },
           {
@@ -144,7 +144,7 @@
       "name": "雷电权杖",
       "role": "雷霆系 · 连锁落雷",
       "damageType": "lightning",
-      "baseDamage": 14,
+      "baseDamage": 140,
       "interval": 1.1,
       "count": 1,
       "projectileSpeed": 0,

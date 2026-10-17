@@ -15,11 +15,11 @@ import { SpatialHash } from './core/spatial-hash';
 import { acquireTarget } from './targeting';
 import { norm } from './core/math';
 
-/** 经验曲线（docs/01 §3）：ExpNeed(Lv) = 8 + 4Lv + 0.6Lv²（每波 1~2 次三选一的节奏基准） */
-export const BASE_ATK = 10;
+/** 经验曲线（docs/01 §3）：ExpNeed(Lv) = 80 + 40Lv + 6Lv²（每波 1~2 次三选一的节奏基准） */
+export const BASE_ATK = 100;
 
 export function xpNeed(level: number): number {
-  return Math.round(8 + 4 * level + 0.6 * level * level);
+  return Math.round(80 + 40 * level + 6 * level * level);
 }
 
 export function createHero(x: number, y: number, weaponCfgs: WeaponConfig[]): HeroRuntime {
@@ -42,7 +42,7 @@ export function createHero(x: number, y: number, weaponCfgs: WeaponConfig[]): He
       damage: cfg.baseDamage,
       cooldown: 0.3, // 开局小延迟，避免第一帧齐射
       shotsSinceCool: 0,
-      mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0 },
+      mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1 },
       element: cfg.damageType,
       riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
       affixes: { homing: 0, bounce: 0, split: 0, shred: 0, blast: 0, chain: 0 },
@@ -90,7 +90,7 @@ export function updateWeapons(
     const range = w.cfg.projectileRange * mods.rangeMul;
     const target = acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng);
     if (!target) continue; // 无目标时冷却停在 0，不积累负值（否则目标出现时会"憋一大串"齐射）
-    w.cooldown = w.cfg.interval / hero.stats.aspd; // 赋值而非累加
+    w.cooldown = (w.cfg.interval * mods.intervalMul) / hero.stats.aspd; // 赋值而非累加
     // 枪管过热：一轮发射计 1 次，达阈值强制冷却
     if (w.cfg.heat) {
       w.shotsSinceCool++;
@@ -193,6 +193,9 @@ export function applyBulletMod(w: WeaponInstance, stat: BulletStat, op: 'add' | 
       break;
     case 'pierce':
       m.pierceAdd = op === 'add' ? m.pierceAdd + value : m.pierceAdd * (1 + value);
+      break;
+    case 'interval':
+      m.intervalMul = op === 'add' ? m.intervalMul + value : m.intervalMul * (1 + value);
       break;
   }
 }

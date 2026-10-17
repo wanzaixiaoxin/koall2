@@ -107,7 +107,7 @@ export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
 export type CardType = 'passive' | 'bullet' | 'wall' | 'form' | 'element';
 
 export type PassiveStat = 'atk' | 'aspd' | 'moveSpeed' | 'critChance' | 'critDmg' | 'dmgMul';
-export type BulletStat = 'count' | 'burst' | 'projSpeed' | 'damage' | 'range' | 'pierce';
+export type BulletStat = 'count' | 'burst' | 'projSpeed' | 'damage' | 'range' | 'pierce' | 'interval';
 export type WallStat = 'wallMax' | 'wallRepair';
 export type FormId =
   | 'homing' | 'bounce' | 'split' | 'shred' | 'blast' | 'chain';
@@ -198,6 +198,7 @@ export interface WeaponMods {
   damageMul: number;     // 伤害倍率
   rangeMul: number;      // 射程倍率
   pierceAdd: number;     // 穿透 +N（贯穿卡）
+  intervalMul: number;   // 攻击间隔倍率（频率卡：<1 为加速）
 }
 
 /** 形态机制词缀（C 类卡，挂在武器实例上，发射时快照到投射物） */
@@ -327,6 +328,8 @@ export interface ProjectileRuntime {
   homing: boolean;        // 发射时是否追踪（重定向/衍生弹必须继承，否则弹射/分裂会让追踪失效）
   motionCfg: TrajectoryConfig; // 运动配置快照（弹射/分裂重定向时按配置重建，保证词缀继承）
   blast: BlastSpec | null;
+  /** 幽灵弹快照：不碰撞直飞落点（纯范围武器）。分裂衍生的弹片强制为 false——弹片是可碰撞实体弹 */
+  ghost: boolean;
 }
 
 /** 落地范围伤害圈（持续 DoT 区域） */
@@ -337,6 +340,12 @@ export interface DamagePool {
   dps: number;
   until: number;
   damageType: DamageType;
+  /** 下一次跳伤时刻（0.5s 节奏，与灼烧同律——逐帧结算会让取整保底失真且飘字刷屏） */
+  nextTick: number;
+  /** 伤害零头结转：每跳 floor(dps×0.5)、余数入 acc，保证池总伤贴合 dps×时长（整数伤害无小数） */
+  acc: number;
+  /** 来源弹体（弹坑击杀触发"弹片"击杀分裂用；衍生弹 blast 已清零，不会连锁爆炸） */
+  src: ProjectileRuntime | null;
 }
 
 /**
