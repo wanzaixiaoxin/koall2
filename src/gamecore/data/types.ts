@@ -22,6 +22,10 @@ export interface WeaponConfig {
   pierce: number;          // 穿透目标数（0=命中即消失）
   /** 穿透伤害衰减率（每穿透一个目标，伤害 ×(1-衰减率)）；破甲每级削减 5%，最低 0（docs/02 §2） */
   pierceFalloff?: number;
+  /** 同一发弹体对同一目标的再次命中冷却（秒，默认 0.5）：回旋镖"往返各一刀"设小值 */
+  rehitSec?: number;
+  /** 多发齐射时每发独立索敌、不重复锁定同一目标（回旋镖多盘；炸弹由抛物线自动启用） */
+  splitAim?: boolean;
   targeting: TargetingRule;
   /** 运动形态（docs/07 弹道行为库）；缺省 straight。homing 可被"追踪弹"词缀附加 */
   trajectory: 'straight' | 'homing';

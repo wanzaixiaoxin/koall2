@@ -567,7 +567,7 @@
       }
       const n = norm(target.x - hero.x, target.y - hero.y);
       const total = w.cfg.count + mods.extraCount;
-      const perShotAim = w.cfg.motion?.type === "parabola" && total > 1;
+      const perShotAim = total > 1 && (w.cfg.motion?.type === "parabola" || w.cfg.splitAim === true);
       const claimed = perShotAim ? /* @__PURE__ */ new Set() : null;
       let shotTarget = target;
       for (let i = 0; i < total; i++) {
@@ -1298,7 +1298,7 @@
         blast,
         ghost: weapon.cfg.ghost ?? false
       });
-      this.bus.emit("onShoot", {});
+      this.bus.emit("onShoot", { weaponId: weapon.cfg.id });
     }
     collideProjectile(p) {
       const now = this.timeSec;
@@ -1308,7 +1308,7 @@
         if (!p.alive) break;
         const m = this.monsters[mid];
         if (!m || m.hp <= 0 || m.burrowed) continue;
-        if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < 0.5) continue;
+        if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < (p.weapon.cfg.rehitSec ?? 0.5)) continue;
         const rr2 = p.radius + m.cfg.radius;
         if (distToSegment(m.x, m.y, p.px, p.py, p.x, p.y) > rr2) continue;
         p.hitIds.set(m.id, now);

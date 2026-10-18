@@ -567,7 +567,7 @@
       }
       const n = norm(target.x - hero.x, target.y - hero.y);
       const total = w.cfg.count + mods.extraCount;
-      const perShotAim = w.cfg.motion?.type === "parabola" && total > 1;
+      const perShotAim = total > 1 && (w.cfg.motion?.type === "parabola" || w.cfg.splitAim === true);
       const claimed = perShotAim ? /* @__PURE__ */ new Set() : null;
       let shotTarget = target;
       for (let i = 0; i < total; i++) {
@@ -1298,7 +1298,7 @@
         blast,
         ghost: weapon.cfg.ghost ?? false
       });
-      this.bus.emit("onShoot", {});
+      this.bus.emit("onShoot", { weaponId: weapon.cfg.id });
     }
     collideProjectile(p) {
       const now = this.timeSec;
@@ -1308,7 +1308,7 @@
         if (!p.alive) break;
         const m = this.monsters[mid];
         if (!m || m.hp <= 0 || m.burrowed) continue;
-        if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < 0.5) continue;
+        if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < (p.weapon.cfg.rehitSec ?? 0.5)) continue;
         const rr2 = p.radius + m.cfg.radius;
         if (distToSegment(m.x, m.y, p.px, p.py, p.x, p.y) > rr2) continue;
         p.hitIds.set(m.id, now);
@@ -2465,19 +2465,36 @@
     if (!r.ok) throw new Error(`\u52A0\u8F7D\u5931\u8D25: ${url}`);
     return r.json();
   }
-  function strokeBoltPath(ctx, pts) {
+  function strokeBoltPath(ctx, pts, frac = 1) {
+    let total = 0;
+    for (let s = 0; s < pts.length - 1; s++) {
+      total += Math.hypot(pts[s + 1][0] - pts[s][0], pts[s + 1][1] - pts[s][1]);
+    }
+    let budget = total * frac;
     let first = true;
     for (let s = 0; s < pts.length - 1; s++) {
       const [x1, y1] = pts[s];
       const [x2, y2] = pts[s + 1];
-      const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * 20;
-      const my = (y1 + y2) / 2 + (Math.random() - 0.5) * 20;
+      const segLen = Math.hypot(x2 - x1, y2 - y1);
+      let ex = x2;
+      let ey = y2;
+      let partial = false;
+      if (budget < segLen) {
+        const k = Math.max(0, budget) / Math.max(segLen, 1e-3);
+        ex = x1 + (x2 - x1) * k;
+        ey = y1 + (y2 - y1) * k;
+        partial = true;
+      }
+      budget -= segLen;
+      const mx = (x1 + ex) / 2 + (Math.random() - 0.5) * 20;
+      const my = (y1 + ey) / 2 + (Math.random() - 0.5) * 20;
       if (first) {
         ctx.moveTo(x1, y1);
         first = false;
       }
       ctx.lineTo(mx, my);
-      ctx.lineTo(x2, y2);
+      ctx.lineTo(ex, ey);
+      if (partial) break;
     }
   }
   async function boot() {
@@ -2641,10 +2658,32 @@
         pushFloat(p.tx, p.ty + 24, `\u8F6C${Math.round(p.dmg)}`, "#B388FF", 15);
       }
     );
+    const MOUNT_SPOTS = [
+      [],
+      [[0, 20]],
+      [[-16, 2], [16, 2]],
+      [[-16, 2], [16, 2], [0, 28]],
+      [[-16, 2], [16, 2], [0, 28], [0, -26]]
+    ];
+    const MUZZLE_LEN = 14;
+    const weaponFlash = [];
+    const WEAPON_FLASH = 0.13;
+    session.bus.on("onShoot", ({ weaponId }) => {
+      const idx = session.hero.weapons.findIndex((w) => w.cfg.id === weaponId);
+      if (idx >= 0) weaponFlash[idx] = WEAPON_FLASH;
+    });
+    let aimCur = Math.PI / 2;
     const bolts = [];
     session.bus.on("onChain", ({ points }) => {
+      const pts = points.map((p) => [p[0], p[1]]);
+      const li = session.hero.weapons.findIndex((w) => w.cfg.id === "lightning_chain");
+      const mounts = MOUNT_SPOTS[Math.min(session.hero.weapons.length, 4)];
+      if (li >= 0 && li < mounts.length) {
+        const [mx, my] = mounts[li];
+        pts[0] = [session.hero.x + mx + MUZZLE_LEN * Math.cos(aimCur), session.hero.y + my + MUZZLE_LEN * Math.sin(aimCur)];
+      }
       if (bolts.length > 12) bolts.shift();
-      bolts.push({ pts: points, life: 0.22 });
+      bolts.push({ pts, life: 0.26, age: 0 });
     });
     session.bus.on("onGameOver", ({ result }) => {
       recorder.end(session.tick, {
@@ -2789,6 +2828,20 @@
       }
       const h = session.hero;
       const breathe = Math.sin(t * 2.2) * 3;
+      let aimTarget = Math.PI / 2;
+      let bestD = Infinity;
+      for (const m of session.monsters) {
+        if (m.hp <= 0) continue;
+        const ddx = m.x - h.x;
+        const ddy = m.y - h.y;
+        const d2 = ddx * ddx + ddy * ddy;
+        if (d2 < bestD) {
+          bestD = d2;
+          aimTarget = Math.atan2(ddy, ddx);
+        }
+      }
+      const da = Math.atan2(Math.sin(aimTarget - aimCur), Math.cos(aimTarget - aimCur));
+      aimCur += da * Math.min(1, dtR * 10);
       ctx.save();
       ctx.translate(h.x, h.y + breathe);
       ctx.fillStyle = palette.friendly.hero;
@@ -2802,6 +2855,45 @@
       ctx.arc(0, -2, 7, 0, Math.PI * 2);
       ctx.fillStyle = "#0B0C1D";
       ctx.fill();
+      const mounts = MOUNT_SPOTS[Math.min(h.weapons.length, 4)];
+      for (let i = 0; i < h.weapons.length && i < mounts.length; i++) {
+        const w = h.weapons[i];
+        const [mx, my] = mounts[i];
+        const k = Math.max(0, weaponFlash[i] ?? 0) / WEAPON_FLASH;
+        if (weaponFlash[i]) weaponFlash[i] = Math.max(0, (weaponFlash[i] ?? 0) - dtR);
+        const color = palette.damageType[w.element] ?? "#BFFFF2";
+        const recoil = k * 3;
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.rotate(aimCur - Math.PI / 2);
+        ctx.fillStyle = "#12142B";
+        ctx.strokeStyle = "#3D4470";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(0, -3 + recoil * 0.4);
+        ctx.lineTo(0, 13 - recoil);
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(0, 13 - recoil, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        if (k > 0.02) {
+          ctx.globalAlpha = 0.85 * Math.min(1, k);
+          ctx.fillStyle = "#FFF6D6";
+          ctx.beginPath();
+          ctx.arc(0, 15 - recoil, 1.8 + 2.4 * k, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+        ctx.restore();
+      }
       ctx.restore();
       const projColor = (t2) => palette.damageType[t2] ?? "#BFFFF2";
       for (const p of session.projectiles) {
@@ -2849,20 +2941,31 @@
       for (let i = bolts.length - 1; i >= 0; i--) {
         const b = bolts[i];
         b.life -= dtR;
+        b.age += dtR;
         if (b.life <= 0) {
           bolts.splice(i, 1);
           continue;
         }
         const alpha = Math.min(1, b.life / 0.14);
+        const frac = Math.min(1, b.age / 0.07);
+        if (b.age < 0.12) {
+          const kk = 1 - b.age / 0.12;
+          ctx.globalAlpha = 0.75 * kk;
+          ctx.fillStyle = "#B388FF";
+          ctx.beginPath();
+          ctx.arc(b.pts[0][0], b.pts[0][1], 5 + 9 * (1 - kk), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
         ctx.strokeStyle = `rgba(179,136,255,${alpha})`;
         ctx.lineWidth = 5;
         ctx.beginPath();
-        strokeBoltPath(ctx, b.pts);
+        strokeBoltPath(ctx, b.pts, frac);
         ctx.stroke();
         ctx.strokeStyle = `rgba(245,245,250,${alpha})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        strokeBoltPath(ctx, b.pts);
+        strokeBoltPath(ctx, b.pts, frac);
         ctx.stroke();
       }
       hudWall.style.width = `${session.wallHp / session.wallMaxHp * 100}%`;

@@ -48,11 +48,11 @@
       "name": "炼金炸弹",
       "role": "爆破系 · 抛物轰击",
       "damageType": "fire",
-      "baseDamage": 250,
+      "baseDamage": 195,
       "interval": 1.5,
       "count": 1,
       "projectileSpeed": 700,
-      "projectileRange": 950,
+      "projectileRange": 600,
       "projectileRadius": 8,
       "pierce": 0,
       "targeting": "nearest",
@@ -82,11 +82,11 @@
       "name": "回旋镖",
       "role": "回旋系 · 血滴子",
       "damageType": "physical",
-      "baseDamage": 80,
+      "baseDamage": 105,
       "interval": 1.2,
       "count": 1,
       "projectileSpeed": 550,
-      "projectileRange": 600,
+      "projectileRange": 380,
       "projectileRadius": 7,
       "pierce": 99,
       "targeting": "nearest",
@@ -107,19 +107,10 @@
           },
           {
             "motion": {
-              "type": "hover"
-            },
-            "until": {
-              "kind": "duration",
-              "value": 2
-            }
-          },
-          {
-            "motion": {
               "type": "homing",
-              "speed": 550,
+              "speed": 700,
               "range": 99999,
-              "turnRate": 720,
+              "turnRate": 2160,
               "duration": 99,
               "retarget": false,
               "home": true
@@ -134,6 +125,8 @@
       "shape": "gear",
       "spread": 0.3,
       "pierceFalloff": 0,
+      "rehitSec": 0.25,
+      "splitAim": true,
       "heat": {
         "shots": 10,
         "cooldown": 2.2

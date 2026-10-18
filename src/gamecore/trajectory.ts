@@ -316,7 +316,7 @@ export class HoverTrajectory implements Trajectory {
 
 /**
  * 阶段机：按顺序执行阶段（每阶段一个运动基元 + 结束条件）。
- * 飞盘 = 飞出(distance) → 悬停(duration) → 返回(nearOwner)，用 frisbeeConfig 生成。
+ * 飞盘 = 飞出(distance) → 折返回主人(nearOwner)，用 frisbeeConfig 生成。
  */
 export class PhaseTrajectory implements Trajectory {
   private phaseIdx = 0;
@@ -365,15 +365,14 @@ export class PhaseTrajectory implements Trajectory {
   }
 }
 
-/** 飞盘预设：飞出 → 悬停 → 返回主人。 */
-export function frisbeeConfig(speed: number, outRange: number, hoverSec: number, returnSpeed: number): TrajectoryConfig {
+/** 飞盘预设：飞出 → 立即折返回主人（参考弹壳特攻队的回旋镖：不悬停，去/回连续）。 */
+export function frisbeeConfig(speed: number, outRange: number, returnSpeed: number, turnRate = 720): TrajectoryConfig {
   return {
     type: 'phased',
     phases: [
       { motion: { type: 'straight', speed, life: (outRange + 200) / speed }, until: { kind: 'distance', value: outRange } },
-      { motion: { type: 'hover' }, until: { kind: 'duration', value: hoverSec } },
       {
-        motion: { type: 'homing', speed: returnSpeed, range: 99999, turnRate: 720, duration: 99, retarget: false, home: true },
+        motion: { type: 'homing', speed: returnSpeed, range: 99999, turnRate, duration: 99, retarget: false, home: true },
         until: { kind: 'nearOwner', value: 40 },
       },
     ],

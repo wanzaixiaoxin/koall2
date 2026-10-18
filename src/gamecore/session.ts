@@ -778,7 +778,7 @@ export class GameSession {
       blast,
       ghost: weapon.cfg.ghost ?? false,
     });
-    this.bus.emit('onShoot', {});
+    this.bus.emit('onShoot', { weaponId: weapon.cfg.id });
   }
 
   private collideProjectile(p: ProjectileRuntime): void {
@@ -789,7 +789,7 @@ export class GameSession {
       if (!p.alive) break;
       const m = this.monsters[mid];
       if (!m || m.hp <= 0 || m.burrowed) continue; // 钻地不可命中（子弹穿过）
-      if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < 0.5) continue; // 0.5s 重击冷却
+      if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < (p.weapon.cfg.rehitSec ?? 0.5)) continue; // 重击冷却（武器可调：回旋镖往返各一刀）
       const rr = p.radius + m.cfg.radius;
       if (distToSegment(m.x, m.y, p.px, p.py, p.x, p.y) > rr) continue;
 

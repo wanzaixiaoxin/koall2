@@ -111,9 +111,9 @@ export function updateWeapons(
     }
     const n = norm(target.x - hero.x, target.y - hero.y);
     const total = w.cfg.count + mods.extraCount;
-    // 抛物系多发（炸弹双掷/三连投）：每发独立索敌——第 2 发起排除本轮已选目标，
-    // 各自飞向自己的落点（不再集火同一目标白费爆炸）；场上只剩已选目标时回退允许重复
-    const perShotAim = w.cfg.motion?.type === 'parabola' && total > 1;
+    // 多发齐射的独立索敌（splitAim）：第 2 发起排除本轮已选目标，各自飞向自己的目标
+    // （炸弹双掷/三连投由抛物线自动启用；回旋镖"多盘"由配置开启）；场上只剩已选目标时回退允许重复
+    const perShotAim = total > 1 && (w.cfg.motion?.type === 'parabola' || w.cfg.splitAim === true);
     const claimed = perShotAim ? new Set<number>() : null;
     let shotTarget: Targetable = target;
     for (let i = 0; i < total; i++) {

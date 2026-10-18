@@ -300,7 +300,7 @@ const tests: TestCase[] = [
     s.grantCard('blast');
     const a = s.hero.weapons[0].affixes;
     if (!(a.blast === 1)) return `blast=${a.blast}`;
-    s.debugSpawn('slime', 540, 1100); // 远目标，射程尽头落地爆炸
+    s.debugSpawn('slime', 540, 850); // 中远目标（索敌距内），落地爆炸
     const ok = runFor(s, 6, () => s.pools.length > 0);
     if (!ok) return '伤害圈未出现';
     return s.pools[0].radius >= 95 ? true : `半径 ${s.pools[0].radius}（应 ≥ 本体 95）`;
@@ -675,13 +675,13 @@ const tests: TestCase[] = [
     s.debugSpawn('slime', 540, 1100);
     return runFor(s, 6, () => s.pools.length > 0);
   } },
-  { name: 'W-血滴子：回旋镖悬停期间对同一目标反复研磨（0.5s 重击冷却）', run: () => {
-    const s = freshSession(9, 3); // boomerang（飞出 350 → 悬停 2s → 返回）
-    s.debugSpawn('bulwark', 540, 670); // ≈悬停点（英雄 328 + 飞出 350）
+  { name: 'W-血滴子：去程/回程两段切割、单发两刀（不悬停）', run: () => {
+    const s = freshSession(9, 3); // boomerang（飞出 350 → 立即折返）
+    s.debugSpawn('bulwark', 540, 670); // 飞出路径上（英雄 328，顶点 350px 处）
     let hits = 0;
     s.bus.on('onHit', () => { hits++; });
-    runFor(s, 6, () => false);
-    return hits >= 3 ? true : `总命中 ${hits} 次（悬停研磨未生效）`;
+    runFor(s, 1.6, () => false); // 单发往返 ≈1.2s：去程一刀 + 折返再一刀
+    return hits >= 2 ? true : `总命中 ${hits} 次（往返未各结算）`;
   } },
   { name: 'W-谱系完整性：每把武器 ≥3 张专属升级卡', run: () => {
     const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
@@ -753,24 +753,23 @@ const tests: TestCase[] = [
     return spiral.endX > 500 && spiral.signChanges >= 2 && zig.endX > 500 && zig.signChanges >= 3
       ? true : `spiral(${spiral.endX.toFixed(0)},${spiral.signChanges}) zig(${zig.endX.toFixed(0)},${zig.signChanges})`;
   } },
-  { name: 'T-飞盘：飞出→悬停→返回主人后消亡', run: () => {
+  { name: 'T-飞盘：飞出→立即折返回主人（不悬停）', run: () => {
     const ctx: MotionContext = { dt: 1 / 30, now: 0, ownerX: 0, ownerY: 0, nearestMonster: () => null };
-    const t: Trajectory = createTrajectory(frisbeeConfig(300, 300, 1.0, 400), { dirX: 1, dirY: 0 });
+    const t: Trajectory = createTrajectory(frisbeeConfig(300, 300, 400), { dirX: 1, dirY: 0 });
     let x = 0; let y = 0; let alive = true;
-    // 阶段 1：飞出 300px（约 30 tick）
-    for (let i = 0; i < 30 && alive; i++) { const r = t.update(x, y, ctx); x = r.x; y = r.y; alive = r.alive; }
-    const outX = x;
-    if (outX < 250) return `飞出距离不足: ${outX.toFixed(0)}`;
-    // 阶段 2：悬停 1 秒，位移应接近 0
-    const hx = x; const hy = y;
-    for (let i = 0; i < 30 && alive; i++) { const r = t.update(x, y, ctx); x = r.x; y = r.y; alive = r.alive; }
-    const hoverMove = Math.hypot(x - hx, y - hy);
-    if (hoverMove > 2) return `悬停漂移过大: ${hoverMove.toFixed(1)}`;
-    // 阶段 3：返回主人（0,0），最终应消亡且终点靠近主人
-    let steps = 0;
-    while (alive && steps < 600) { const r = t.update(x, y, ctx); x = r.x; y = r.y; alive = r.alive; steps++; }
+    let frozen = 0; let maxX = 0; let steps = 0;
+    // 全程逐步推进：飞出 300px 后折返至主人身边消亡；途中不得出现"原地悬停"（连续位移≈0）
+    while (alive && steps < 600) {
+      const r = t.update(x, y, ctx);
+      if (Math.hypot(r.x - x, r.y - y) < 1) frozen++;
+      x = r.x; y = r.y; alive = r.alive;
+      maxX = Math.max(maxX, x);
+      steps++;
+    }
     const dHome = Math.hypot(x, y);
-    return !alive && dHome <= 45 ? true : `alive=${alive} dHome=${dHome.toFixed(1)}`;
+    return !alive && dHome <= 45 && maxX >= 280 && frozen <= 2
+      ? true
+      : `maxX=${maxX.toFixed(0)} frozen=${frozen} dHome=${dHome.toFixed(1)} alive=${alive}`;
   } },
   { name: 'T-追踪：目标死亡后按 ctx 重索敌转向', run: () => {
     const a: Targetable = { id: 1, x: 100, y: 0, hp: 1 };
@@ -929,6 +928,34 @@ const tests: TestCase[] = [
     runFor(s, 6, () => false); // 首轮齐射 1.5s 内落地，6s 富余
     const hits = s.monsters.filter((m, i) => m.hp < hp0[i]).length;
     return hits === 3 ? true : `仅 ${hits}/3 个目标被砸中（多发未独立索敌）`;
+  } },
+  { name: 'W-回旋镖多盘：双盘两枚各打各的（不重复索敌）', run: () => {
+    const s = freshSession(1, 3); // boomerang
+    s.grantCard('boom_twin'); // 双盘：数量 +1
+    const w = s.hero.weapons[0];
+    if (w.cfg.count + w.mods.extraCount < 2) return `回旋镖数量未达 2（${w.cfg.count + w.mods.extraCount}）`;
+    // 两目标横向错开：近的（660 侧，距 362）先被锁定 → 第 2 枚必须排除它改打另一只（380 侧，距 378）
+    s.debugSpawn('bulwark', 660, 670);
+    s.debugSpawn('bulwark', 380, 670);
+    for (const m of s.monsters) m.hp = m.maxHp = 1e6;
+    const hit = [0, 0];
+    s.bus.on<{ monsterId: number }>('onHit', ({ monsterId }) => { if (monsterId < 2) hit[monsterId]++; });
+    runFor(s, 2.5, () => false);
+    return hit[0] > 0 && hit[1] > 0 ? true : `命中 ${hit[0]}/${hit[1]}（第 2 枚应改打另一目标）`;
+  } },
+  { name: 'W-索敌距离：回旋镖 380 / 炸弹 600 外的目标不开火', run: () => {
+    const bo = freshSession(1, 3); // boomerang（短程索敌 380）
+    bo.debugSpawn('bulwark', 540, 328 + 500); // 500 > 380（bulwark 30px/s，2s 内进不来）
+    let boShots = 0;
+    bo.bus.on('onShoot', () => { boShots++; });
+    runFor(bo, 2, () => false);
+    if (boShots !== 0) return `回旋镖对 500px 外目标开火 ${boShots} 次`;
+    const bomb = freshSession(1, 2); // alchemist_bomb（索敌 600）
+    bomb.debugSpawn('bulwark', 540, 328 + 700); // 700 > 600
+    let bombShots = 0;
+    bomb.bus.on('onShoot', () => { bombShots++; });
+    runFor(bomb, 2, () => false);
+    return bombShots === 0 ? true : `炸弹对 700px 外目标开火 ${bombShots} 次`;
   } },
   { name: 'W-雷霆多发：尸击不再白打（双雷同 tick 连杀无重复命中）', run: () => {
     const s = freshSession(3, 4); // lightning_chain

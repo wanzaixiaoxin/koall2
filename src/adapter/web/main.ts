@@ -33,20 +33,37 @@ async function fetchJson<T>(url: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-/** 电弧折线路径：每段中点加随机抖动（渲染层表现，不影响逻辑确定性）。 */
-function strokeBoltPath(ctx: CanvasRenderingContext2D, pts: number[][]): void {
+/** 电弧折线路径：每段中点加随机抖动（渲染层表现，不影响逻辑确定性）；frac 只画前段（0→1 传导展开）。 */
+function strokeBoltPath(ctx: CanvasRenderingContext2D, pts: number[][], frac = 1): void {
+  let total = 0;
+  for (let s = 0; s < pts.length - 1; s++) {
+    total += Math.hypot(pts[s + 1][0] - pts[s][0], pts[s + 1][1] - pts[s][1]);
+  }
+  let budget = total * frac;
   let first = true;
   for (let s = 0; s < pts.length - 1; s++) {
     const [x1, y1] = pts[s];
     const [x2, y2] = pts[s + 1];
-    const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * 20;
-    const my = (y1 + y2) / 2 + (Math.random() - 0.5) * 20;
+    const segLen = Math.hypot(x2 - x1, y2 - y1);
+    let ex = x2;
+    let ey = y2;
+    let partial = false;
+    if (budget < segLen) {
+      const k = Math.max(0, budget) / Math.max(segLen, 0.001);
+      ex = x1 + (x2 - x1) * k;
+      ey = y1 + (y2 - y1) * k;
+      partial = true;
+    }
+    budget -= segLen;
+    const mx = (x1 + ex) / 2 + (Math.random() - 0.5) * 20;
+    const my = (y1 + ey) / 2 + (Math.random() - 0.5) * 20;
     if (first) {
       ctx.moveTo(x1, y1);
       first = false;
     }
     ctx.lineTo(mx, my);
-    ctx.lineTo(x2, y2);
+    ctx.lineTo(ex, ey);
+    if (partial) break;
   }
 }
 
@@ -227,11 +244,37 @@ async function boot(): Promise<void> {
       pushFloat(p.tx, p.ty + 24, `转${Math.round(p.dmg)}`, '#B388FF', 15);
     },
   );
-  // 连锁闪电折线（渲染层表现，0.22s 闪现）
-  const bolts: { pts: number[][]; life: number }[] = [];
+  // ---------- 机身武器挂载（多武器可视化，docs/02 §1） ----------
+  // 每把武器在机身上一个发射装置：开火时对应炮口闪光/后坐（武器 id 唯一 ⇒ 下标稳定对齐）
+  // 按持有数取布局：1=正面单炮 / 2=左右两侧 / 3=加前沿炮塔 / 4=加尾部炮塔
+  const MOUNT_SPOTS: [number, number][][] = [
+    [],
+    [[0, 20]],
+    [[-16, 2], [16, 2]],
+    [[-16, 2], [16, 2], [0, 28]],
+    [[-16, 2], [16, 2], [0, 28], [0, -26]],
+  ];
+  const MUZZLE_LEN = 14; // 炮口离底座中心距离（连锁闪电起点用它对齐炮口）
+  const weaponFlash: number[] = []; // 与 hero.weapons 同序：闪光剩余时长
+  const WEAPON_FLASH = 0.13;
+  session.bus.on<{ weaponId?: string }>('onShoot', ({ weaponId }) => {
+    const idx = session.hero.weapons.findIndex((w) => w.cfg.id === weaponId);
+    if (idx >= 0) weaponFlash[idx] = WEAPON_FLASH;
+  });
+  let aimCur = Math.PI / 2; // 炮口朝向（渲染层平滑值，默认朝上=敌人来向）
+  // 连锁闪电折线（渲染层表现，0.26s：前 0.07s 从炮口"传导"展开 + 余晖）
+  const bolts: { pts: number[][]; life: number; age: number }[] = [];
   session.bus.on<{ points: number[][] }>('onChain', ({ points }) => {
+    // 起点改绑雷电挂载的炮口：移动中也能看清"这道雷从权杖放出来"，不再凭空劈在怪身上
+    const pts = points.map((p) => [p[0], p[1]] as number[]);
+    const li = session.hero.weapons.findIndex((w) => w.cfg.id === 'lightning_chain');
+    const mounts = MOUNT_SPOTS[Math.min(session.hero.weapons.length, 4)];
+    if (li >= 0 && li < mounts.length) {
+      const [mx, my] = mounts[li];
+      pts[0] = [session.hero.x + mx + MUZZLE_LEN * Math.cos(aimCur), session.hero.y + my + MUZZLE_LEN * Math.sin(aimCur)];
+    }
     if (bolts.length > 12) bolts.shift();
-    bolts.push({ pts: points, life: 0.22 });
+    bolts.push({ pts, life: 0.26, age: 0 });
   });
   session.bus.on<{ result: string }>('onGameOver', ({ result }) => {
     recorder.end(session.tick, {
@@ -408,11 +451,28 @@ async function boot(): Promise<void> {
       ctx.fillRect(cx * CELL + 1, cy * CELL + 1, CELL - 2, CELL - 2);
     }
 
-    // 英雄（正三角机身 + 圆形核心，呼吸浮动）
+    // 英雄（正三角机身 + 圆形核心，呼吸浮动；多武器挂载：每把武器一个发射装置）
     const h = session.hero;
     const breathe = Math.sin(t * 2.2) * 3;
+    // 炮口朝向最近怪物（无怪则朝上）；按最短弧平滑，避免 ±π 跳变
+    let aimTarget = Math.PI / 2;
+    let bestD = Infinity;
+    for (const m of session.monsters) {
+      if (m.hp <= 0) continue;
+      const ddx = m.x - h.x;
+      const ddy = m.y - h.y;
+      const d2 = ddx * ddx + ddy * ddy;
+      if (d2 < bestD) {
+        bestD = d2;
+        aimTarget = Math.atan2(ddy, ddx);
+      }
+    }
+    const da = Math.atan2(Math.sin(aimTarget - aimCur), Math.cos(aimTarget - aimCur));
+    aimCur += da * Math.min(1, dtR * 10);
+
     ctx.save();
     ctx.translate(h.x, h.y + breathe);
+    // 机身
     ctx.fillStyle = palette.friendly.hero;
     ctx.beginPath();
     ctx.moveTo(0, 26);
@@ -424,6 +484,50 @@ async function boot(): Promise<void> {
     ctx.arc(0, -2, 7, 0, Math.PI * 2);
     ctx.fillStyle = '#0B0C1D';
     ctx.fill();
+    // 武器挂载（布局表见 MOUNT_SPOTS：1=正面单炮 / 2=左右 / 3=+前沿 / 4=+尾部）
+    const mounts = MOUNT_SPOTS[Math.min(h.weapons.length, 4)];
+    for (let i = 0; i < h.weapons.length && i < mounts.length; i++) {
+      const w = h.weapons[i];
+      const [mx, my] = mounts[i];
+      const k = Math.max(0, weaponFlash[i] ?? 0) / WEAPON_FLASH;
+      if (weaponFlash[i]) weaponFlash[i] = Math.max(0, (weaponFlash[i] ?? 0) - dtR);
+      const color = (palette.damageType as Record<string, string>)[w.element] ?? '#BFFFF2'; // 元素卡换色与弹道一致
+      const recoil = k * 3;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(aimCur - Math.PI / 2);
+      // 炮塔底座
+      ctx.fillStyle = '#12142B';
+      ctx.strokeStyle = '#3D4470';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // 炮管（开火后坐）
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(0, -3 + recoil * 0.4);
+      ctx.lineTo(0, 13 - recoil);
+      ctx.stroke();
+      // 炮口端点
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(0, 13 - recoil, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      // 开火闪光
+      if (k > 0.02) {
+        ctx.globalAlpha = 0.85 * Math.min(1, k);
+        ctx.fillStyle = '#FFF6D6';
+        ctx.beginPath();
+        ctx.arc(0, 15 - recoil, 1.8 + 2.4 * k, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    }
     ctx.restore();
 
     // 投射物（按武器塑形 + 伤害类型着色）
@@ -480,24 +584,36 @@ async function boot(): Promise<void> {
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // 连锁闪电折线（两层：紫色光带 + 白色芯线，中点抖动形成电弧感）
+    // 连锁闪电折线（两层：紫色光带 + 白色芯线；前 0.07s 沿折线传导展开 + 炮口先导光）
     for (let i = bolts.length - 1; i >= 0; i--) {
       const b = bolts[i];
       b.life -= dtR;
+      b.age += dtR;
       if (b.life <= 0) {
         bolts.splice(i, 1);
         continue;
       }
       const alpha = Math.min(1, b.life / 0.14);
+      const frac = Math.min(1, b.age / 0.07);
+      // 炮口先导光：放电瞬间从炮口亮一下（移动中也能看清"从权杖放出来"）
+      if (b.age < 0.12) {
+        const kk = 1 - b.age / 0.12;
+        ctx.globalAlpha = 0.75 * kk;
+        ctx.fillStyle = '#B388FF';
+        ctx.beginPath();
+        ctx.arc(b.pts[0][0], b.pts[0][1], 5 + 9 * (1 - kk), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
       ctx.strokeStyle = `rgba(179,136,255,${alpha})`;
       ctx.lineWidth = 5;
       ctx.beginPath();
-      strokeBoltPath(ctx, b.pts);
+      strokeBoltPath(ctx, b.pts, frac);
       ctx.stroke();
       ctx.strokeStyle = `rgba(245,245,250,${alpha})`;
       ctx.lineWidth = 2;
       ctx.beginPath();
-      strokeBoltPath(ctx, b.pts);
+      strokeBoltPath(ctx, b.pts, frac);
       ctx.stroke();
     }
 
