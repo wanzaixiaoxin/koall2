@@ -5,11 +5,17 @@ import { CardConfig, CardPolicy, Rng } from '../../src/gamecore';
  * 统一卡牌体系下的优先级：
  * 武器专属弹道（齐射/连射）> 通用子弹伤害 > 连锁/爆破形态 > 元素赋予 > 英雄属性 > 城墙。
  */
-export const greedyDpsPolicy: CardPolicy = (choices, _hero, _rng, session) => {
+export const greedyDpsPolicy: CardPolicy = (choices, hero, _rng, session) => {
   // 高压环境下城墙是战略资源：城防吃紧时防御卡优先级反超输出
   const wallDanger = session ? 1 - session.wallHp / session.wallMaxHp : 0;
   const prio = (c: CardConfig): number => {
     const e = c.effect as Record<string, unknown>;
+    if (c.type === 'weapon') {
+      // 新武器候选：第二把优先级高（补短板；sim 对照：错过早期窗口后单武器崩盘率陡增），
+      // 第 3/4 把降档（避免卡池被候选过度稀释，保留单武器专精路线）
+      const held = hero.weapons.length;
+      return held <= 1 ? 100 : held === 2 ? 72 : 46;
+    }
     if (c.type === 'wall') {
       if (c.id === 'fortify') return wallDanger > 0.35 ? 99 : 55;
       return wallDanger > 0.3 ? 92 : 25;

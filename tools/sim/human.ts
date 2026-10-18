@@ -83,6 +83,8 @@ export interface TraceRun {
   level: string;   // 关卡文件名，如 level_1_1.json
   weapon: string;  // 初始武器 id
   version: string; // web 资源版本（bundle.js?v=N），仅作溯源
+  /** 是否开启"升级三选一获得新武器"（图鉴池）：回放需按同配置重建候选（旧轨迹缺省=关） */
+  pool?: boolean;
 }
 export interface TraceInput {
   type: 'in';

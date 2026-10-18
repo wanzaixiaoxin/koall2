@@ -3,9 +3,14 @@
  *
  * 用法：
  *   node dist/tools/sim/index.js --level configs/levels/level_1_1.json [--seed 42]
- *      [--weapon gun_rifle] [--runs 5] [--json] [--watch]
+ *      [--weapon gun_rifle | --weapons gun_rifle,alchemist_bomb] [--runs 5] [--json] [--watch]
+ *      [--acquire 60:alchemist_bomb]...   # 到点强制获得新武器（模拟升级卡入手时机，可重复）
+ *      [--no-pool]                        # 关闭三选一"新武器候选"（复现旧基线/隔离变量）
  *      [--move sim|sim-legacy|casual] [--cards greedy|random]
  *   node dist/tools/sim/index.js --replay <trace.jsonl> [--json]   # 回放人工轨迹并校验逐位一致
+ *
+ * 多武器（docs/02 §1：1 把初始 + 升级卡获得、最多 4 把）：默认开启"新武器候选"（池=全部武器），
+ * 与 web 端行为一致；--weapons 直接指定初始组合，--acquire 控制获得时机（配平用）。
  *
  * 走位与选卡相互独立（--move × --cards 可做对照矩阵）：
  *   sim        武器感知版 SimAI（默认）
@@ -39,6 +44,12 @@ interface Args {
   level: string;
   seed: number;
   weapon: string;
+  /** --weapons a,b[,c]：初始武器组合（优先于 --weapon，用于多武器矩阵） */
+  weapons: string[];
+  /** --acquire <秒>:<武器id>（可重复）：到点强制获得新武器（模拟升级卡入手时机） */
+  acquire: { t: number; id: string }[];
+  /** --no-pool：关闭三选一"新武器候选"（复现旧基线/隔离变量） */
+  pool: boolean;
   move: MoveName;
   cards: CardPolicyName;
   runs: number;
@@ -59,7 +70,7 @@ const LEGACY_POLICY_MAP: Record<string, { move: MoveName; cards: CardPolicyName 
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
-    level: '', seed: 42, weapon: 'gun_rifle', move: 'sim', cards: 'greedy', runs: 1, json: false, watch: false, replay: '',
+    level: '', seed: 42, weapon: 'gun_rifle', weapons: [], acquire: [], pool: true, move: 'sim', cards: 'greedy', runs: 1, json: false, watch: false, replay: '',
   };
   let moveSet = false;
   let cardsSet = false;
@@ -70,6 +81,17 @@ function parseArgs(argv: string[]): Args {
     if (a === '--level') args.level = next();
     else if (a === '--seed') args.seed = Number(next());
     else if (a === '--weapon') args.weapon = next();
+    else if (a === '--weapons') args.weapons = next().split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--acquire') {
+      const spec = next();
+      const m = /^([\d.]+):(.+)$/.exec(spec);
+      if (!m) {
+        console.error(`--acquire 格式应为 <秒>:<武器id>（如 60:alchemist_bomb），收到: ${spec}`);
+        process.exit(1);
+      }
+      args.acquire.push({ t: Number(m[1]), id: m[2] });
+    }
+    else if (a === '--no-pool') args.pool = false;
     else if (a === '--move') { args.move = next() as MoveName; moveSet = true; }
     else if (a === '--cards') { args.cards = next() as CardPolicyName; cardsSet = true; }
     else if (a === '--policy') legacyPolicy = next();
@@ -117,29 +139,42 @@ function statBlock(values: number[], digits = 1): { avg: number; median: number;
   return { avg: r(avg), median: r(median), min: r(sorted[0]), max: r(sorted[n - 1]), std: r(std) };
 }
 
+/** 强制获得新武器的时间点（--acquire 解析结果） */
+interface AcquireSpec {
+  t: number;
+  cfg: WeaponConfig;
+}
+
 function runOnce(
   runIndex: number,
   seed: number,
   level: LevelConfig,
-  weaponCfg: WeaponConfig,
+  weaponCfgs: WeaponConfig[],
   monsterCfgs: ReadonlyMap<string, MonsterConfig>,
   cardConfigs: CardConfig[],
-  move: MoveName,
-  cards: CardPolicyName,
+  opts: { move: MoveName; cards: CardPolicyName; pool: readonly WeaponConfig[]; acquire: readonly AcquireSpec[] },
 ): Record<string, unknown> {
   const session = new GameSession({
     level,
-    weaponConfigs: [weaponCfg],
+    weaponConfigs: weaponCfgs,
     monsterConfigs: monsterCfgs,
     cardConfigs,
+    weaponPool: opts.pool,
     seed,
-    controller: createController(move, seed),
-    cardPolicy: getPolicy(cards),
+    controller: createController(opts.move, seed),
+    cardPolicy: getPolicy(opts.cards),
   });
 
+  const acquired: string[] = []; // 本局通过 --acquire 实际获得的新武器
+  let acquireIdx = 0;
   let ticks = 0;
   const maxTicks = 30 * 60 * 20; // 20 分钟兜底
   while (!session.result && ticks < maxTicks) {
+    // 到点获得新武器（模拟"升级三选一里选了新武器"的时机；去重/满槽由 session 门控）
+    while (acquireIdx < opts.acquire.length && session.timeSec >= opts.acquire[acquireIdx].t) {
+      const spec = opts.acquire[acquireIdx++];
+      if (session.grantWeapon(spec.cfg)) acquired.push(spec.cfg.id);
+    }
     session.step();
     ticks++;
   }
@@ -166,6 +201,8 @@ function runOnce(
     seed,
     result: session.result ?? 'timeout',
     stars,
+    weapons: weaponCfgs.map((w) => w.id),
+    acquired,
     durationSec,
     wallHpEnd,
     wallHpMax: session.wallMaxHp,
@@ -221,16 +258,33 @@ function main(): void {
   const monsters = loadJson<{ monsters: MonsterConfig[] }>(path.resolve(root, 'configs/monsters.json')).monsters;
   const cards = loadJson<{ cards: CardConfig[] }>(path.resolve(root, 'configs/cards.json')).cards;
 
-  const weaponCfg = weapons.find((w) => w.id === args.weapon);
-  if (!weaponCfg) {
-    console.error(`未知武器: ${args.weapon}（可选: ${weapons.map((w) => w.id).join(', ')}）`);
-    process.exit(1);
-  }
+  // 初始武器：--weapons 优先（组合），否则 --weapon（单把）
+  const initialIds = args.weapons.length > 0 ? args.weapons : [args.weapon];
+  const weaponCfgs = initialIds.map((id) => {
+    const w = weapons.find((x) => x.id === id);
+    if (!w) {
+      console.error(`未知武器: ${id}（可选: ${weapons.map((x) => x.id).join(', ')}）`);
+      process.exit(1);
+    }
+    return w;
+  });
+  // --acquire 解析（id → 配置，按时间排序）与武器图鉴池
+  const acquireSpecs: AcquireSpec[] = args.acquire
+    .map((a) => {
+      const w = weapons.find((x) => x.id === a.id);
+      if (!w) {
+        console.error(`--acquire 未知武器: ${a.id}（可选: ${weapons.map((x) => x.id).join(', ')}）`);
+        process.exit(1);
+      }
+      return { t: a.t, cfg: w };
+    })
+    .sort((a, b) => a.t - b.t);
+  const weaponPool: readonly WeaponConfig[] = args.pool ? weapons : [];
   const monsterMap = new Map(monsters.map((m) => [m.id, m]));
 
   if (args.watch) {
     // 终端实时播放（异步，Ctrl+C 退出）
-    runWatch(args, level, weaponCfg, monsterMap, cards).catch((e) => {
+    runWatch(args, level, weaponCfgs, monsterMap, cards, weaponPool).catch((e) => {
       console.error(e);
       process.exit(1);
     });
@@ -239,7 +293,12 @@ function main(): void {
 
   const reports: Record<string, unknown>[] = [];
   for (let i = 0; i < args.runs; i++) {
-    reports.push(runOnce(i, args.seed + i, level, weaponCfg, monsterMap, cards, args.move, args.cards));
+    reports.push(runOnce(i, args.seed + i, level, weaponCfgs, monsterMap, cards, {
+      move: args.move,
+      cards: args.cards,
+      pool: weaponPool,
+      acquire: acquireSpecs,
+    }));
   }
 
   // 汇总
@@ -294,7 +353,10 @@ function main(): void {
 
   const summary = {
     level: level.id,
-    weapon: args.weapon,
+    weapon: weaponCfgs[0].id,
+    weapons: weaponCfgs.map((w) => w.id),
+    pool: args.pool,
+    acquire: acquireSpecs.map((a) => `${a.t}:${a.cfg.id}`),
     move: args.move,
     cards: args.cards,
     runs: args.runs,
@@ -316,12 +378,17 @@ function main(): void {
     console.log(JSON.stringify({ summary, reports }, null, 2));
   } else {
     console.log('================ 无头模拟报告 ================');
-    console.log(`关卡: ${level.name}  武器: ${weaponCfg.name}  走位: ${args.move}  选卡: ${args.cards}  种子: ${args.seed}  局数: ${args.runs}`);
+    console.log(
+      `关卡: ${level.name}  武器: ${weaponCfgs.map((w) => w.name).join(' + ')}` +
+      `  图鉴池: ${args.pool ? '开' : '关'}${acquireSpecs.length ? `（到点获得 ${acquireSpecs.map((a) => `${a.t}s→${a.cfg.name}`).join('、')}）` : ''}` +
+      `  走位: ${args.move}  选卡: ${args.cards}  种子: ${args.seed}  局数: ${args.runs}`,
+    );
     console.log('----------------------------------------------');
     for (const r of reports) {
       console.log(
         `#${(r.run as number) + 1} [${(r.result as string).toUpperCase()}] ★${r.stars}` +
-        ` 时长 ${r.durationSec}s 城防 ${r.wallHpEnd}/${r.wallHpMax} (${r.wallHpPct}%)`,
+        ` 时长 ${r.durationSec}s 城防 ${r.wallHpEnd}/${r.wallHpMax} (${r.wallHpPct}%)` +
+        ((r.acquired as string[]).length ? ` 获得 ${(r.acquired as string[]).join('+')}` : ''),
       );
       console.log(
         `   击杀 ${r.totalKills}（出场 ${r.totalSpawned} · 清怪 ${r.killedPct}% · 内容 ${r.poolPct}% · ${r.killsPerMin}/分）` +

@@ -69,6 +69,7 @@ async function boot(): Promise<void> {
   const hudWallText = document.getElementById('walltext')!;
   const hudXp = document.getElementById('xpbar')!;
   const hudText = document.getElementById('hudtext')!;
+  const hudWeapons = document.getElementById('weaponrow')!;
   const banner = document.getElementById('banner')!;
   const cardOverlay = document.getElementById('cards')!;
   const gameOver = document.getElementById('gameover')!;
@@ -152,15 +153,17 @@ async function boot(): Promise<void> {
     weaponConfigs: [weaponCfg],
     monsterConfigs: new Map(monstersFile.monsters.map((m) => [m.id, m])),
     cardConfigs: cardsFile.cards,
+    weaponPool: weaponsFile.weapons, // 升级三选一可出"新武器"候选（docs/02 §1：1 把初始 + 卡牌获得）
     seed,
     controller,
     cardPolicy: greedyDpsPolicy,
   });
   session.externalLevelUps = true;
-  recorder.start({ t0: Date.now(), seed, level: levelFile, weapon: weaponCfg.id, version: BUNDLE_VERSION });
+  recorder.start({ t0: Date.now(), seed, level: levelFile, weapon: weaponCfg.id, version: BUNDLE_VERSION, pool: true });
 
   let bannerTimer = 0;
   let prevRenderMs = 0;
+  let weaponsShown = -1; // HUD 武器槽缓存（仅数量变化时重建 DOM）
   session.bus.on<{ index: number; banner: string }>('onWaveStart', ({ banner: b }) => {
     banner.textContent = b;
     banner.classList.add('show');
@@ -263,16 +266,18 @@ async function boot(): Promise<void> {
       pending.forEach((c, i) => {
         const el = document.createElement('div');
         el.className = `card ${c.rarity} t-${c.type}`;
-  const typeTag = { bullet: '子弹', wall: '城墙', form: '形态', passive: '属性', element: '元素' }[c.type];
+  const typeTag = { bullet: '子弹', wall: '城墙', form: '形态', passive: '属性', element: '元素', weapon: '新武器' }[c.type];
         const weaponNames = new Map(weaponsFile.weapons.map((w) => [w.id, w.name]));
         const elementNames: Record<string, string> = {
           fire: '火焰', frost: '寒冰', lightning: '闪电', poison: '毒素', physical: '物理',
         };
-        const targetTag = !c.target || c.target.kind === 'any'
-          ? '公共'
-          : c.target.kind === 'weapon'
-            ? (weaponNames.get(c.target.weaponType) ?? c.target.weaponType)
-            : `${elementNames[c.target.element] ?? c.target.element}·元素`;
+        const targetTag = c.type === 'weapon'
+          ? '加入战斗'
+          : !c.target || c.target.kind === 'any'
+            ? '公共'
+            : c.target.kind === 'weapon'
+              ? (weaponNames.get(c.target.weaponType) ?? c.target.weaponType)
+              : `${elementNames[c.target.element] ?? c.target.element}·元素`;
         el.innerHTML =
           `<div class="key">${i + 1}</div><div class="tag">${typeTag}｜${targetTag}</div>` +
           `<div class="cname">${c.name}</div><div class="ceff">${c.desc ?? ''}</div>`;
@@ -504,6 +509,14 @@ async function boot(): Promise<void> {
     hudText.textContent =
       `第 ${Math.min(session.waveStats.length + 1, level.waves.length)}/${level.waves.length} 波` +
       ` · Lv.${h.level} · 击杀 ${session.totalKills} · ${session.timeSec.toFixed(0)}s`;
+
+    // 武器槽（获得新武器时重建：1 把初始 + 升级三选一获得，最多 4 把）
+    if (session.hero.weapons.length !== weaponsShown) {
+      weaponsShown = session.hero.weapons.length;
+      hudWeapons.innerHTML = session.hero.weapons
+        .map((w) => `<span class="wchip">${w.cfg.name}</span>`)
+        .join('');
+    }
 
     if (bannerTimer > 0) {
       bannerTimer -= 1 / 60;

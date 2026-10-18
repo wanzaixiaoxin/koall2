@@ -6,6 +6,7 @@ import { calcDamage } from './damage';
 import { createTrajectory, MotionContext, TrajectoryConfig } from './trajectory';
 import {
   createHero,
+  createWeaponInstance,
   heroAttackerSnapshot,
   updateWeapons,
   applyStat,
@@ -14,6 +15,7 @@ import {
   FireCommand,
   xpNeed,
   BASE_ATK,
+  MAX_WEAPONS,
   rollCardChoices,
   CardPolicy,
 } from './hero';
@@ -62,6 +64,11 @@ export interface SessionOptions {
   seed: number;
   controller: HeroController;
   cardPolicy: CardPolicy;
+  /**
+   * 武器图鉴（可选）：开启"升级三选一获得新武器"（合成候选）与 grantWeapon 查找。
+   * 缺省 = 关闭（旧行为：卡池里没有新武器候选，回放旧轨迹保持一致）。
+   */
+  weaponPool?: readonly WeaponConfig[];
 }
 
 type DirectorState = 'prepare' | 'spawning' | 'clearing' | 'intermission' | 'done';
@@ -233,6 +240,7 @@ export class GameSession {
 
   private monsterCfgs: ReadonlyMap<string, MonsterConfig>;
   private cardConfigs: CardConfig[];
+  private weaponPool: readonly WeaponConfig[];
   private controller: HeroController;
   private cardPolicy: CardPolicy;
   private director: WaveDirector;
@@ -263,6 +271,7 @@ export class GameSession {
     this.rng = new Rng(opts.seed);
     this.monsterCfgs = opts.monsterConfigs;
     this.cardConfigs = opts.cardConfigs;
+    this.weaponPool = opts.weaponPool ?? [];
     this.controller = opts.controller;
     this.cardPolicy = opts.cardPolicy;
 
@@ -559,7 +568,7 @@ export class GameSession {
       if (this.externalLevelUps) {
         // 人类输入适配器（Web/Cocos）：暂停内部结算，等外部点选 resolveLevelUp
         if (this.pendingLevelChoices.length === 0) {
-          this.pendingLevelChoices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng);
+          this.pendingLevelChoices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng, 3, this.weaponPool);
           if (this.pendingLevelChoices.length === 0) {
             this.pendingLevels = 0;
             break;
@@ -569,7 +578,7 @@ export class GameSession {
         break;
       }
       this.pendingLevels--;
-      const choices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng);
+      const choices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng, 3, this.weaponPool);
       if (choices.length === 0) break;
       const picked = this.cardPolicy(choices, this.hero, this.rng, this);
       this.applyPickedCard(picked);
@@ -1156,6 +1165,17 @@ export class GameSession {
     this.applyPickedCard(card);
   }
 
+  /**
+   * 获得新武器（升级卡"新武器"候选的落地入口，docs/02 §1：1 把初始 + 升级卡获得）。
+   * 规则：同武器不可重复、武器位上限 MAX_WEAPONS；获得后以 Lv1 立即与现有武器同时开火。
+   */
+  grantWeapon(cfg: WeaponConfig): boolean {
+    if (this.hero.weapons.length >= MAX_WEAPONS) return false;
+    if (this.hero.weapons.some((w) => w.cfg.id === cfg.id)) return false;
+    this.hero.weapons.push(createWeaponInstance(cfg));
+    return true;
+  }
+
   // ---------- 测试入口（tools/lab 与 web/lab.html 用，不影响正常对局） ----------
 
   /** 直接授予一张卡（跳过升级流程），不适用/达上限/id 不存在时返回 false。 */
@@ -1171,6 +1191,14 @@ export class GameSession {
   /** 卡牌适用性（与 rollCardChoices 同一套门控规则；实验室/UI 可查询）。 */
   isCardApplicable(card: CardConfig): boolean {
     const e = card.effect;
+    if ('grantWeapon' in e) {
+      // 新武器候选：未持有 + 武器位未满 + 图鉴中存在
+      return (
+        this.hero.weapons.length < MAX_WEAPONS &&
+        !this.hero.weapons.some((w) => w.cfg.id === e.grantWeapon) &&
+        this.weaponPool.some((c) => c.id === e.grantWeapon)
+      );
+    }
     if ('grantElement' in e) {
       // 元素互斥：武器已被赋予过元素（≠ 默认元素）则不可再赋予；
       // 落雷武器（chainBase）伤害类型硬编码 lightning 且不结算骑士效果，不可赋予
@@ -1235,6 +1263,10 @@ export class GameSession {
       this.bus.emit('onWallHeal', { wallHp: this.wallHp, wallMaxHp: this.wallMaxHp });
     } else if ('form' in e) {
       for (const w of targets) applyForm(w.affixes, e.form, e.value);
+    } else if ('grantWeapon' in e) {
+      // 新武器获得：候选为合成卡（不在 cards.json），从武器图鉴取配置落地
+      const cfg = this.weaponPool.find((c) => c.id === e.grantWeapon);
+      if (cfg) this.grantWeapon(cfg);
     } else if ('grantElement' in e) {
       // 元素赋予：武器改属该元素，并解锁基础骑士效果（火→灼烧，冰→减速）
       for (const w of this.hero.weapons) {

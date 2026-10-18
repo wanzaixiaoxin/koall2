@@ -127,7 +127,7 @@
 
   // src/gamecore/targeting.ts
   var scratch = [];
-  function acquireTarget(rule, fromX, fromY, range, monsters, hash, rng) {
+  function acquireTarget(rule, fromX, fromY, range, monsters, hash, rng, exclude) {
     if (monsters.length === 0) return null;
     hash.rebuild(monsters);
     hash.queryCircle(fromX, fromY, range, scratch);
@@ -138,6 +138,7 @@
     for (const id of scratch) {
       const m = monsters[id];
       if (!m || m.hp <= 0) continue;
+      if (exclude && exclude.has(m.id)) continue;
       if (dist2(fromX, fromY, m.x, m.y) > range * range) continue;
       randomCount++;
       if (rng.next() < 1 / randomCount) randomCand = m;
@@ -503,8 +504,23 @@
 
   // src/gamecore/hero.ts
   var BASE_ATK = 100;
+  var MAX_WEAPONS = 4;
   function xpNeed(level) {
     return Math.round(80 + 40 * level + 6 * level * level);
+  }
+  function createWeaponInstance(cfg) {
+    return {
+      cfg,
+      level: 1,
+      damage: cfg.baseDamage,
+      cooldown: 0.3,
+      // 开局小延迟，避免第一帧齐射
+      shotsSinceCool: 0,
+      mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1 },
+      element: cfg.damageType,
+      riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
+      affixes: { homing: 0, bounce: 0, split: 0, shred: 0, blast: 0, chain: 0 }
+    };
   }
   function createHero(x, y, weaponCfgs) {
     return {
@@ -520,18 +536,7 @@
         critDmg: 1.5,
         dmgMul: 0
       },
-      weapons: weaponCfgs.map((cfg) => ({
-        cfg,
-        level: 1,
-        damage: cfg.baseDamage,
-        cooldown: 0.3,
-        // 开局小延迟，避免第一帧齐射
-        shotsSinceCool: 0,
-        mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1 },
-        element: cfg.damageType,
-        riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
-        affixes: { homing: 0, bounce: 0, split: 0, shred: 0, blast: 0, chain: 0 }
-      }))
+      weapons: weaponCfgs.map(createWeaponInstance)
     };
   }
   function heroAttackerSnapshot(hero) {
@@ -562,24 +567,35 @@
       }
       const n = norm(target.x - hero.x, target.y - hero.y);
       const total = w.cfg.count + mods.extraCount;
+      const perShotAim = w.cfg.motion?.type === "parabola" && total > 1;
+      const claimed = perShotAim ? /* @__PURE__ */ new Set() : null;
+      let shotTarget = target;
       for (let i = 0; i < total; i++) {
+        if (claimed) {
+          if (i > 0) {
+            shotTarget = acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng, claimed) ?? acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng) ?? target;
+          }
+          claimed.add(shotTarget.id);
+        }
+        const aim = i === 0 ? n : norm(shotTarget.x - hero.x, shotTarget.y - hero.y);
         out.push({
           weapon: w,
           fromX: hero.x,
           fromY: hero.y,
-          dirX: n.x,
-          dirY: n.y,
+          dirX: aim.x,
+          dirY: aim.y,
           speed: w.cfg.projectileSpeed * mods.projSpeedMul,
           range,
           dmg: w.damage * mods.damageMul,
           index: i,
           total,
-          target
+          exactAim: perShotAim,
+          target: shotTarget
         });
       }
     }
   }
-  function rollCardChoices(cards, stacks, weapons, rng, count = 3) {
+  function rollCardChoices(cards, stacks, weapons, rng, count = 3, grantPool = []) {
     const pool = cards.filter((c) => {
       if ((stacks.get(c.id) ?? 0) >= c.maxStack) return false;
       const e = c.effect;
@@ -591,6 +607,21 @@
       if (t.kind === "weapon") return weapons.some((w) => w.cfg.id === t.weaponType);
       return weapons.some((w) => w.element === t.element);
     });
+    if (weapons.length < MAX_WEAPONS) {
+      for (const cfg of grantPool) {
+        if (weapons.some((w) => w.cfg.id === cfg.id)) continue;
+        pool.push({
+          id: `grant:${cfg.id}`,
+          name: `\u65B0\u6B66\u5668 \xB7 ${cfg.name}`,
+          rarity: "epic",
+          type: "weapon",
+          effect: { grantWeapon: cfg.id },
+          maxStack: 1,
+          weight: weapons.length <= 1 ? 1.2 : weapons.length === 2 ? 0.8 : 0.5,
+          desc: `${cfg.role ? `\u3010${cfg.role}\u3011` : ""}\u52A0\u5165\u6218\u6597\uFF08Lv1\uFF09\uFF0C\u4E0E\u73B0\u6709\u6B66\u5668\u540C\u65F6\u7D22\u654C\u5F00\u706B`
+        });
+      }
+    }
     const result = [];
     const bag = [...pool];
     while (result.length < count && bag.length > 0) {
@@ -803,6 +834,8 @@
       this.totalCrits = 0;
       this.totalKills = 0;
       this.totalWallDamage = 0;
+      this.totalSpawned = 0;
+      // 实际出场怪数（含分裂/产卵/护卫，> 配置怪池）
       this.maxMonsters = 0;
       this.maxProjectiles = 0;
       this.cardPickLog = [];
@@ -824,6 +857,7 @@
       this.rng = new Rng(opts.seed);
       this.monsterCfgs = opts.monsterConfigs;
       this.cardConfigs = opts.cardConfigs;
+      this.weaponPool = opts.weaponPool ?? [];
       this.controller = opts.controller;
       this.cardPolicy = opts.cardPolicy;
       const { width } = opts.level.arena;
@@ -841,6 +875,10 @@
     }
     get timeSec() {
       return this.tick * TICK_DT;
+    }
+    /** 当前波次序号（0 起；-1 = 准备阶段尚未开波）——供报表/AI 工具读取"玩到第几波"。 */
+    get currentWaveIndex() {
+      return this.director.waveIndex;
     }
     /** 推进一个固定逻辑帧。 */
     step() {
@@ -951,12 +989,6 @@
       }
       for (const m of this.monsters) {
         if (m.cfg.detonate && m.state === "assault" && m.hp > 0) {
-          const dmg = m.cfg.detonate.wallDamage;
-          this.wallHp = Math.max(0, this.wallHp - dmg);
-          this.totalWallDamage += dmg;
-          this.waveWallDamage += dmg;
-          this.bus.emit("onExplode", { x: m.x, y: m.y, radius: 70 });
-          this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
           m.hp = 0;
           this.killMonster(null, m);
         }
@@ -1085,7 +1117,7 @@
       while (this.pendingLevels > 0) {
         if (this.externalLevelUps) {
           if (this.pendingLevelChoices.length === 0) {
-            this.pendingLevelChoices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng);
+            this.pendingLevelChoices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng, 3, this.weaponPool);
             if (this.pendingLevelChoices.length === 0) {
               this.pendingLevels = 0;
               break;
@@ -1095,7 +1127,7 @@
           break;
         }
         this.pendingLevels--;
-        const choices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng);
+        const choices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng, 3, this.weaponPool);
         if (choices.length === 0) break;
         const picked = this.cardPolicy(choices, this.hero, this.rng, this);
         this.applyPickedCard(picked);
@@ -1152,6 +1184,7 @@
     spawnMonster(key, spawnX, spawnY, skipEscort = false) {
       const cfg = this.monsterCfgs.get(key);
       if (!cfg) throw new Error(`\u672A\u77E5\u602A\u7269\u914D\u7F6E: ${key}`);
+      this.totalSpawned++;
       const x = clamp(spawnX, 40, this.level.arena.width - 40);
       const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
       const scale = 1 + 0.1 * this.director.currentWave;
@@ -1173,6 +1206,7 @@
         splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
         burrowed: false,
         burrowTimer: 0,
+        dead: false,
         creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
         regenAcc: 0,
         groupId: -1,
@@ -1202,7 +1236,7 @@
     spawnProjectile(cmd) {
       const { weapon, fromX, fromY, dirX, dirY, speed, range, dmg, index } = cmd;
       let fan = 0;
-      if (index > 0) {
+      if (index > 0 && !cmd.exactAim) {
         const side = index % 2 === 1 ? -1 : 1;
         const step = Math.ceil(index / 2);
         fan = side * step * (weapon.cfg.spread ?? 0.1);
@@ -1311,7 +1345,8 @@
           if (m.burn && m.burn.dps >= dps) {
             m.burn.until = now + p.riders.burnSec;
           } else {
-            m.burn = { dps, until: now + p.riders.burnSec, nextTick: now + 0.5 };
+            const nextTick = m.burn && m.burn.until > now ? m.burn.nextTick : now + 0.5;
+            m.burn = { dps, until: now + p.riders.burnSec, nextTick };
           }
         }
         if (p.damageType === "frost" && p.riders.slowPct > 0) {
@@ -1344,6 +1379,9 @@
       const path = [[cmd.fromX, cmd.fromY]];
       const hit = /* @__PURE__ */ new Set();
       let cur = cmd.target ?? null;
+      if (cur && cur.hp <= 0) {
+        cur = this.nearestMonsterRuntime(cmd.fromX, cmd.fromY, Math.max(1, cmd.range), /* @__PURE__ */ new Set());
+      }
       let mul = 1;
       let strikesLeft = (cmd.weapon.cfg.chainBase ?? 0) + cmd.weapon.affixes.chain;
       while (cur && strikesLeft > 0) {
@@ -1606,6 +1644,16 @@
       this.pendingLevels = Math.max(0, this.pendingLevels - 1);
       this.applyPickedCard(card);
     }
+    /**
+     * 获得新武器（升级卡"新武器"候选的落地入口，docs/02 §1：1 把初始 + 升级卡获得）。
+     * 规则：同武器不可重复、武器位上限 MAX_WEAPONS；获得后以 Lv1 立即与现有武器同时开火。
+     */
+    grantWeapon(cfg) {
+      if (this.hero.weapons.length >= MAX_WEAPONS) return false;
+      if (this.hero.weapons.some((w) => w.cfg.id === cfg.id)) return false;
+      this.hero.weapons.push(createWeaponInstance(cfg));
+      return true;
+    }
     // ---------- 测试入口（tools/lab 与 web/lab.html 用，不影响正常对局） ----------
     /** 直接授予一张卡（跳过升级流程），不适用/达上限/id 不存在时返回 false。 */
     grantCard(cardId) {
@@ -1619,6 +1667,9 @@
     /** 卡牌适用性（与 rollCardChoices 同一套门控规则；实验室/UI 可查询）。 */
     isCardApplicable(card) {
       const e = card.effect;
+      if ("grantWeapon" in e) {
+        return this.hero.weapons.length < MAX_WEAPONS && !this.hero.weapons.some((w) => w.cfg.id === e.grantWeapon) && this.weaponPool.some((c) => c.id === e.grantWeapon);
+      }
       if ("grantElement" in e) {
         return this.hero.weapons.some((w) => w.element === w.cfg.damageType && !w.cfg.chainBase);
       }
@@ -1687,6 +1738,9 @@
         this.bus.emit("onWallHeal", { wallHp: this.wallHp, wallMaxHp: this.wallMaxHp });
       } else if ("form" in e) {
         for (const w of targets) applyForm(w.affixes, e.form, e.value);
+      } else if ("grantWeapon" in e) {
+        const cfg = this.weaponPool.find((c) => c.id === e.grantWeapon);
+        if (cfg) this.grantWeapon(cfg);
       } else if ("grantElement" in e) {
         for (const w of this.hero.weapons) {
           w.element = e.grantElement;
@@ -1728,6 +1782,8 @@
       }
     }
     killMonster(p, m) {
+      if (m.dead) return;
+      m.dead = true;
       this.totalKills++;
       this.waveKills++;
       this.hero.xp += m.cfg.xp;
@@ -1736,12 +1792,14 @@
         this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
       }
       if (m.cfg.detonate) {
-        const dmg = m.cfg.detonate.wallDamage;
-        this.wallHp = Math.max(0, this.wallHp - dmg);
-        this.totalWallDamage += dmg;
-        this.waveWallDamage += dmg;
         this.bus.emit("onExplode", { x: m.x, y: m.y, radius: 70 });
-        this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
+        if (m.state === "assault") {
+          const dmg = m.cfg.detonate.wallDamage;
+          this.wallHp = Math.max(0, this.wallHp - dmg);
+          this.totalWallDamage += dmg;
+          this.waveWallDamage += dmg;
+          this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
+        }
       }
       if (p && p.affixes.split > 0) {
         const base = Math.atan2(p.y - p.py, p.x - p.px);
@@ -1816,10 +1874,14 @@
   };
 
   // tools/sim/policies.ts
-  var greedyDpsPolicy = (choices, _hero, _rng, session) => {
+  var greedyDpsPolicy = (choices, hero, _rng, session) => {
     const wallDanger = session ? 1 - session.wallHp / session.wallMaxHp : 0;
     const prio = (c) => {
       const e = c.effect;
+      if (c.type === "weapon") {
+        const held = hero.weapons.length;
+        return held <= 1 ? 100 : held === 2 ? 72 : 46;
+      }
       if (c.type === "wall") {
         if (c.id === "fortify") return wallDanger > 0.35 ? 99 : 55;
         return wallDanger > 0.3 ? 92 : 25;

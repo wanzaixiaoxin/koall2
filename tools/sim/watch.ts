@@ -17,15 +17,17 @@ const ROWS = 30;
 export async function runWatch(
   args: { seed: number; weapon: string; move: MoveName; cards: CardPolicyName },
   level: LevelConfig,
-  weaponCfg: WeaponConfig,
+  weaponCfgs: WeaponConfig[],
   monsterMap: ReadonlyMap<string, MonsterConfig>,
   cards: CardConfig[],
+  weaponPool: readonly WeaponConfig[] = [],
 ): Promise<void> {
   const session = new GameSession({
     level,
-    weaponConfigs: [weaponCfg],
+    weaponConfigs: weaponCfgs,
     monsterConfigs: monsterMap,
     cardConfigs: cards,
+    weaponPool,
     seed: args.seed,
     controller: createController(args.move, args.seed),
     cardPolicy: getPolicy(args.cards),

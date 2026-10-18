@@ -103,8 +103,9 @@ export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
 // - bullet：武器弹道参数（可声明武器专属）
 // - wall：城墙
 // - form：形态机制词缀（通用）
-// - grantElement / boostElement：元素赋予与元素加持（见 CardTarget 门控）
-export type CardType = 'passive' | 'bullet' | 'wall' | 'form' | 'element';
+// - element / grantElement / boostElement：元素赋予与元素加持（见 CardTarget 门控）
+// - weapon：新武器获得候选（合成卡，不落在 cards.json；见 rollCardChoices grantPool）
+export type CardType = 'passive' | 'bullet' | 'wall' | 'form' | 'element' | 'weapon';
 
 export type PassiveStat = 'atk' | 'aspd' | 'moveSpeed' | 'critChance' | 'critDmg' | 'dmgMul';
 export type BulletStat = 'count' | 'burst' | 'projSpeed' | 'damage' | 'range' | 'pierce' | 'interval';
@@ -118,7 +119,8 @@ export type CardEffect =
   | { wall: WallStat; op: 'add' | 'mul'; value: number }           // wall
   | { form: FormId; value: number }                                // form 形态词缀
   | { grantElement: DamageType }                                   // 元素赋予（改武器元素 + 基础骑士效果）
-  | { boostElement: DamageType; value: number };                   // 元素加持（需武器已携带该元素）
+  | { boostElement: DamageType; value: number }                    // 元素加持（需武器已携带该元素）
+  | { grantWeapon: string };                                       // 新武器获得（武器 id；docs/02 §1 多武器）
 
 /**
  * 卡牌适用目标（统一门控，docs/03 §2.2）：

@@ -945,6 +945,136 @@ const tests: TestCase[] = [
     if (!ok) return `15s 内未击杀 4 只（实际 ${s.totalKills}，场景未覆盖多发）`;
     return corpseHits === 0 ? true : `出现 ${corpseHits} 次尸击（期望 0）`;
   } },
+
+  // ===== 多武器（docs/02 §1：1 把初始 + 升级卡获得、≤4 把、同武器不重复） =====
+  { name: 'W-多武器：开局双武器同时开火（两系伤害并存）', run: () => {
+    const { level, monsters, cards } = loadConfigs();
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const s = new GameSession({
+      level, weaponConfigs: [weapons[0], weapons[2]], monsterConfigs: monsters, cardConfigs: cards,
+      seed: 7,
+      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
+      cardPolicy: greedyDpsPolicy,
+    });
+    if (s.hero.weapons.length !== 2) return `武器实例数 ${s.hero.weapons.length}（应 2）`;
+    s.debugSpawn('bulwark', 540, 800); // 高血量靶子：保持战斗进行（空波次会提前判胜）
+    const target = s.monsters[0];
+    target.hp = target.maxHp = 1e6;
+    const seen = new Set<string>();
+    for (let i = 0; i < 30 * 5 && !s.result; i++) {
+      s.step();
+      for (const p of s.projectiles) seen.add(p.damageType);
+    }
+    return seen.has('physical') && seen.has('fire') ? true : `仅出现伤害类型: ${[...seen].join(',') || '无'}`;
+  } },
+  { name: 'W-新武器候选：三选一出"新武器"（去重/满槽门控）', run: () => {
+    const { level, monsters, cards } = loadConfigs();
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    // 单武器 + 全图鉴：反复抽取应出现新武器候选，且不含已持有武器
+    const s = new GameSession({
+      level, weaponConfigs: [weapons[0]], monsterConfigs: monsters, cardConfigs: cards,
+      weaponPool: weapons, seed: 5,
+      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
+      cardPolicy: greedyDpsPolicy,
+    });
+    const rng = s.rng;
+    const stacks = new Map<string, number>();
+    let grants = 0;
+    for (let i = 0; i < 400; i++) {
+      const picks = rollCardChoices(cards, stacks, s.hero.weapons, rng, 3, weapons);
+      for (const p of picks) {
+        if (!p.id.startsWith('grant:')) continue;
+        grants++;
+        const wid = (p.effect as { grantWeapon: string }).grantWeapon;
+        if (wid === weapons[0].id) return '候选出现已持有的武器（去重失效）';
+        if (!weapons.some((w) => w.id === wid)) return `候选武器 ${wid} 不在图鉴中`;
+      }
+    }
+    if (grants === 0) return '400 次×3 抽取未出现任何新武器候选（权重过低？）';
+    // 满 4 槽：不应再出现新武器候选
+    const s2 = new GameSession({
+      level, weaponConfigs: [weapons[0], weapons[1], weapons[2], weapons[3]], monsterConfigs: monsters, cardConfigs: cards,
+      weaponPool: weapons, seed: 5,
+      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
+      cardPolicy: greedyDpsPolicy,
+    });
+    for (let i = 0; i < 400; i++) {
+      const picks = rollCardChoices(cards, stacks, s2.hero.weapons, rng, 5, weapons);
+      if (picks.some((p) => p.id.startsWith('grant:'))) return '满 4 槽仍出现新武器候选';
+    }
+    return true;
+  } },
+  { name: 'W-新武器获得：grantWeapon 立即参战（去重/上限 4）', run: () => {
+    const { level, monsters, cards } = loadConfigs();
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const s = new GameSession({
+      level, weaponConfigs: [weapons[0]], monsterConfigs: monsters, cardConfigs: cards,
+      weaponPool: weapons, seed: 9,
+      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
+      cardPolicy: greedyDpsPolicy,
+    });
+    if (!s.grantWeapon(weapons[2])) return '获得炼金炸弹被拒（应在图鉴内）';
+    if (s.hero.weapons.length !== 2) return `获得后武器数 ${s.hero.weapons.length}（应 2）`;
+    if (s.grantWeapon(weapons[2])) return '重复获得同一武器未被拒';
+    if (!s.grantWeapon(weapons[1]) || !s.grantWeapon(weapons[3])) return '第 3/4 把武器获得被拒（应允许）';
+    if (s.grantWeapon(weapons[4])) return '第 5 把武器获得未被拒（上限 4 失效）';
+    s.debugSpawn('bulwark', 540, 800);
+    const target = s.monsters[0];
+    target.hp = target.maxHp = 1e6;
+    const seen = new Set<string>();
+    for (let i = 0; i < 30 * 5 && !s.result; i++) {
+      s.step();
+      for (const p of s.projectiles) seen.add(p.damageType);
+    }
+    return seen.has('physical') && seen.has('fire') ? true : `获得后仅见伤害类型: ${[...seen].join(',') || '无'}`;
+  } },
+  { name: 'H-轨迹回放（新武器池）：含获得新武器的录制逐位一致', run: () => {
+    const { monsters, cards } = loadConfigs();
+    const level = JSON.parse(fs.readFileSync(path.join(root, 'configs/levels/level_1_1.json'), 'utf-8')) as LevelConfig;
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const ctrl = new HumanInputController();
+    const rec = new TraceRecorder();
+    const s = new GameSession({
+      level, weaponConfigs: [weapons[0]], monsterConfigs: monsters, cardConfigs: cards,
+      weaponPool: weapons, seed: 4321,
+      controller: ctrl, cardPolicy: greedyDpsPolicy,
+    });
+    s.externalLevelUps = true;
+    rec.start({ t0: 0, seed: 4321, level: 'level_1_1.json', weapon: weapons[0].id, version: 'test', pool: true });
+    // 脚本化"人工"输入：优先选新武器候选（保证样本覆盖"获得新武器"路径）
+    let picks = 0;
+    let grantPicks = 0;
+    for (let i = 0; i < 30 * 50 && !s.result; i++) {
+      const t = i / 30;
+      ctrl.tx = 540 + Math.sin(t * 1.7) * 300;
+      ctrl.ty = 520 + Math.sin(t * 2.1) * 140;
+      ctrl.hasTarget = i % 300 < 210;
+      rec.observe(ctrl.snapshot(), s.tick);
+      s.step();
+      if (s.pendingLevelChoices.length > 0) {
+        const pending = s.pendingLevelChoices;
+        const grant = pending.find((c) => c.id.startsWith('grant:'));
+        const c = grant ?? pending[i % pending.length];
+        rec.pick(s.tick, c.id, pending.map((x) => x.id));
+        s.resolveLevelUp(c);
+        picks++;
+        if (grant) grantPicks++;
+      }
+      if (s.tick % 30 === 0) {
+        rec.check(s.tick, { x: s.hero.x, y: s.hero.y, wallHp: s.wallHp, kills: s.totalKills, lv: s.hero.level });
+      }
+    }
+    if (picks === 0) return '50s 内未触发选卡（样本未覆盖升选卡）';
+    if (grantPicks === 0) return '50s 内未出现新武器候选（权重过低？）';
+    const parsed = parseTrace(serializeTrace(rec.records));
+    const report = runTraceReplay(parsed, { level, weapon: weapons[0], monsters, cards, weaponPool: weapons });
+    if (!report.consistent) {
+      const m = report.mismatches[0];
+      return `回放分歧：t=${m.t} ${m.field} 录制 ${m.recorded} ≠ 回放 ${m.replayed}`;
+    }
+    if (s.hero.weapons.length < 2) return '录制未实际获得新武器（覆盖不足）';
+    return report.checksTotal > 0 ? true : '存档点缺失（录制未产出 check 记录）';
+  } },
 ];
 
 function runAll(): void {

@@ -60,6 +60,8 @@ export function runTraceReplay(
     weapon: WeaponConfig;
     monsters: ReadonlyMap<string, MonsterConfig>;
     cards: CardConfig[];
+    /** 武器图鉴：录制时开了"新武器候选"则回放必须同池重建（缺省=关，兼容旧轨迹） */
+    weaponPool?: readonly WeaponConfig[];
   },
   traceName = '<inline>',
 ): ReplayReport {
@@ -69,6 +71,7 @@ export function runTraceReplay(
     weaponConfigs: [opts.weapon],
     monsterConfigs: opts.monsters,
     cardConfigs: opts.cards,
+    weaponPool: opts.weaponPool ?? [],
     seed: parsed.run.seed,
     controller: ctrl,
     cardPolicy: greedyDpsPolicy, // 占位：externalLevelUps=true，选卡完全按录制回放
@@ -185,7 +188,7 @@ export function replayFromFile(file: string, root: string): ReplayReport {
   const cards = (JSON.parse(fs.readFileSync(path.resolve(root, 'configs/cards.json'), 'utf-8')) as { cards: CardConfig[] }).cards;
   return runTraceReplay(
     parsed,
-    { level, weapon, monsters: new Map(monsters.map((m) => [m.id, m])), cards },
+    { level, weapon, monsters: new Map(monsters.map((m) => [m.id, m])), cards, weaponPool: parsed.run.pool ? weapons : [] },
     file,
   );
 }
@@ -195,7 +198,7 @@ export function formatReplayReport(r: ReplayReport): string {
   const lines: string[] = [];
   const run = r.run;
   lines.push(`轨迹回放：${r.trace}`);
-  lines.push(`元数据：seed=${run.seed} 关卡=${run.level} 武器=${run.weapon} 资源版本=${run.version} 开始=${new Date(run.t0).toLocaleString()}`);
+  lines.push(`元数据：seed=${run.seed} 关卡=${run.level} 武器=${run.weapon} 新武器池=${run.pool ? '开' : '关'} 资源版本=${run.version} 开始=${new Date(run.t0).toLocaleString()}`);
   lines.push(`样本量：输入变化 ${r.inputs} 条 · 选卡 ${r.picks} 次 · 存档点 ${r.checksTotal} 个`);
   const fmt = (e: ReplayEndStats | null): string =>
     e
