@@ -408,15 +408,9 @@ export class GameSession {
       }, (x, y) => this.isCreeped(x, y));
     }
 
-    // 5b) 毒爆虫：接触城墙即自爆（城防大额伤害）
+    // 5b) 毒爆虫：接触城墙即自爆（伤害统一在 killMonster 单点结算，避免与死亡爆炸重复扣墙）
     for (const m of this.monsters) {
       if (m.cfg.detonate && m.state === 'assault' && m.hp > 0) {
-        const dmg = m.cfg.detonate.wallDamage;
-        this.wallHp = Math.max(0, this.wallHp - dmg);
-        this.totalWallDamage += dmg;
-        this.waveWallDamage += dmg;
-        this.bus.emit('onExplode', { x: m.x, y: m.y, radius: 70 });
-        this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
         m.hp = 0;
         this.killMonster(null, m);
       }
@@ -699,7 +693,8 @@ export class GameSession {
     // 齐射扇形：index 0 为主弹头——严格对准目标；从第 2 发开始一左一右交替，
     // 每侧按武器间距（spread，默认 0.1rad）均匀展开（+1 左、+2 右、+3 左 2 档、+4 右 2 档……）
     let fan = 0;
-    if (index > 0) {
+    // 每发独立索敌的抛物弹（exactAim）不做扇形偏移：每发直指自己锁定的目标
+    if (index > 0 && !cmd.exactAim) {
       const side = index % 2 === 1 ? -1 : 1;
       const step = Math.ceil(index / 2);
       fan = side * step * (weapon.cfg.spread ?? 0.1);
@@ -821,7 +816,9 @@ export class GameSession {
         if (m.burn && m.burn.dps >= dps) {
           m.burn.until = now + p.riders.burnSec; // 重复命中只刷新时长，不叠加伤害
         } else {
-          m.burn = { dps, until: now + p.riders.burnSec, nextTick: now + 0.5 };
+          // 首次附着/强化替换：沿用既有跳伤节拍，避免强化命中把下一跳无谓推后一个周期
+          const nextTick = m.burn && m.burn.until > now ? m.burn.nextTick : now + 0.5;
+          m.burn = { dps, until: now + p.riders.burnSec, nextTick };
         }
       }
       if (p.damageType === 'frost' && p.riders.slowPct > 0) {
@@ -858,6 +855,10 @@ export class GameSession {
     const path: number[][] = [[cmd.fromX, cmd.fromY]];
     const hit = new Set<number>();
     let cur: MonsterRuntime | null = (cmd.target as MonsterRuntime | null) ?? null;
+    if (cur && cur.hp <= 0) {
+      // 多发齐射（如双雷）的第 2+ 发：原目标已被先前的雷击杀——重新索敌，不白打尸体
+      cur = this.nearestMonsterRuntime(cmd.fromX, cmd.fromY, Math.max(1, cmd.range), new Set<number>());
+    }
     let mul = 1;
     // 打击数 = 武器基础（chainBase）+ 连锁长度卡（affixes.chain）
     let strikesLeft = (cmd.weapon.cfg.chainBase ?? 0) + cmd.weapon.affixes.chain;
@@ -1291,14 +1292,16 @@ export class GameSession {
       this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
     }
 
-    // 自爆（毒爆虫）：死亡同样爆炸（docs/08）
+    // 自爆（毒爆虫）：仅贴墙爆炸才伤城墙（docs/08"逼玩家中途拦截"——野外点燃拦截则爆炸波及不到墙）
     if (m.cfg.detonate) {
-      const dmg = m.cfg.detonate.wallDamage;
-      this.wallHp = Math.max(0, this.wallHp - dmg);
-      this.totalWallDamage += dmg;
-      this.waveWallDamage += dmg;
       this.bus.emit('onExplode', { x: m.x, y: m.y, radius: 70 });
-      this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
+      if (m.state === 'assault') {
+        const dmg = m.cfg.detonate.wallDamage;
+        this.wallHp = Math.max(0, this.wallHp - dmg);
+        this.totalWallDamage += dmg;
+        this.waveWallDamage += dmg;
+        this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
+      }
     }
 
     // C 类词缀：击杀分裂（子弹继承追踪/火/冰/破甲，但不继承分裂/弹射/爆破，防指数爆炸）

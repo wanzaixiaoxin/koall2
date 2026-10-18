@@ -12,7 +12,7 @@ import {
 } from './data/types';
 import { Rng } from './core/rng';
 import { SpatialHash } from './core/spatial-hash';
-import { acquireTarget } from './targeting';
+import { acquireTarget, Targetable } from './targeting';
 import { norm } from './core/math';
 
 /** 经验曲线（docs/01 §3）：ExpNeed(Lv) = 80 + 40Lv + 6Lv²（每波 1~2 次三选一的节奏基准） */
@@ -71,6 +71,8 @@ export interface FireCommand {
   dmg: number;     // 最终单发伤害（含 mods）
   index: number;   // 齐射扇形中的序号
   total: number;   // 齐射总数
+  /** 精确瞄准：多发各自锁定不同目标的抛物弹不做扇形偏移（每发直指自己锁定的目标） */
+  exactAim?: boolean;
   target: ReturnType<typeof acquireTarget>;
 }
 
@@ -101,19 +103,36 @@ export function updateWeapons(
     }
     const n = norm(target.x - hero.x, target.y - hero.y);
     const total = w.cfg.count + mods.extraCount;
+    // 抛物系多发（炸弹双掷/三连投）：每发独立索敌——第 2 发起排除本轮已选目标，
+    // 各自飞向自己的落点（不再集火同一目标白费爆炸）；场上只剩已选目标时回退允许重复
+    const perShotAim = w.cfg.motion?.type === 'parabola' && total > 1;
+    const claimed = perShotAim ? new Set<number>() : null;
+    let shotTarget: Targetable = target;
     for (let i = 0; i < total; i++) {
+      if (claimed) {
+        if (i > 0) {
+          // 排除本轮已选；场上只剩已选目标时回退为允许重复
+          shotTarget =
+            acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng, claimed) ??
+            acquireTarget(w.cfg.targeting, hero.x, hero.y, range, monsters, hash, rng) ??
+            target;
+        }
+        claimed.add(shotTarget.id);
+      }
+      const aim = i === 0 ? n : norm(shotTarget.x - hero.x, shotTarget.y - hero.y);
       out.push({
         weapon: w,
         fromX: hero.x,
         fromY: hero.y,
-        dirX: n.x,
-        dirY: n.y,
+        dirX: aim.x,
+        dirY: aim.y,
         speed: w.cfg.projectileSpeed * mods.projSpeedMul,
         range,
         dmg: w.damage * mods.damageMul,
         index: i,
         total,
-        target,
+        exactAim: perShotAim,
+        target: shotTarget,
       });
     }
   }

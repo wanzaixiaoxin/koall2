@@ -516,15 +516,42 @@ const tests: TestCase[] = [
     void shotsBefore;
     return runFor(s, 2, () => !lurker.burrowed) ? true : '爆炸未轰出潜伏者';
   } },
-  { name: 'Z-虫族：毒爆虫撞墙自爆 -30 城防；虫后铺虫苔且火焰可烧', run: () => {
+  { name: 'Z-虫族：毒爆贴墙自爆单次 -300（野外拦截 0 墙伤）；虫后铺虫苔且火焰可烧', run: () => {
+    // A) 野外拦截：步枪半路点燃毒爆 → 爆炸事件 1 次、城墙分文不扣
+    {
+      const s = freshSession();
+      s.wallMaxHp = 10000;
+      s.wallHp = 10000;
+      s.debugSpawn('baneling', 540, 1000);
+      let explodes = 0;
+      s.bus.on('onExplode', () => { explodes++; });
+      const killed = runFor(s, 6, () => s.totalKills > 0);
+      runFor(s, 2, () => false); // 再多跑 2s，确认爆炸确实没伤墙
+      if (!killed) return '毒爆未被半路击杀';
+      if (s.wallHp !== 10000) return `野外拦截仍扣墙（10000 → ${s.wallHp}，期望不变）`;
+      if (explodes !== 1) return `野外爆炸事件 ${explodes} 次（期望 1）`;
+    }
+    // B) 贴墙自爆：压住武器冷却让毒爆走到墙 → 恰扣 300、explode/wallHit 各 1 次
+    {
+      const s = freshSession();
+      s.wallMaxHp = 10000;
+      s.wallHp = 10000;
+      s.hero.weapons[0].cooldown = 1e9; // 不打枪，逼毒爆贴墙
+      s.debugSpawn('baneling', 540, 400);
+      let explodes = 0;
+      let wallHits = 0;
+      s.bus.on('onExplode', () => { explodes++; });
+      s.bus.on('onWallHit', () => { wallHits++; });
+      const boomed = runFor(s, 8, () => s.wallHp < 10000);
+      runFor(s, 1, () => false);
+      if (!boomed) return `贴墙自爆未结算（城防 ${s.wallHp}）`;
+      if (s.wallHp !== 10000 - 300) return `贴墙自爆扣墙 ${10000 - s.wallHp}（期望单次 300）`;
+      if (explodes !== 1 || wallHits !== 1) return `事件次数异常（explode ${explodes} / wallHit ${wallHits}，期望各 1）`;
+    }
+    // C) 虫后铺苔 + 火焰可烧
     const s = freshSession();
     s.wallMaxHp = 10000;
     s.wallHp = 10000;
-    s.debugSpawn('baneling', 540, 300); // 近墙，快速触发自爆
-    const before = s.wallHp;
-    const boomed = runFor(s, 12, () => s.wallHp <= before - 30);
-    if (!boomed) return `自爆未结算（城防 ${s.wallHp}）`;
-    // 虫后铺苔
     s.debugSpawn('zerg_queen', 700, 900);
     const creepGrown = runFor(s, 12, () => s.creep.size > 0);
     if (!creepGrown) return '虫苔未铺设';
@@ -884,6 +911,39 @@ const tests: TestCase[] = [
       return `回放分歧：t=${m.t} ${m.field} 录制 ${m.recorded} ≠ 回放 ${m.replayed}`;
     }
     return report.checksTotal > 0 ? true : '存档点缺失（录制未产出 check 记录）';
+  } },
+
+  // ===== 多发独立索敌 / 雷霆尸击 =====
+  { name: 'W-炸弹多发：双掷后 3 颗各砸各的（独立索敌）', run: () => {
+    const s = freshSession(1, 2); // alchemist_bomb
+    s.grantCard('bomb_toss');
+    s.grantCard('bomb_toss'); // 数量 1 + 2 = 3
+    const w = s.hero.weapons[0];
+    if (w.cfg.count + w.mods.extraCount < 3) return `炸弹数量未达 3（${w.cfg.count + w.mods.extraCount}）`;
+    // 三个相距 340px 的目标（爆圈半径 95，互不波及）
+    s.debugSpawn('bulwark', 200, 800);
+    s.debugSpawn('bulwark', 540, 800);
+    s.debugSpawn('bulwark', 880, 800);
+    for (const m of s.monsters) m.hp = m.maxHp = 1e6; // 只验证"挨没挨"，不验证死
+    const hp0 = s.monsters.map((m) => m.hp);
+    runFor(s, 6, () => false); // 首轮齐射 1.5s 内落地，6s 富余
+    const hits = s.monsters.filter((m, i) => m.hp < hp0[i]).length;
+    return hits === 3 ? true : `仅 ${hits}/3 个目标被砸中（多发未独立索敌）`;
+  } },
+  { name: 'W-雷霆多发：尸击不再白打（双雷同 tick 连杀无重复命中）', run: () => {
+    const s = freshSession(3, 4); // lightning_chain
+    s.grantCard('chain_twin'); // 每次落雷 2 道（同 tick 两发指令）
+    for (let i = 0; i < 6; i++) s.debugSpawn('zerg_ling', 400 + i * 80, 700);
+    const killedObjects = new Set<unknown>(); // 用对象身份而非 id（清尸会重排 id，按 id 会误报）
+    let corpseHits = 0;
+    s.bus.on<{ monsterId: number }>('onKill', ({ monsterId }) => { killedObjects.add(s.monsters[monsterId]); });
+    s.bus.on<{ monsterId: number }>('onHit', ({ monsterId }) => {
+      const m = s.monsters[monsterId];
+      if (m && killedObjects.has(m)) corpseHits++; // 已死怪再被命中 = 尸击
+    });
+    const ok = runFor(s, 15, () => s.totalKills >= 4);
+    if (!ok) return `15s 内未击杀 4 只（实际 ${s.totalKills}，场景未覆盖多发）`;
+    return corpseHits === 0 ? true : `出现 ${corpseHits} 次尸击（期望 0）`;
   } },
 ];
 

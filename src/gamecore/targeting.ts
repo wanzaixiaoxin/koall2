@@ -21,6 +21,7 @@ const scratch: number[] = [];
 /**
  * 索敌系统（docs/02 §4）：攻击瞬间才索敌，不逐帧索敌。
  * 通过空间网格取候选，再做精确判定。
+ * exclude：多发齐射"每发独立索敌"时排除本轮到已选中的目标（炸弹双掷/三连投不集火同一点）。
  */
 export function acquireTarget(
   rule: TargetingRule,
@@ -30,6 +31,7 @@ export function acquireTarget(
   monsters: readonly Targetable[],
   hash: SpatialHash,
   rng: Rng,
+  exclude?: ReadonlySet<number>,
 ): Targetable | null {
   if (monsters.length === 0) return null;
   hash.rebuild(monsters);
@@ -43,6 +45,7 @@ export function acquireTarget(
   for (const id of scratch) {
     const m = monsters[id];
     if (!m || m.hp <= 0) continue;
+    if (exclude && exclude.has(m.id)) continue;
     if (dist2(fromX, fromY, m.x, m.y) > range * range) continue;
 
     randomCount++;
