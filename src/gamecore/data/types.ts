@@ -36,6 +36,12 @@ export interface WeaponConfig {
   heat?: { shots: number; cooldown: number };
   /** ≥1 = 落雷武器：开火不产生子弹，直接以"1+连锁等级"次打击落雷（连锁闪电武器本体） */
   chainBase?: number;
+  /**
+   * 光束武器（docs/07 §4）：开火不产生子弹，生成"持续光束"（SegmentField 线段伤害场）。
+   * dps = 面板伤害（baseDamage 语义为每秒伤害）；width 初始宽度；duration 断供后余辉（秒）；
+   * 长度缺省 = 场景对角线（任何朝向贯穿到界外）。逐帧整数结算，同火池/连线：不吃免伤盾、不结算防御与克制。
+   */
+  beamBase?: { width: number; duration: number; length?: number };
     /** 子弹视觉形态（docs/06）：dot 光点 / arrow 箭矢 / bomb 抛物弹 / gear 齿轮圆盘 */
   shape?: string;
   /** 齐射扇形间距（rad/档，默认 0.1）；大型弹体（齿轮盘）建议加大以拉开间距 */
@@ -89,7 +95,10 @@ export interface MonsterConfig {
   detonate?: { wallDamage: number };
   /** 虫族：经过时按 interval 秒铺设虫苔（加速/回血地形，火焰可烧） */
   creepTrail?: { interval: number };
-  /** 虫族：站在虫苔上移速 ×1.25 且每秒回 2 血 */
+  /**
+   * 虫族标记（docs/08）：受虫巢扩张等级加成——攻击/血量随扩张等级全族增强；
+   * 站在虫苔上移速 ×1.25 且按等级回血（火焰可烧虫苔压制）。
+   */
   creepBenefit?: boolean;
   xp: number;              // 经验（击杀自动吸收）
   /** 伤害类型弱点：受到该类型 ×1.25（docs/01 §2.1） */
@@ -112,7 +121,8 @@ export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
 export type CardType = 'passive' | 'bullet' | 'wall' | 'form' | 'element' | 'weapon';
 
 export type PassiveStat = 'atk' | 'aspd' | 'moveSpeed' | 'critChance' | 'critDmg' | 'dmgMul';
-export type BulletStat = 'count' | 'burst' | 'projSpeed' | 'damage' | 'range' | 'pierce' | 'interval';
+export type BulletStat = 'count' | 'burst' | 'projSpeed' | 'damage' | 'range' | 'pierce' | 'interval'
+  | 'width' | 'beamLife' | 'heatCool'; // 光束武器扩展（宽度/余辉/散热）：其余武器无对应弹体，天然忽略
 export type WallStat = 'wallMax' | 'wallRepair';
 export type FormId =
   | 'homing' | 'bounce' | 'split' | 'shred' | 'blast' | 'chain';
@@ -157,6 +167,8 @@ export interface WaveSpawnConfig {
   count: number;
   spawnPoints: number[] | 'all';
   releasePerTick: number;  // 每逻辑帧放出数量（控制进场节奏）
+  /** 从菌毯中孵化出生（docs/08 §2.5）：放行时刻从当前虫苔里选点钻出；无可用虫苔时回落顶部出生带 */
+  fromCreep?: boolean;
 }
 
 export type WaveFormation = 'stream' | 'line' | 'pincer' | 'center';
@@ -205,6 +217,9 @@ export interface WeaponMods {
   rangeMul: number;      // 射程倍率
   pierceAdd: number;     // 穿透 +N（贯穿卡）
   intervalMul: number;   // 攻击间隔倍率（频率卡：<1 为加速）
+  widthMul: number;      // 光束宽度倍率（扩束透镜；光束武器专用）
+  beamLifeAdd: number;   // 光束余辉加成秒数（持续供能；光束武器专用）
+  heatCoolMul: number;   // 过热冷却倍率（散热鳍片；<1 为缩短）
 }
 
 /** 形态机制词缀（C 类卡，挂在武器实例上，发射时快照到投射物） */
@@ -284,6 +299,7 @@ export interface MonsterRuntime {
   dead: boolean;
   creepTimerLeft: number;  // 虫苔铺设计时（creepTrail）
   regenAcc: number;        // 虫苔回血整数累计
+  creepTierApplied: number; // 已按此虫巢扩张等级应用血量加成（升级时按差值补血）
   /** 队籍：护卫=领队巫师运行时 id；无编队为 -1（变阵系统用） */
   groupId: number;
   /** 领队：近墙变阵是否激活（护卫排一排啃墙、巫师居中） */
@@ -363,6 +379,8 @@ export interface DamagePool {
  * 否则两端固定（电网连线/多点固定连接）。
  */
 export interface SegmentField {
+  /** 来源武器 id（光束武器用：同源旧束在重锁时整体替换，避免叠加双倍伤害） */
+  srcWeaponId?: string;
   ax: number;
   ay: number;
   bx: number;

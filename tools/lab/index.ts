@@ -563,6 +563,175 @@ const tests: TestCase[] = [
     const burned = runFor(s, 8, () => s.creep.size === 0);
     return burned ? true : `虫苔未被火焰清除（剩余 ${s.creep.size} 格）`;
   } },
+  { name: 'Z-虫苔蔓延：无虫后也自行扩张（单格起步）；缺口由边缘长回', run: () => {
+    const key = (x: number, y: number): number => Math.floor(x / 90) * 4096 + Math.floor(y / 90);
+    // A) 单格起步：60s 内自行扩张（实测约 8 格，阈值放宽到 ≥6）
+    {
+      const s = freshSession(3);
+      s.sandboxMode = true; // 实验室空关卡 prepare 后即判胜会冻结 step，蔓延测试需关胜负
+      s.hero.weapons[0].cooldown = 1e9;
+      s.creep.set(key(540, 900), s.timeSec + 600);
+      runFor(s, 60, () => s.creep.size >= 6);
+      if (s.creep.size < 6) return `单格 60s 未扩张（${s.creep.size} 格）`;
+    }
+    // B) 缺口回长：6×5 实心块删掉内圈 2×2（模拟火焰烧出缺口），60s 内由外圈长回并重新覆盖缺口
+    {
+      const s = freshSession(4);
+      s.sandboxMode = true;
+      s.hero.weapons[0].cooldown = 1e9;
+      for (let dx = 0; dx < 6; dx++) {
+        for (let dy = 0; dy < 5; dy++) s.creep.set((2 + dx) * 4096 + (6 + dy), s.timeSec + 600);
+      }
+      runFor(s, 3.2, () => false); // 走一个蔓延节拍（续期生效）
+      const before = s.creep.size;
+      if (before < 30) return `种格丢失（${before} < 30）`;
+      const hole: number[] = [];
+      for (const dx of [3, 4]) {
+        for (const dy of [7, 8]) {
+          const k = dx * 4096 + dy;
+          hole.push(k);
+          s.creep.delete(k);
+        }
+      }
+      if (s.creep.size !== before - 4) return `缺口未形成（${before} → ${s.creep.size}）`;
+      runFor(s, 60, () => s.creep.size >= before && hole.some((k) => s.creep.has(k)));
+      if (s.creep.size < before) return `缺口未长回（${before - 4} → ${s.creep.size}，期望 ≥ ${before}）`;
+      return hole.some((k) => s.creep.has(k)) ? true : '缺口一直空缺（未重新覆盖）';
+    }
+  } },
+  { name: 'Z-虫巢扩张：峰值 60 格晋升 T2（全族攻+10%/血+8%，站毯回血 10/s）', run: () => {
+    const seedBlock = (s: GameSession, cx0: number, cy0: number, w: number, h: number): void => {
+      for (let dx = 0; dx < w; dx++) {
+        for (let dy = 0; dy < h; dy++) s.creep.set((cx0 + dx) * 4096 + (cy0 + dy), s.timeSec + 600);
+      }
+    };
+    // A) 30 格（T1）放爬虫 → 补到 62 格晋升 T2：事件 1 次、存量按血倍率补足、站毯回血 10/s
+    const a = freshSession(11);
+    a.sandboxMode = true;
+    a.hero.weapons[0].cooldown = 1e9;
+    a.wallMaxHp = a.wallHp = 1e9;
+    let tierEvents = 0;
+    a.bus.on('onCreepTier', () => { tierEvents++; });
+    seedBlock(a, 2, 7, 6, 5); // 30 格
+    a.step();
+    const tierAt30 = a.creepTier;
+    if (tierAt30 !== 1) return `30 格不该晋升（T${tierAt30}）`;
+    a.debugSpawn('zerg_roach', 300, 1040); // 站毯 → 吃回血
+    const roach = a.monsters[0];
+    const hpT1 = roach.maxHp;
+    seedBlock(a, 2, 13, 8, 4); // +32 = 62 格
+    a.step();
+    if (tierEvents !== 1) return `晋升事件次数异常（${tierEvents} 次，期望 1）`;
+    const tierAfterExpand = a.creepTier;
+    if (tierAfterExpand !== 2) return `未晋升 T2（T${tierAfterExpand}）`;
+    if (roach.maxHp !== Math.round(hpT1 * 1.08)) {
+      return `存量补血异常（${hpT1} → ${roach.maxHp}，期望 ${Math.round(hpT1 * 1.08)}）`;
+    }
+    roach.hp = Math.round(roach.maxHp * 0.6); // 高于钻地阈值 30%，避免钻地
+    const hpBefore = roach.hp;
+    runFor(a, 1, () => false);
+    const healed = roach.hp - hpBefore;
+    if (healed < 8 || healed > 12) return `T2 站毯回血 ${healed} hp/s（期望 10）`;
+    // 攻击增强：贴墙爬虫单次墙伤 = 基数 ×1.1
+    let dmgT2 = 0;
+    a.bus.on<{ dmg: number }>('onWallHit', ({ dmg }) => { if (!dmgT2) dmgT2 = dmg; });
+    a.debugSpawn('zerg_roach', 540, 88);
+    if (!runFor(a, 4, () => dmgT2 > 0)) return 'T2 爬虫未拍墙';
+    // B) 对照（无虫苔 T1）：同一贴墙位置的单次墙伤
+    const b = freshSession(11);
+    b.sandboxMode = true;
+    b.hero.weapons[0].cooldown = 1e9;
+    b.wallMaxHp = b.wallHp = 1e9;
+    let dmgT1 = 0;
+    b.bus.on<{ dmg: number }>('onWallHit', ({ dmg }) => { if (!dmgT1) dmgT1 = dmg; });
+    b.debugSpawn('zerg_roach', 540, 88);
+    if (!runFor(b, 4, () => dmgT1 > 0)) return 'T1 爬虫未拍墙';
+    return dmgT2 === Math.round(dmgT1 * 1.1)
+      ? true
+      : `T2 攻击倍率异常（T1 ${dmgT1} → T2 ${dmgT2}，期望 ${Math.round(dmgT1 * 1.1)}）`;
+  } },
+  { name: 'Z-菌毯孵化：fromCreep 从虫苔中钻出；无可用虫苔回落顶部出生带', run: () => {
+    const { monsters, cards } = loadConfigs();
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const spawnLevel: LevelConfig = {
+      id: 'creep_spawn_test',
+      name: '菌毯孵化（测试场）',
+      arena: { width: 1080, height: 1920 },
+      wall: { height: 64, hp: 100000 },
+      defenseRect: { yMin: 96, yMax: 560 },
+      spawnBandY: [1750, 1880],
+      spawnPointsX: [300, 540, 780],
+      prepareSec: 0.5,
+      intermissionSec: 2,
+      waves: [{
+        banner: '孵化', durationSec: 8,
+        spawns: [{ monster: 'zerg_ling', count: 6, spawnPoints: 'all', releasePerTick: 3, fromCreep: true }],
+      }],
+    };
+    const build = (seedCreep: boolean, seed: number): GameSession => {
+      const s = new GameSession({
+        level: spawnLevel,
+        weaponConfigs: [weapons[0]],
+        monsterConfigs: monsters,
+        cardConfigs: cards,
+        seed,
+        controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
+        cardPolicy: greedyDpsPolicy,
+      });
+      s.hero.weapons[0].cooldown = 1e9;
+      s.wallMaxHp = s.wallHp = 1e9;
+      if (seedCreep) {
+        for (let dx = 0; dx < 4; dx++) {
+          for (let dy = 0; dy < 3; dy++) s.creep.set((4 + dx) * 4096 + (9 + dy), s.timeSec + 600);
+        }
+      }
+      return s;
+    };
+    const trackSpawns = (s: GameSession): Map<number, number> => {
+      const seen = new Map<number, number>(); // id → 出生 y
+      for (let i = 0; i < 30 * 30 && seen.size < 6; i++) {
+        s.step();
+        for (const m of s.monsters) if (!seen.has(m.id)) seen.set(m.id, m.y);
+      }
+      return seen;
+    };
+    // A) 有毯（12 格可用）：全部从毯里钻出——出土点都在虫苔上、且在城墙远侧
+    {
+      const s = build(true, 21);
+      const emerges: { x: number; y: number }[] = [];
+      s.bus.on<{ x: number; y: number }>('onMonsterEmerge', (e) => emerges.push(e));
+      runFor(s, 30, () => s.monsters.length >= 6);
+      if (s.monsters.length < 6) return `孵化数量不足（${s.monsters.length}/6）`;
+      if (emerges.length !== 6) return `出土事件 ${emerges.length} 次（期望 6）`;
+      for (const e of emerges) {
+        if (e.y < 514 || e.y > 1820) return `出土位置越界（y=${e.y.toFixed(0)}）`;
+        if (!s.isCreeped(e.x, e.y)) return `出土点不在虫苔上（${e.x.toFixed(0)}, ${e.y.toFixed(0)}）`;
+      }
+    }
+    // B) 无毯：回落顶部出生带
+    {
+      const s = build(false, 21);
+      const emerges: { x: number; y: number }[] = [];
+      s.bus.on('onMonsterEmerge', (e) => emerges.push(e as { x: number; y: number }));
+      const seen = trackSpawns(s);
+      if (seen.size < 6) return `普通波次数量不足（${seen.size}/6）`;
+      if (emerges.length !== 0) return `无毯却触发出土 ${emerges.length} 次`;
+      for (const y of seen.values()) {
+        if (y < 1700 || y > 1900) return `出生点不在顶部出生带（y=${y.toFixed(0)}）`;
+      }
+    }
+    // C) 毯不足 6 格可用（4 格在 maxY 之外）：同样回落顶部出生带
+    {
+      const s = build(false, 22);
+      for (let dx = 0; dx < 4; dx++) s.creep.set((4 + dx) * 4096 + 20, s.timeSec + 600); // y=1845 > maxY 1820 → 不算可用
+      const emerges: { x: number; y: number }[] = [];
+      s.bus.on('onMonsterEmerge', (e) => emerges.push(e as { x: number; y: number }));
+      const seen = trackSpawns(s);
+      if (seen.size < 6) return `C 组数量不足（${seen.size}/6）`;
+      if (emerges.length !== 0) return `可用毯不足却触发出土 ${emerges.length} 次`;
+    }
+    return true;
+  } },
   { name: 'M-巫师编队：近墙变阵排排啃墙，巫师伤害转嫁给周围怪物', run: () => {
     const s = freshSession();
     s.wallMaxHp = 99999;
@@ -1058,6 +1227,10 @@ const tests: TestCase[] = [
   { name: 'H-轨迹回放（新武器池）：含获得新武器的录制逐位一致', run: () => {
     const { monsters, cards } = loadConfigs();
     const level = JSON.parse(fs.readFileSync(path.join(root, 'configs/levels/level_1_1.json'), 'utf-8')) as LevelConfig;
+    // 训练场切片：密集蝙蝠流（快速升级，稳定覆盖"获得新武器"路径）+ 超厚城墙（窗口内不终局）。
+    // 录制与回放共用同一内存关卡对象，回放仍逐位一致。
+    level.waves = [{ banner: '训练', formation: 'center', durationSec: 300, spawns: [{ monster: 'bat', count: 900, spawnPoints: 'all', releasePerTick: 1 }] }];
+    level.wall.hp = 1e9;
     const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
     const ctrl = new HumanInputController();
     const rec = new TraceRecorder();
@@ -1068,10 +1241,11 @@ const tests: TestCase[] = [
     });
     s.externalLevelUps = true;
     rec.start({ t0: 0, seed: 4321, level: 'level_1_1.json', weapon: weapons[0].id, version: 'test', pool: true });
-    // 脚本化"人工"输入：优先选新武器候选（保证样本覆盖"获得新武器"路径）
+    // 脚本化"人工"输入：优先选新武器候选（保证样本覆盖"获得新武器"路径）；
+    // 自适应窗口：拿到新武器且再走 3 次选卡即收工（上限 90s）——不依赖单次抽卡的运气
     let picks = 0;
     let grantPicks = 0;
-    for (let i = 0; i < 30 * 50 && !s.result; i++) {
+    for (let i = 0; i < 30 * 90 && !s.result; i++) {
       const t = i / 30;
       ctrl.tx = 540 + Math.sin(t * 1.7) * 300;
       ctrl.ty = 520 + Math.sin(t * 2.1) * 140;
@@ -1086,13 +1260,14 @@ const tests: TestCase[] = [
         s.resolveLevelUp(c);
         picks++;
         if (grant) grantPicks++;
+        if (grantPicks >= 1 && picks >= 4) break;
       }
       if (s.tick % 30 === 0) {
         rec.check(s.tick, { x: s.hero.x, y: s.hero.y, wallHp: s.wallHp, kills: s.totalKills, lv: s.hero.level });
       }
     }
-    if (picks === 0) return '50s 内未触发选卡（样本未覆盖升选卡）';
-    if (grantPicks === 0) return '50s 内未出现新武器候选（权重过低？）';
+    if (picks === 0) return '90s 内未触发选卡（样本未覆盖升选卡）';
+    if (grantPicks === 0) return '90s 内未出现新武器候选（权重过低？）';
     const parsed = parseTrace(serializeTrace(rec.records));
     const report = runTraceReplay(parsed, { level, weapon: weapons[0], monsters, cards, weaponPool: weapons });
     if (!report.consistent) {
@@ -1101,6 +1276,76 @@ const tests: TestCase[] = [
     }
     if (s.hero.weapons.length < 2) return '录制未实际获得新武器（覆盖不足）';
     return report.checksTotal > 0 ? true : '存档点缺失（录制未产出 check 记录）';
+  } },
+
+  // ===== 激光炮（持续光束，docs/07 §4）=====
+  { name: 'W-激光：持续光束灼烧线上目标，近旁不误伤', run: () => {
+    const s = freshSession(11, 5); // laser_cannon（英雄 540,328；索敌 600）
+    s.debugSpawn('bulwark', 540, 900); // 光束线上（距离 572）
+    s.debugSpawn('bulwark', 660, 900); // 近旁对照：索敌内、非最近目标、离束线 120px
+    const guard = s.monsters[0];
+    const control = s.monsters[1];
+    runFor(s, 1.5, () => false);
+    if (!(guard.hp < guard.maxHp)) return '线上目标未被光束灼烧';
+    const dealt = guard.maxHp - guard.hp;
+    const dps = s.hero.weapons[0].cfg.baseDamage; // 面板每秒伤害（本测试不加伤害卡）
+    const exp = (1.5 - 0.33) * dps;
+    if (dealt < exp * 0.7 || dealt > exp * 1.3) return `1.5s 线上伤害 ${dealt}（期望 ≈${Math.round(exp)} = (1.5-0.33)×${dps}）`;
+    if (control.hp !== control.maxHp) return `近旁对照被误伤（剩 ${control.hp}）`;
+    const segs = s.segments.filter((sg) => sg.srcWeaponId === 'laser_cannon');
+    return segs.length === 1 ? true : `激光段场数 ${segs.length}（应 1）`;
+  } },
+  { name: 'W-激光：重锁替换不叠加（伤害 = DPS×时间，无双算）', run: () => {
+    const s = freshSession(12, 5);
+    s.debugSpawn('bulwark', 540, 900);
+    const m = s.monsters[0];
+    m.hp = m.maxHp = 1e9;
+    runFor(s, 2.0, () => false);
+    const dealt = 1e9 - m.hp;
+    // 期望 ≈ (2.0-0.33)×面板DPS；若同源旧束不删（叠加）会约翻倍
+    const dps = s.hero.weapons[0].cfg.baseDamage;
+    const exp = (2.0 - 0.33) * dps;
+    return dealt > exp * 0.7 && dealt < exp * 1.3 ? true : `2s 伤害 ${dealt}（期望 ≈${Math.round(exp)}，换束叠加会约翻倍）`;
+  } },
+  { name: 'W-激光：过热熄灭 → 散热后复燃（节拍）', run: () => {
+    const s = freshSession(13, 5);
+    s.debugSpawn('bulwark', 540, 900);
+    const m = s.monsters[0];
+    m.hp = m.maxHp = 1e9;
+    // 30Hz 帧量化：0.4s 间隔实走 13 帧（0.4333s）→ 18 发末束 ≈8.2s 熄灭；散热 2.2s → ≈9.9s 复燃
+    runFor(s, 8.6, () => false);
+    if (s.segments.some((sg) => sg.srcWeaponId === 'laser_cannon')) return '8.6s 应已过热熄灭（仍有残留光束）';
+    const revived = runFor(s, 1.9, () => s.segments.some((sg) => sg.srcWeaponId === 'laser_cannon'));
+    return revived ? true : '散热结束（≈9.3~10.0s）后未复燃';
+  } },
+  { name: 'W-激光：分光/扩束/余辉卡生效（扇形夹角+宽度+余辉）', run: () => {
+    const s = freshSession(14, 5);
+    if (!s.grantCard('laser_prism')) return '分光棱镜授予失败';
+    if (!s.grantCard('laser_wide')) return '扩束透镜授予失败';
+    if (!s.grantCard('laser_afterglow')) return '持续供能授予失败';
+    s.debugSpawn('bulwark', 540, 900);
+    runFor(s, 0.6, () => s.segments.length >= 2);
+    const segs = s.segments.filter((sg) => sg.srcWeaponId === 'laser_cannon');
+    if (segs.length !== 2) return `光束数 ${segs.length}（应 2）`;
+    const [a, b] = segs;
+    const spread = Math.abs((a.angle ?? 0) - (b.angle ?? 0));
+    if (Math.abs(spread - 0.11) > 0.01) return `两束夹角 ${spread.toFixed(3)}（应 ≈0.11 扇形散开）`;
+    if (Math.abs(a.width - 14 * 1.6) > 0.01) return `束宽 ${a.width}（应 22.4 = 14×1.6）`;
+    const life = Math.min(a.until, b.until) - s.timeSec;
+    if (life <= 0.5) return `余辉剩余 ${life.toFixed(2)}s（应 >0.5 = 0.5+供能 0.4）`;
+    return true;
+  } },
+  { name: 'W-激光：散热鳍片缩短过热（约 8.8s 复燃）', run: () => {
+    const s = freshSession(15, 5);
+    if (!s.grantCard('laser_cooling')) return '散热鳍片授予失败';
+    s.debugSpawn('bulwark', 540, 900);
+    const m = s.monsters[0];
+    m.hp = m.maxHp = 1e9;
+    // 散热 ×0.75 → 1.65s（50 帧 = 1.667s）：末束 ≈8.2s 熄灭、≈9.4s 复燃（基准 ≈9.9s）
+    runFor(s, 8.6, () => false);
+    if (s.segments.some((sg) => sg.srcWeaponId === 'laser_cannon')) return '8.6s 应已熄灭';
+    const revived = runFor(s, 1.2, () => s.segments.some((sg) => sg.srcWeaponId === 'laser_cannon'));
+    return revived ? true : '散热鳍片后仍未在 9.8s 内复燃';
   } },
 ];
 

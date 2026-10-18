@@ -33,7 +33,7 @@ export function createWeaponInstance(cfg: WeaponConfig): WeaponInstance {
     damage: cfg.baseDamage,
     cooldown: 0.3, // 开局小延迟，避免第一帧齐射
     shotsSinceCool: 0,
-    mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1 },
+    mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1, widthMul: 1, beamLifeAdd: 0, heatCoolMul: 1 },
     element: cfg.damageType,
     riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
     affixes: { homing: 0, bounce: 0, split: 0, shred: 0, blast: 0, chain: 0 },
@@ -106,7 +106,7 @@ export function updateWeapons(
       w.shotsSinceCool++;
       if (w.shotsSinceCool >= w.cfg.heat.shots) {
         w.shotsSinceCool = 0;
-        w.cooldown = Math.max(w.cooldown, w.cfg.heat.cooldown);
+        w.cooldown = Math.max(w.cooldown, w.cfg.heat.cooldown * mods.heatCoolMul);
       }
     }
     const n = norm(target.x - hero.x, target.y - hero.y);
@@ -243,6 +243,15 @@ export function applyBulletMod(w: WeaponInstance, stat: BulletStat, op: 'add' | 
       break;
     case 'interval':
       m.intervalMul = op === 'add' ? m.intervalMul + value : m.intervalMul * (1 + value);
+      break;
+    case 'width':
+      m.widthMul = op === 'add' ? m.widthMul + value : m.widthMul * (1 + value);
+      break;
+    case 'beamLife':
+      m.beamLifeAdd = op === 'add' ? m.beamLifeAdd + value : m.beamLifeAdd * (1 + value);
+      break;
+    case 'heatCool':
+      m.heatCoolMul = op === 'add' ? m.heatCoolMul + value : m.heatCoolMul * (1 + value);
       break;
   }
 }

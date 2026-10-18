@@ -558,6 +558,92 @@
       },
       "maxStack": 5,
       "desc": "全伤害 +5%"
+    },
+    {
+      "id": "laser_focus",
+      "name": "聚焦透镜",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "laser_cannon"
+      },
+      "effect": {
+        "bullet": "damage",
+        "op": "mul",
+        "value": 0.18
+      },
+      "maxStack": 3,
+      "desc": "光束伤害 +18%"
+    },
+    {
+      "id": "laser_prism",
+      "name": "分光棱镜",
+      "rarity": "rare",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "laser_cannon"
+      },
+      "effect": {
+        "bullet": "count",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 2,
+      "weight": 0.7,
+      "desc": "每次发射 +1 道光束，扇形散开（主束对准目标）"
+    },
+    {
+      "id": "laser_afterglow",
+      "name": "持续供能",
+      "rarity": "rare",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "laser_cannon"
+      },
+      "effect": {
+        "bullet": "beamLife",
+        "op": "add",
+        "value": 0.4
+      },
+      "maxStack": 3,
+      "desc": "光束熄火后仍持续灼烧 +0.4 秒（覆盖散热前段）"
+    },
+    {
+      "id": "laser_wide",
+      "name": "扩束透镜",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "laser_cannon"
+      },
+      "effect": {
+        "bullet": "width",
+        "op": "mul",
+        "value": 0.6
+      },
+      "maxStack": 3,
+      "desc": "光束宽度 +60%"
+    },
+    {
+      "id": "laser_cooling",
+      "name": "散热鳍片",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "laser_cannon"
+      },
+      "effect": {
+        "bullet": "heatCool",
+        "op": "mul",
+        "value": -0.25
+      },
+      "maxStack": 2,
+      "desc": "过热冷却时间 -25%"
     }
   ]
 }

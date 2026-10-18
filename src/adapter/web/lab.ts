@@ -280,8 +280,8 @@ async function boot(): Promise<void> {
     if (m.transferAura) out.push({ text: `伤害转嫁：受击转移给 ${m.transferAura.radius}px 内友军代伤`, warn: true });
     if (m.formationDist) out.push({ text: `近墙变阵（${m.formationDist}px）：护卫展开横排、本体居中` });
     if (m.detonate) out.push({ text: `自爆：撞墙或死亡，城防 -${m.detonate.wallDamage}`, warn: true });
-    if (m.creepTrail) out.push({ text: `铺虫苔：每 ${m.creepTrail.interval}s 一块（虫族加速 25% 回血 20/s）` });
-    if (m.creepBenefit) out.push({ text: '虫族：站上虫苔加速 +25%、回血 20/s' });
+    if (m.creepTrail) out.push({ text: `铺虫苔：每 ${m.creepTrail.interval}s 一块，虫苔会自行蔓延（火焰可烧）` });
+    if (m.creepBenefit) out.push({ text: '虫族：站毯加速 +25%、按虫巢等级回血；全族随扩张等级增强攻击/血量' });
     if (m.weak?.length) out.push({ text: `弱点：${m.weak.join('/')} 伤害 ×1.25` });
     if (m.resist?.length) out.push({ text: `抗性：${m.resist.join('/')} 伤害 ×0.75` });
     return out;

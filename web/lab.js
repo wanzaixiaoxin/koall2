@@ -516,7 +516,7 @@
       cooldown: 0.3,
       // 开局小延迟，避免第一帧齐射
       shotsSinceCool: 0,
-      mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1 },
+      mods: { extraCount: 0, burst: 0, projSpeedMul: 1, damageMul: 1, rangeMul: 1, pierceAdd: 0, intervalMul: 1, widthMul: 1, beamLifeAdd: 0, heatCoolMul: 1 },
       element: cfg.damageType,
       riders: { burnDpsMul: 0, burnSec: 3, slowPct: 0, slowSec: 2.5 },
       affixes: { homing: 0, bounce: 0, split: 0, shred: 0, blast: 0, chain: 0 }
@@ -562,7 +562,7 @@
         w.shotsSinceCool++;
         if (w.shotsSinceCool >= w.cfg.heat.shots) {
           w.shotsSinceCool = 0;
-          w.cooldown = Math.max(w.cooldown, w.cfg.heat.cooldown);
+          w.cooldown = Math.max(w.cooldown, w.cfg.heat.cooldown * mods.heatCoolMul);
         }
       }
       const n = norm(target.x - hero.x, target.y - hero.y);
@@ -666,6 +666,15 @@
         break;
       case "interval":
         m.intervalMul = op === "add" ? m.intervalMul + value : m.intervalMul * (1 + value);
+        break;
+      case "width":
+        m.widthMul = op === "add" ? m.widthMul + value : m.widthMul * (1 + value);
+        break;
+      case "beamLife":
+        m.beamLifeAdd = op === "add" ? m.beamLifeAdd + value : m.beamLifeAdd * (1 + value);
+        break;
+      case "heatCool":
+        m.heatCoolMul = op === "add" ? m.heatCoolMul + value : m.heatCoolMul * (1 + value);
         break;
     }
   }
@@ -794,7 +803,7 @@
                 break;
             }
             const at = s * segInterval + i / Math.max(1, cnt) * windowSec + this.rng.range(0, 0.4);
-            out.push({ at, item: { monsterKey: spawn.monster, spawnX: x } });
+            out.push({ at, item: { monsterKey: spawn.monster, spawnX: x, fromCreep: spawn.fromCreep } });
           }
         }
       }
@@ -814,6 +823,14 @@
       // 光束/连线伤害场（docs/07 §4）
       /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
       this.creep = /* @__PURE__ */ new Map();
+      /** 虫苔版本号（任一次增删 +1；web 渲染层据此重建离屏缓存） */
+      this.creepVersion = 0;
+      /** 最近新生虫苔（渲染层蔓延光环用）：坐标 + 发生时刻，短名单自动裁剪 */
+      this.creepGlow = [];
+      /** 历史峰值覆盖格数（扩张等级按峰值只升不降） */
+      this.creepPeak = 0;
+      this.creepSpreadAcc = 0;
+      this.creepTierCurrent = 1;
       // 可被 B 类卡（加固城墙）提升
       this.tick = 0;
       this.result = null;
@@ -873,6 +890,27 @@
     static {
       this.CREEP_LIFE = 60;
     }
+    static {
+      /** 虫苔蔓延：每 interval 秒每个地块尝试向外扩一格（概率 chance；成功则向随机邻格生长并续期自身） */
+      this.CREEP_SPREAD_INTERVAL = 3;
+    }
+    static {
+      this.CREEP_SPREAD_CHANCE = 0.12;
+    }
+    static {
+      /** 虫巢扩张等级：按历史峰值覆盖格数分档（T1 起始，T2/T3/T4 阈值，docs/08 §2.4） */
+      this.CREEP_TIER_CELLS = [60, 120, 190];
+    }
+    static {
+      /** 各等级全族增益：攻击倍率 / 血量倍率 / 站毯每秒回血（docs/08 §2.4） */
+      this.CREEP_ATK_MUL = [1, 1.1, 1.2, 1.3];
+    }
+    static {
+      this.CREEP_HP_MUL = [1, 1.08, 1.16, 1.25];
+    }
+    static {
+      this.CREEP_REGEN = [6, 10, 14, 18];
+    }
     get timeSec() {
       return this.tick * TICK_DT;
     }
@@ -889,7 +927,10 @@
       this.motionCtx.ownerX = this.hero.x;
       this.motionCtx.ownerY = this.hero.y;
       const spawned = this.director.update(this, dt);
-      for (const item of spawned) this.spawnMonster(item.monsterKey, item.spawnX);
+      for (const item of spawned) {
+        if (item.fromCreep && this.trySpawnFromCreep(item)) continue;
+        this.spawnMonster(item.monsterKey, item.spawnX);
+      }
       const move = this.controller.getMoveDir(this);
       const len2 = Math.hypot(move.x, move.y);
       if (len2 > 1e-6) {
@@ -910,6 +951,8 @@
       for (const cmd of this.fireCommands) {
         if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
           this.doLightning(cmd);
+        } else if (cmd.weapon.cfg.beamBase) {
+          this.doBeam(cmd);
         } else {
           this.spawnProjectile(cmd);
           for (let i = 1; i <= cmd.weapon.mods.burst; i++) {
@@ -922,6 +965,7 @@
         b.timer -= dt;
         if (b.timer <= 0) {
           if ((b.cmd.weapon.cfg.chainBase ?? 0) > 0 || b.cmd.weapon.affixes.chain > 0) this.doLightning(b.cmd);
+          else if (b.cmd.weapon.cfg.beamBase) this.doBeam(b.cmd);
           else this.spawnProjectile(b.cmd);
           this.burstQueue.splice(i, 1);
         }
@@ -952,10 +996,11 @@
         if (m.hp <= 0) continue;
         if (m.burrowed) {
           updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
-            this.wallHp = Math.max(0, this.wallHp - dmg);
-            this.totalWallDamage += dmg;
-            this.waveWallDamage += dmg;
-            this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+            const d = Math.round(dmg * this.creepAtkMulFor(src));
+            this.wallHp = Math.max(0, this.wallHp - d);
+            this.totalWallDamage += d;
+            this.waveWallDamage += d;
+            this.bus.emit("onWallHit", { dmg: d, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
           }, (src) => {
             this.spawnMonsterShot(src);
           }, (x, y) => this.isCreeped(x, y));
@@ -971,7 +1016,7 @@
           }
         }
         if (m.cfg.creepBenefit && this.isCreeped(m.x, m.y)) {
-          m.regenAcc += 20 * dt;
+          m.regenAcc += _GameSession.CREEP_REGEN[this.creepTier - 1] * dt;
           while (m.regenAcc >= 1) {
             m.regenAcc -= 1;
             m.hp = Math.min(m.maxHp, m.hp + 1);
@@ -979,10 +1024,11 @@
         }
         if (this.formationMove(m, dt)) continue;
         updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
-          this.wallHp = Math.max(0, this.wallHp - dmg);
-          this.totalWallDamage += dmg;
-          this.waveWallDamage += dmg;
-          this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+          const d = Math.round(dmg * this.creepAtkMulFor(src));
+          this.wallHp = Math.max(0, this.wallHp - d);
+          this.totalWallDamage += d;
+          this.waveWallDamage += d;
+          this.bus.emit("onWallHit", { dmg: d, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
         }, (src) => {
           this.spawnMonsterShot(src);
         }, (x, y) => this.isCreeped(x, y));
@@ -993,9 +1039,7 @@
           this.killMonster(null, m);
         }
       }
-      for (const [key, until] of this.creep) {
-        if (until <= now) this.creep.delete(key);
-      }
+      this.tickCreep(dt);
       for (const m of this.monsters) {
         if (!m.cfg.splitTimer || m.hp <= 0) continue;
         m.splitTimerLeft -= dt;
@@ -1188,7 +1232,8 @@
       const x = clamp(spawnX, 40, this.level.arena.width - 40);
       const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
       const scale = 1 + 0.1 * this.director.currentWave;
-      const hp = Math.round(cfg.hp * scale);
+      const tier = this.creepTier;
+      const hp = Math.round(cfg.hp * scale * (cfg.creepBenefit ? _GameSession.CREEP_HP_MUL[tier - 1] : 1));
       this.monsters.push({
         id: this.monsters.length,
         // tick 内密度数组约定
@@ -1209,6 +1254,7 @@
         dead: false,
         creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
         regenAcc: 0,
+        creepTierApplied: tier,
         groupId: -1,
         formationActive: false,
         slotX: x,
@@ -1232,6 +1278,45 @@
           member.formAngle = Math.PI * 2 * i / cfg.escort.count;
         }
       }
+    }
+    /**
+     * 激光炮：生成"持续光束"（SegmentField，docs/07 §4）——非子弹、即时命中、逐帧结算。
+     * - 同源旧束在每次齐射首发（index 0）时整体替换：0.4s 重锁不叠加双倍伤害；
+     * - 长度缺省 = 场景对角线：任何朝向都贯穿到界外；
+     * - 余辉：until = now + duration + 持续供能卡加成（熄火后仍灼烧，覆盖散热前段）；
+     * - 扇形分光（count>1）：主束对准目标，附加束左右交替展开（与齐射同一套公式）。
+     */
+    doBeam(cmd) {
+      const { weapon, dirX, dirY, index } = cmd;
+      const beam = weapon.cfg.beamBase;
+      if (!beam) return;
+      if (index === 0) {
+        this.segments = this.segments.filter((s) => s.srcWeaponId !== weapon.cfg.id);
+      }
+      let fan = 0;
+      if (index > 0) {
+        const side = index % 2 === 1 ? -1 : 1;
+        const step = Math.ceil(index / 2);
+        fan = side * step * (weapon.cfg.spread ?? 0.1);
+      }
+      const rawLen = Math.hypot(dirX, dirY);
+      const angle = (rawLen > 1e-6 ? Math.atan2(dirY, dirX) : Math.PI / 2) + fan;
+      const length = beam.length ?? Math.hypot(this.level.arena.width, this.level.arena.height);
+      this.segments.push({
+        ax: this.hero.x,
+        ay: this.hero.y,
+        bx: this.hero.x + Math.cos(angle) * length,
+        by: this.hero.y + Math.sin(angle) * length,
+        width: beam.width * weapon.mods.widthMul,
+        dps: cmd.dmg,
+        // 面板伤害即每秒伤害（baseDamage 语义为 DPS）
+        until: this.timeSec + beam.duration + weapon.mods.beamLifeAdd,
+        damageType: weapon.element,
+        followOwner: true,
+        angle,
+        length,
+        srcWeaponId: weapon.cfg.id
+      });
     }
     spawnProjectile(cmd) {
       const { weapon, fromX, fromY, dirX, dirY, speed, range, dmg, index } = cmd;
@@ -1439,7 +1524,7 @@
     nearestMonsterExcluding(x, y, radius, exclude) {
       return this.nearestMonsterRuntime(x, y, radius, exclude);
     }
-    // ---------- 虫苔（docs/08） ----------
+    // ---------- 虫苔 / 虫巢扩张（docs/08 §2.2 §2.4 §2.5） ----------
     creepKey(x, y) {
       const c = _GameSession.CREEP_CELL;
       return Math.floor(x / c) * 4096 + Math.floor(y / c);
@@ -1448,8 +1533,100 @@
       const until = this.creep.get(this.creepKey(x, y));
       return until !== void 0 && until > this.timeSec;
     }
+    /**
+     * 当前虫巢扩张等级（1-4）：按历史峰值覆盖格数分档，只升不降。
+     * 火焰清苔只会拖慢下一档到来的速度，不会让已扩张的等级回退。
+     */
+    get creepTier() {
+      let tier = 1;
+      for (const threshold of _GameSession.CREEP_TIER_CELLS) {
+        if (this.creepPeak >= threshold) tier++;
+      }
+      return tier;
+    }
+    /** 虫族攻击随扩张等级的倍率（非虫族恒为 1）。 */
+    creepAtkMulFor(m) {
+      return m.cfg.creepBenefit ? _GameSession.CREEP_ATK_MUL[this.creepTier - 1] : 1;
+    }
+    /** 每帧虫苔结算：蔓延（每 3s 一次）→ 过期清理 → 峰值统计 → 等级晋升（全族一次性补血）。 */
+    tickCreep(dt) {
+      const now = this.timeSec;
+      this.creepSpreadAcc += dt;
+      while (this.creepSpreadAcc >= _GameSession.CREEP_SPREAD_INTERVAL) {
+        this.creepSpreadAcc -= _GameSession.CREEP_SPREAD_INTERVAL;
+        this.spreadCreepOnce();
+      }
+      for (const [key, until] of this.creep) {
+        if (until <= now) {
+          this.creep.delete(key);
+          this.creepVersion++;
+        }
+      }
+      if (this.creep.size > this.creepPeak) this.creepPeak = this.creep.size;
+      const tier = this.creepTier;
+      if (tier <= this.creepTierCurrent) return;
+      for (const m of this.monsters) {
+        if (m.hp <= 0 || !m.cfg.creepBenefit || m.creepTierApplied >= tier) continue;
+        const ratio = _GameSession.CREEP_HP_MUL[tier - 1] / _GameSession.CREEP_HP_MUL[m.creepTierApplied - 1];
+        m.maxHp = Math.round(m.maxHp * ratio);
+        m.hp = Math.min(m.maxHp, Math.round(m.hp * ratio));
+        m.creepTierApplied = tier;
+      }
+      this.creepTierCurrent = tier;
+      this.bus.emit("onCreepTier", { tier, cells: this.creep.size });
+    }
+    /** 蔓延结算：每个地块尝试向随机邻格生长（成功则铺新块并续期自身——领土只积不退）。 */
+    spreadCreepOnce() {
+      if (this.creep.size === 0) return;
+      const c = _GameSession.CREEP_CELL;
+      const maxCx = Math.floor((this.level.arena.width - 1) / c);
+      const maxCy = Math.floor((this.level.arena.height - 1) / c);
+      const minCy = Math.ceil(this.level.wall.height / c);
+      const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      for (const key of [...this.creep.keys()]) {
+        const cx = Math.floor(key / 4096);
+        const cy = key % 4096;
+        const [dx, dy] = dirs[this.rng.int(0, 3)];
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx >= 0 && nx <= maxCx && ny >= minCy && ny <= maxCy && this.rng.next() < _GameSession.CREEP_SPREAD_CHANCE) {
+          this.dropCreep(nx * c + c / 2, ny * c + c / 2);
+        }
+        this.creep.set(key, this.timeSec + _GameSession.CREEP_LIFE);
+      }
+    }
     dropCreep(x, y) {
-      this.creep.set(this.creepKey(x, y), this.timeSec + _GameSession.CREEP_LIFE);
+      const c = _GameSession.CREEP_CELL;
+      const key = this.creepKey(x, y);
+      if (this.creep.has(key)) {
+        this.creep.set(key, this.timeSec + _GameSession.CREEP_LIFE);
+        return;
+      }
+      this.creepGlow.push({ x: Math.floor(x / c) * c + c / 2, y: Math.floor(y / c) * c + c / 2, t: this.timeSec });
+      if (this.creepGlow.length > 64) this.creepGlow.shift();
+      this.creep.set(key, this.timeSec + _GameSession.CREEP_LIFE);
+      this.creepVersion++;
+    }
+    /**
+     * 从菌毯中孵化（docs/08 §2.5）：放行时刻从当前虫苔里随机挑一格钻出（避开城墙近前，给反应窗口）；
+     * 可用虫苔不足 6 格时返回 false，落回顶部出生带（前期没地盘时与普通波次表现一致）。
+     */
+    trySpawnFromCreep(item) {
+      const c = _GameSession.CREEP_CELL;
+      const minY = this.level.wall.height + 450;
+      const maxY = this.level.arena.height - 100;
+      const candidates = [];
+      for (const key2 of this.creep.keys()) {
+        const y2 = key2 % 4096 * c + c / 2;
+        if (y2 >= minY && y2 <= maxY) candidates.push(key2);
+      }
+      if (candidates.length < 6) return false;
+      const key = candidates[this.rng.int(0, candidates.length - 1)];
+      const x = clamp(Math.floor(key / 4096) * c + c / 2 + this.rng.range(-25, 25), 40, this.level.arena.width - 40);
+      const y = key % 4096 * c + c / 2 + this.rng.range(-20, 20);
+      this.spawnMonster(item.monsterKey, x, y);
+      this.bus.emit("onMonsterEmerge", { x, y });
+      return true;
     }
     /** 火焰清除虫苔：清除以 (x,y) 半径 r 内所有虫苔格。 */
     burnCreep(x, y, r) {
@@ -1595,7 +1772,7 @@
       m.attackTimer -= dt;
       if (m.attackTimer <= 0) {
         m.attackTimer += m.cfg.attackInterval;
-        const dmg = m.cfg.atk;
+        const dmg = Math.round(m.cfg.atk * this.creepAtkMulFor(m));
         this.wallHp = Math.max(0, this.wallHp - dmg);
         this.totalWallDamage += dmg;
         this.waveWallDamage += dmg;
@@ -1794,7 +1971,7 @@
       if (m.cfg.detonate) {
         this.bus.emit("onExplode", { x: m.x, y: m.y, radius: 70 });
         if (m.state === "assault") {
-          const dmg = m.cfg.detonate.wallDamage;
+          const dmg = Math.round(m.cfg.detonate.wallDamage * this.creepAtkMulFor(m));
           this.wallHp = Math.max(0, this.wallHp - dmg);
           this.totalWallDamage += dmg;
           this.waveWallDamage += dmg;
@@ -2001,11 +2178,25 @@
     ctx.fillStyle = color;
     switch (m.cfg.shape) {
       case "larva": {
+        const wig = 0.85 + 0.25 * Math.sin(t * 10 + m.phase);
         ctx.beginPath();
-        ctx.moveTo(x, y - r);
-        ctx.lineTo(x - r * 0.8, y + r * 0.8);
-        ctx.lineTo(x + r * 0.8, y + r * 0.8);
+        ctx.moveTo(x, y - r * 1.1);
+        ctx.lineTo(x - r * 0.85, y + r * wig);
+        ctx.lineTo(x + r * 0.85, y + r * wig);
         ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(26,36,16,0.8)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.5, y + r * 0.35);
+        ctx.lineTo(x - r * 0.95, y + r * 0.8);
+        ctx.moveTo(x + r * 0.5, y + r * 0.35);
+        ctx.lineTo(x + r * 0.95, y + r * 0.8);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(26,36,16,0.9)";
+        ctx.beginPath();
+        ctx.arc(x, y - r * 0.4, 1.6, 0, Math.PI * 2);
         ctx.fill();
         break;
       }
@@ -2013,6 +2204,23 @@
         ctx.beginPath();
         ctx.ellipse(x, y, r, r * 0.7, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = "rgba(26,36,16,0.85)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.beginPath();
+        for (const dx of [-0.45, 0, 0.45]) {
+          ctx.moveTo(x + r * dx, y - r * 0.48);
+          ctx.lineTo(x + r * dx, y - r * 0.95);
+        }
+        ctx.stroke();
+        ctx.beginPath();
+        for (const s of [-1, 1]) {
+          ctx.moveTo(x - r * 0.6 * s, y + r * 0.35);
+          ctx.lineTo(x - r * 0.98 * s, y + r * 0.72);
+          ctx.moveTo(x + r * 0.55 * s, y + r * 0.42);
+          ctx.lineTo(x + r * 0.92 * s, y + r * 0.78);
+        }
+        ctx.stroke();
         break;
       }
       case "lurker": {
@@ -2021,6 +2229,23 @@
         ctx.lineTo(x - r * 0.35, y - r);
         ctx.lineTo(x + r * 0.35, y - r);
         ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "rgba(26,36,16,0.85)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.3, y - r * 0.2);
+        ctx.lineTo(x - r * 0.98, y - r * 0.6);
+        ctx.moveTo(x + r * 0.3, y - r * 0.2);
+        ctx.lineTo(x + r * 0.98, y - r * 0.6);
+        ctx.moveTo(x - r * 0.3, y + r * 0.15);
+        ctx.lineTo(x - r * 0.9, y - r * 0.02);
+        ctx.moveTo(x + r * 0.3, y + r * 0.15);
+        ctx.lineTo(x + r * 0.9, y - r * 0.02);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(101,67,33,0.35)";
+        ctx.beginPath();
+        ctx.ellipse(x, y + r * 0.55, r * 0.8, r * 0.28, 0, 0, Math.PI * 2);
         ctx.fill();
         break;
       }
@@ -2032,10 +2257,36 @@
         ctx.lineTo(x - r * 0.8, y);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = "#F5F5FA";
+        ctx.strokeStyle = "rgba(26,36,16,0.85)";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
         ctx.beginPath();
-        ctx.arc(x, y - r - 6, 4, 0, Math.PI * 2);
-        ctx.fill();
+        for (const dx of [-0.32, 0, 0.32]) {
+          ctx.moveTo(x + r * dx, y - r * 0.85);
+          ctx.lineTo(x + r * dx * 1.6, y - r * 1.18);
+        }
+        ctx.stroke();
+        ctx.fillStyle = "#F5F5FA";
+        for (let i = 0; i < 3; i++) {
+          const ex = x + (i - 1) * 9;
+          const ey = y - r - 8 - Math.sin(t * 3 + i * 2.1 + m.phase) * 2;
+          ctx.beginPath();
+          ctx.arc(ex, ey, 3.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = "rgba(199,125,255,0.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (const s of [-1, 1]) {
+          ctx.moveTo(x + s * r * 0.7, y - r * 0.15);
+          ctx.quadraticCurveTo(
+            x + s * r * 1.35,
+            y - r * 0.5 + Math.sin(t * 4 + m.phase) * 4,
+            x + s * r * 1.5,
+            y - r * 0.95
+          );
+        }
+        ctx.stroke();
         break;
       }
       case "baneling": {
@@ -2043,10 +2294,20 @@
         ctx.beginPath();
         ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = "rgba(26,36,16,0.85)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
         ctx.fillStyle = "rgba(11,12,29,0.5)";
         ctx.beginPath();
         ctx.arc(x, y, r * 0.4, 0, Math.PI * 2);
         ctx.fill();
+        ctx.fillStyle = `rgba(255,241,118,${(0.5 + 0.4 * Math.sin(t * 8 + m.phase)).toFixed(3)})`;
+        for (let i = 0; i < 3; i++) {
+          const a = i * 2.1 + m.phase;
+          ctx.beginPath();
+          ctx.arc(x + Math.cos(a) * r * 0.55, y + Math.sin(a) * r * 0.55, 2.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
         break;
       }
       case "ultra": {
@@ -2061,6 +2322,27 @@
         }
         ctx.closePath();
         ctx.fill();
+        ctx.strokeStyle = "rgba(26,36,16,0.9)";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.strokeStyle = "#69A83B";
+        ctx.lineWidth = 6;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.75, y - r * 0.15);
+        ctx.quadraticCurveTo(x - r * 1.5, y - r * 0.5, x - r * 1.45, y - r * 1.05);
+        ctx.moveTo(x + r * 0.75, y - r * 0.15);
+        ctx.quadraticCurveTo(x + r * 1.5, y - r * 0.5, x + r * 1.45, y - r * 1.05);
+        ctx.stroke();
+        ctx.lineCap = "butt";
+        ctx.strokeStyle = "rgba(26,36,16,0.9)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.3, y + r * 0.75);
+        ctx.lineTo(x - r * 0.55, y + r * 1.05);
+        ctx.moveTo(x + r * 0.3, y + r * 0.75);
+        ctx.lineTo(x + r * 0.55, y + r * 1.05);
+        ctx.stroke();
         break;
       }
       case "wolf": {
@@ -2633,8 +2915,8 @@
       if (m.transferAura) out.push({ text: `\u4F24\u5BB3\u8F6C\u5AC1\uFF1A\u53D7\u51FB\u8F6C\u79FB\u7ED9 ${m.transferAura.radius}px \u5185\u53CB\u519B\u4EE3\u4F24`, warn: true });
       if (m.formationDist) out.push({ text: `\u8FD1\u5899\u53D8\u9635\uFF08${m.formationDist}px\uFF09\uFF1A\u62A4\u536B\u5C55\u5F00\u6A2A\u6392\u3001\u672C\u4F53\u5C45\u4E2D` });
       if (m.detonate) out.push({ text: `\u81EA\u7206\uFF1A\u649E\u5899\u6216\u6B7B\u4EA1\uFF0C\u57CE\u9632 -${m.detonate.wallDamage}`, warn: true });
-      if (m.creepTrail) out.push({ text: `\u94FA\u866B\u82D4\uFF1A\u6BCF ${m.creepTrail.interval}s \u4E00\u5757\uFF08\u866B\u65CF\u52A0\u901F 25% \u56DE\u8840 20/s\uFF09` });
-      if (m.creepBenefit) out.push({ text: "\u866B\u65CF\uFF1A\u7AD9\u4E0A\u866B\u82D4\u52A0\u901F +25%\u3001\u56DE\u8840 20/s" });
+      if (m.creepTrail) out.push({ text: `\u94FA\u866B\u82D4\uFF1A\u6BCF ${m.creepTrail.interval}s \u4E00\u5757\uFF0C\u866B\u82D4\u4F1A\u81EA\u884C\u8513\u5EF6\uFF08\u706B\u7130\u53EF\u70E7\uFF09` });
+      if (m.creepBenefit) out.push({ text: "\u866B\u65CF\uFF1A\u7AD9\u6BEF\u52A0\u901F +25%\u3001\u6309\u866B\u5DE2\u7B49\u7EA7\u56DE\u8840\uFF1B\u5168\u65CF\u968F\u6269\u5F20\u7B49\u7EA7\u589E\u5F3A\u653B\u51FB/\u8840\u91CF" });
       if (m.weak?.length) out.push({ text: `\u5F31\u70B9\uFF1A${m.weak.join("/")} \u4F24\u5BB3 \xD71.25` });
       if (m.resist?.length) out.push({ text: `\u6297\u6027\uFF1A${m.resist.join("/")} \u4F24\u5BB3 \xD70.75` });
       return out;

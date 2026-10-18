@@ -67,6 +67,119 @@ function strokeBoltPath(ctx: CanvasRenderingContext2D, pts: number[][], frac = 1
   }
 }
 
+// ---------- 虫苔渲染（docs/08 视觉强化）：离屏缓存有机团块/脉纹/边缘亮弧 + 每帧脉动与蔓延光环 ----------
+const CREEP_CELL_PX = 90;
+const creepCache = document.createElement('canvas');
+let creepCacheVersion = -1;
+let creepPulseNodes: { x: number; y: number; s: number }[] = [];
+/** 每格确定性噪声（同一格每次重建外观一致，避免闪烁） */
+const creepHash = (n: number): number => {
+  let x = (n ^ 0x9e3779b9) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+};
+
+/** 重建虫苔离屏缓存：暗绿基座 + 内芯 + 脉纹 + 瘤节点 + 缺失邻格的边缘亮弧（蔓延感）。 */
+function rebuildCreepCache(session: GameSession, w: number, h: number): void {
+  creepCache.width = w;
+  creepCache.height = h;
+  const cctx = creepCache.getContext('2d')!;
+  const c = CREEP_CELL_PX;
+  const keys = [...session.creep.keys()];
+  const has = (cx: number, cy: number): boolean => session.creep.has(cx * 4096 + cy);
+  creepPulseNodes = [];
+  // 层 1：软光晕——抹平格与格之间的硬边，整体读作"一张毯"而不是一堆圆
+  cctx.fillStyle = 'rgba(53,83,26,0.26)';
+  for (const key of keys) {
+    cctx.beginPath();
+    cctx.arc(Math.floor(key / 4096) * c + 45, (key % 4096) * c + 45, 56 + creepHash(key) * 5, 0, Math.PI * 2);
+    cctx.fill();
+  }
+  // 层 2：暗绿基座
+  cctx.fillStyle = 'rgba(31,49,13,0.4)';
+  for (const key of keys) {
+    cctx.beginPath();
+    cctx.arc(Math.floor(key / 4096) * c + 45, (key % 4096) * c + 45, 48 + creepHash(key + 3) * 5, 0, Math.PI * 2);
+    cctx.fill();
+  }
+  // 层 3：双错位内芯团块（打破圆形对称，出有机块面感）
+  for (const key of keys) {
+    const x = Math.floor(key / 4096) * c + 45;
+    const y = (key % 4096) * c + 45;
+    const a1 = creepHash(key + 7) * Math.PI * 2;
+    cctx.fillStyle = 'rgba(74,107,31,0.48)';
+    cctx.beginPath();
+    cctx.arc(x + Math.cos(a1) * 10, y + Math.sin(a1) * 10, 34 + creepHash(key + 11) * 6, 0, Math.PI * 2);
+    cctx.fill();
+    const a2 = a1 + 2.4;
+    cctx.fillStyle = 'rgba(94,134,40,0.3)';
+    cctx.beginPath();
+    cctx.arc(x + Math.cos(a2) * 14, y + Math.sin(a2) * 14, 25 + creepHash(key + 19) * 6, 0, Math.PI * 2);
+    cctx.fill();
+  }
+  const dirs: [number, number, number][] = [[1, 0, 0], [0, 1, Math.PI / 2], [-1, 0, Math.PI], [0, -1, -Math.PI / 2]];
+  for (const key of keys) {
+    const cx = Math.floor(key / 4096);
+    const cy = key % 4096;
+    const x = cx * c + 45;
+    const y = cy * c + 45;
+    // 脉纹（深色短弧）
+    const a0 = creepHash(key + 13) * Math.PI * 2;
+    cctx.strokeStyle = 'rgba(20,32,8,0.4)';
+    cctx.lineWidth = 3;
+    cctx.beginPath();
+    cctx.arc(x - Math.cos(a0) * 14, y - Math.sin(a0) * 14, 26 + creepHash(key + 17) * 14, a0 - 1.2, a0 + 1.2);
+    cctx.stroke();
+    // 瘤节点 + 脉动候选（稀疏：点缀感，不喧宾夺主）
+    if (creepHash(key + 23) < 0.22) {
+      cctx.fillStyle = 'rgba(156,204,101,0.4)';
+      cctx.beginPath();
+      cctx.arc(x, y, 3 + creepHash(key + 29) * 3, 0, Math.PI * 2);
+      cctx.fill();
+    }
+    if (creepHash(key + 31) < 0.3) creepPulseNodes.push({ x, y, s: creepHash(key + 37) });
+    // 外缘亮弧（面向空缺方向 = 正在蔓延的边缘）
+    cctx.strokeStyle = 'rgba(156,204,101,0.35)';
+    cctx.lineWidth = 4;
+    for (const [dx, dy, ang] of dirs) {
+      if (!has(cx + dx, cy + dy)) {
+        cctx.beginPath();
+        cctx.arc(x, y, 52, ang - Math.PI * 0.3, ang + Math.PI * 0.3);
+        cctx.stroke();
+      }
+    }
+  }
+}
+
+/** 虫苔渲染：缓存底图 + 呼吸脉动 + 新生地块扩散圈（纯渲染层，不影响 30Hz 结算）。 */
+function drawCreepField(ctx: CanvasRenderingContext2D, session: GameSession, t: number, w: number, h: number): void {
+  if (session.creep.size > 0) {
+    if (creepCacheVersion !== session.creepVersion) {
+      creepCacheVersion = session.creepVersion;
+      rebuildCreepCache(session, w, h);
+    }
+    ctx.drawImage(creepCache, 0, 0);
+    for (const n of creepPulseNodes) {
+      const a = 0.05 + 0.05 * Math.sin(t * 2.2 + n.s * 6.283);
+      ctx.fillStyle = `rgba(156,204,101,${a.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 24 + 8 * n.s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  for (const g of session.creepGlow) {
+    const age = session.timeSec - g.t;
+    if (age < 0 || age > 0.9) continue;
+    const k = age / 0.9;
+    ctx.strokeStyle = `rgba(174,234,0,${(0.5 * (1 - k)).toFixed(3)})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(g.x, g.y, 12 + 74 * k, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
 async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const levelFile = params.get('level') ?? 'level_1_1.json';
@@ -175,6 +288,17 @@ async function boot(): Promise<void> {
     controller,
     cardPolicy: greedyDpsPolicy,
   });
+  // ?ff=<秒>：开发快进——直达后期波次观察战场（快进期间按贪心策略自动选卡、城墙锁定，
+  // 避免无操作 AI 走位失败把观察打断；仅调试/截图用，正常对局不传此参数）
+  const ffSec = Math.min(1800, Math.max(0, Number(params.get('ff')) || 0));
+  if (ffSec > 0 && !session.result) {
+    session.externalLevelUps = false; // 快进期间自动选卡（与 sim 贪心策略一致）
+    const ffTicks = Math.round(ffSec * 30);
+    for (let i = 0; i < ffTicks && !session.result; i++) {
+      session.wallHp = session.wallMaxHp; // 城墙锁定：快进只用于观察，不结算走位失败的破墙
+      session.step();
+    }
+  }
   session.externalLevelUps = true;
   recorder.start({ t0: Date.now(), seed, level: levelFile, weapon: weaponCfg.id, version: BUNDLE_VERSION, pool: true });
 
@@ -187,6 +311,20 @@ async function boot(): Promise<void> {
     bannerTimer = 2.2;
   });
   session.bus.on('onWallHit', () => canvas.classList.add('shake'));
+
+  // 虫巢扩张（docs/08 §2.4）：晋升横幅 + 全屏绿闪；菌毯孵化出土烟尘（§2.5）
+  let creepFlash = 0;
+  const emerges: { x: number; y: number; life: number }[] = [];
+  session.bus.on<{ tier: number; cells: number }>('onCreepTier', ({ tier }) => {
+    banner.textContent = `虫巢扩张 · 全族强化（T${tier}）`;
+    banner.classList.add('show');
+    bannerTimer = 2.4;
+    creepFlash = 1;
+  });
+  session.bus.on<{ x: number; y: number }>('onMonsterEmerge', ({ x, y }) => {
+    if (emerges.length >= 24) emerges.shift();
+    emerges.push({ x, y, life: 0.55 });
+  });
 
   // 伤害飘字（渲染层对象池语义：上限 40，见 docs/01 §4）
   interface FloatText { x: number; y: number; text: string; color: string; size: number; life: number; maxLife: number }
@@ -404,8 +542,17 @@ async function boot(): Promise<void> {
     // 怪物（形状语言区分种类，docs/06；血条/状态指示由下方叠加）
     const t = timeMs / 1000;
     const now = session.timeSec;
+    // 虫苔（docs/08）：画在怪物/英雄之下——离屏缓存有机团块 + 呼吸脉动 + 蔓延光环
+    drawCreepField(ctx, session, t, W, H);
     for (const m of session.monsters) {
       const r = m.cfg.radius;
+      // 虫族站毯提示（docs/08）：脚下酸绿微光（加速/回血生效中；扩张等级增益为全族恒定，不单独提示）
+      if (m.cfg.creepBenefit && !m.burrowed && session.isCreeped(m.x, m.y)) {
+        ctx.fillStyle = 'rgba(156,204,101,0.16)';
+        ctx.beginPath();
+        ctx.ellipse(m.x, m.y + r * 0.55, r * 1.35, r * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       drawMonster(ctx, m, t);
       // 血条
       if (m.hp < m.maxHp) {
@@ -442,15 +589,6 @@ async function boot(): Promise<void> {
       drawPool(ctx, pool, session.timeSec);
     }
 
-    // 虫苔地块（docs/08：酸性绿半透明网格）
-    ctx.fillStyle = 'rgba(124,179,66,0.13)';
-    const CELL = 90;
-    for (const key of session.creep.keys()) {
-      const cx = Math.floor(key / 4096);
-      const cy = key % 4096;
-      ctx.fillRect(cx * CELL + 1, cy * CELL + 1, CELL - 2, CELL - 2);
-    }
-
     // 英雄（正三角机身 + 圆形核心，呼吸浮动；多武器挂载：每把武器一个发射装置）
     const h = session.hero;
     const breathe = Math.sin(t * 2.2) * 3;
@@ -485,6 +623,7 @@ async function boot(): Promise<void> {
     ctx.fillStyle = '#0B0C1D';
     ctx.fill();
     // 武器挂载（布局表见 MOUNT_SPOTS：1=正面单炮 / 2=左右 / 3=+前沿 / 4=+尾部）
+    const beamOn = new Set(session.segments.map((sg) => sg.srcWeaponId)); // 光束武器：持束常亮
     const mounts = MOUNT_SPOTS[Math.min(h.weapons.length, 4)];
     for (let i = 0; i < h.weapons.length && i < mounts.length; i++) {
       const w = h.weapons[i];
@@ -492,7 +631,10 @@ async function boot(): Promise<void> {
       const k = Math.max(0, weaponFlash[i] ?? 0) / WEAPON_FLASH;
       if (weaponFlash[i]) weaponFlash[i] = Math.max(0, (weaponFlash[i] ?? 0) - dtR);
       const color = (palette.damageType as Record<string, string>)[w.element] ?? '#BFFFF2'; // 元素卡换色与弹道一致
-      const recoil = k * 3;
+      const isBeam = !!w.cfg.beamBase;
+      const beamLive = isBeam && beamOn.has(w.cfg.id);
+      const overheated = isBeam && w.cooldown > w.cfg.interval * 1.5; // 强制散热中（正常射击间隔远小于此）
+      const recoil = isBeam ? 0 : k * 3; // 持续光束不播后坐（每 0.4s 一次会抖）
       ctx.save();
       ctx.translate(mx, my);
       ctx.rotate(aimCur - Math.PI / 2);
@@ -517,6 +659,28 @@ async function boot(): Promise<void> {
       ctx.beginPath();
       ctx.arc(0, 13 - recoil, 2.4, 0, Math.PI * 2);
       ctx.fill();
+      // 光束武器：持束时炮口常亮光圈 / 散热时红光脉动
+      if (beamLive) {
+        ctx.globalAlpha = 0.45 + 0.25 * Math.sin(t * 24);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(0, 13, 6.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#F5F5FA';
+        ctx.beginPath();
+        ctx.arc(0, 13, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      if (overheated) {
+        ctx.globalAlpha = 0.45 + 0.3 * Math.sin(t * 12);
+        ctx.strokeStyle = '#FF7A6B';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, 9.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
       // 开火闪光
       if (k > 0.02) {
         ctx.globalAlpha = 0.85 * Math.min(1, k);
@@ -533,6 +697,44 @@ async function boot(): Promise<void> {
     // 投射物（按武器塑形 + 伤害类型着色）
     const projColor = (t: string): string =>
       (palette.damageType as Record<string, string>)[t] ?? '#BFFFF2';
+    // 激光束（SegmentField 持续光束，docs/07 §4）：起点对齐挂载炮口，三层光带 + 炮口光斑；
+    // 微闪为纯渲染层（不影响 30Hz 结算），穿透到界外由画布裁剪自然呈现
+    for (const seg of session.segments) {
+      if (!seg.srcWeaponId) continue; // 调试光束（lab 页）不进主游戏画面
+      const color = projColor(seg.damageType);
+      let sx = seg.ax;
+      let sy = seg.ay;
+      const li = h.weapons.findIndex((w) => w.cfg.id === seg.srcWeaponId);
+      const bMounts = MOUNT_SPOTS[Math.min(h.weapons.length, 4)];
+      if (seg.followOwner && li >= 0 && li < bMounts.length) {
+        const [bmx, bmy] = bMounts[li];
+        const ang = seg.angle ?? Math.PI / 2;
+        sx = h.x + bmx + MUZZLE_LEN * Math.cos(ang);
+        sy = h.y + breathe + bmy + MUZZLE_LEN * Math.sin(ang);
+      }
+      const flick = 1 + 0.12 * Math.sin(t * 47 + (seg.angle ?? 0) * 13);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.1 * flick;
+      ctx.lineWidth = seg.width * 3.4;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(seg.bx, seg.by); ctx.stroke();
+      ctx.globalAlpha = 0.3 * flick;
+      ctx.lineWidth = seg.width * 1.7;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(seg.bx, seg.by); ctx.stroke();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = '#F5F5FA';
+      ctx.lineWidth = Math.max(1.5, seg.width * 0.5);
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(seg.bx, seg.by); ctx.stroke();
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(sx, sy, seg.width * 0.75 * flick, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.arc(sx, sy, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     for (const p of session.projectiles) {
       drawProjectile(ctx, p, t, projColor(p.damageType));
     }
@@ -617,6 +819,36 @@ async function boot(): Promise<void> {
       ctx.stroke();
     }
 
+    // 虫巢扩张全屏绿闪（纯渲染层）
+    if (creepFlash > 0) {
+      creepFlash = Math.max(0, creepFlash - dtR * 1.1);
+      ctx.fillStyle = `rgba(124,179,66,${(0.16 * creepFlash).toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // 菌毯孵化出土：扩散圈 + 土屑（docs/08 §2.5）
+    for (let i = emerges.length - 1; i >= 0; i--) {
+      const e = emerges[i];
+      e.life -= dtR;
+      if (e.life <= 0) {
+        emerges.splice(i, 1);
+        continue;
+      }
+      const k = 1 - e.life / 0.55;
+      ctx.strokeStyle = `rgba(174,234,0,${(0.55 * (1 - k)).toFixed(3)})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y, 12 + 52 * k, (12 + 52 * k) * 0.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(101,67,33,${(0.6 * (1 - k)).toFixed(3)})`;
+      for (let s = 0; s < 5; s++) {
+        const a = s * 1.256 + k * 1.8;
+        ctx.beginPath();
+        ctx.arc(e.x + Math.cos(a) * (16 + 44 * k), e.y + Math.sin(a) * (8 + 24 * k), 2 + 3 * (1 - k), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     // HUD
     hudWall.style.width = `${(session.wallHp / session.wallMaxHp) * 100}%`;
     hudWallText.textContent = `城防 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`;
@@ -624,7 +856,8 @@ async function boot(): Promise<void> {
     hudXp.style.width = `${Math.min(100, (h.xp / need) * 100)}%`;
     hudText.textContent =
       `第 ${Math.min(session.waveStats.length + 1, level.waves.length)}/${level.waves.length} 波` +
-      ` · Lv.${h.level} · 击杀 ${session.totalKills} · ${session.timeSec.toFixed(0)}s`;
+      ` · Lv.${h.level} · 击杀 ${session.totalKills} · ${session.timeSec.toFixed(0)}s` +
+      (session.creepTier > 1 ? ` · 虫巢T${session.creepTier}` : '');
 
     // 武器槽（获得新武器时重建：1 把初始 + 升级三选一获得，最多 4 把）
     if (session.hero.weapons.length !== weaponsShown) {

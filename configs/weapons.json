@@ -152,6 +152,31 @@
         "shots": 14,
         "cooldown": 2.5
       }
+    },
+    {
+      "id": "laser_cannon",
+      "name": "聚能激光炮",
+      "role": "能量系 · 持续光束",
+      "damageType": "lightning",
+      "baseDamage": 210,
+      "interval": 0.4,
+      "count": 1,
+      "projectileSpeed": 0,
+      "projectileRange": 600,
+      "projectileRadius": 0,
+      "pierce": 0,
+      "targeting": "nearest",
+      "trajectory": "straight",
+      "beamBase": {
+        "width": 14,
+        "duration": 0.5
+      },
+      "heat": {
+        "shots": 18,
+        "cooldown": 2.2
+      },
+      "shape": "beam",
+      "spread": 0.11
     }
   ]
 }

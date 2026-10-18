@@ -40,11 +40,19 @@ function validateWeapons(weapons: WeaponConfig[]): void {
     need(isNum(w.interval) && w.interval > 0, where, 'interval 必须为正数');
     // 落雷武器（chainBase≥1）无弹体，弹速可为 0
     need(
-      isNum(w.projectileSpeed) && (w.projectileSpeed > 0 || (w.chainBase ?? 0) > 0),
-      where, 'projectileSpeed 必须为正数（落雷武器除外）',
+      isNum(w.projectileSpeed) && (w.projectileSpeed > 0 || (w.chainBase ?? 0) > 0 || !!w.beamBase),
+      where, 'projectileSpeed 必须为正数（落雷/光束武器除外）',
     );
     if ((w.chainBase ?? 0) > 0) {
       need(isNum(w.chainBase) && (w.chainBase as number) >= 1, where, 'chainBase 必须 ≥ 1');
+    }
+    if (w.beamBase) {
+      need(isNum(w.beamBase.width) && w.beamBase.width > 0, where, 'beamBase.width 必须为正数');
+      need(isNum(w.beamBase.duration) && w.beamBase.duration > 0, where, 'beamBase.duration 必须为正数');
+      need(
+        w.beamBase.length === undefined || (isNum(w.beamBase.length) && w.beamBase.length > 0),
+        where, 'beamBase.length 必须为正数（缺省 = 场景对角线）',
+      );
     }
     if (w.blastBase) {
       need(isNum(w.blastBase.radius) && w.blastBase.radius > 0, where, 'blastBase.radius 必须为正数');
@@ -52,7 +60,7 @@ function validateWeapons(weapons: WeaponConfig[]): void {
       need(isNum(w.blastBase.poolSec) && w.blastBase.poolSec >= 0, where, 'blastBase.poolSec 必须 ≥ 0');
     }
     if (w.shape !== undefined) {
-      need(['dot', 'arrow', 'bomb', 'gear', 'crescent'].includes(w.shape), where, `未知子弹形态: ${w.shape}`);
+      need(['dot', 'arrow', 'bomb', 'gear', 'crescent', 'beam'].includes(w.shape), where, `未知子弹形态: ${w.shape}`);
     }
     if (w.spread !== undefined) {
       need(isNum(w.spread) && w.spread > 0 && w.spread < 1, where, 'spread 必须在 (0,1) rad 内');
@@ -133,7 +141,7 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
 function validateCards(cards: CardConfig[]): void {
   const ids = new Set<string>();
   const passiveStats = ['atk', 'aspd', 'moveSpeed', 'critChance', 'critDmg', 'dmgMul'];
-  const bulletStats = ['count', 'burst', 'projSpeed', 'damage', 'range', 'pierce', 'interval'];
+  const bulletStats = ['count', 'burst', 'projSpeed', 'damage', 'range', 'pierce', 'interval', 'width', 'beamLife', 'heatCool'];
   const wallStats = ['wallMax', 'wallRepair'];
   const formIds = ['homing', 'bounce', 'split', 'shred', 'blast', 'chain'];
   const damageTypes = ['physical', 'fire', 'frost', 'lightning', 'poison'];

@@ -76,6 +76,8 @@ type DirectorState = 'prepare' | 'spawning' | 'clearing' | 'intermission' | 'don
 interface SpawnItem {
   monsterKey: string;
   spawnX: number;
+  /** 从菌毯中孵化出生（docs/08 §2.5）：由 session 在放行时刻从当前虫苔里选点钻出 */
+  fromCreep?: boolean;
 }
 
 /** 带放行时刻的出怪条目（t = 波内相对秒数） */
@@ -199,7 +201,7 @@ class WaveDirector {
               break;
           }
           const at = s * segInterval + (i / Math.max(1, cnt)) * windowSec + this.rng.range(0, 0.4);
-          out.push({ at, item: { monsterKey: spawn.monster, spawnX: x } });
+          out.push({ at, item: { monsterKey: spawn.monster, spawnX: x, fromCreep: spawn.fromCreep } });
         }
       }
     }
@@ -222,8 +224,25 @@ export class GameSession {
   segments: SegmentField[] = []; // 光束/连线伤害场（docs/07 §4）
   /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
   creep = new Map<number, number>();
+  /** 虫苔版本号（任一次增删 +1；web 渲染层据此重建离屏缓存） */
+  creepVersion = 0;
+  /** 最近新生虫苔（渲染层蔓延光环用）：坐标 + 发生时刻，短名单自动裁剪 */
+  creepGlow: { x: number; y: number; t: number }[] = [];
+  /** 历史峰值覆盖格数（扩张等级按峰值只升不降） */
+  creepPeak = 0;
+  private creepSpreadAcc = 0;
+  private creepTierCurrent = 1;
   private static readonly CREEP_CELL = 90;
   private static readonly CREEP_LIFE = 60;
+  /** 虫苔蔓延：每 interval 秒每个地块尝试向外扩一格（概率 chance；成功则向随机邻格生长并续期自身） */
+  private static readonly CREEP_SPREAD_INTERVAL = 3;
+  private static readonly CREEP_SPREAD_CHANCE = 0.12;
+  /** 虫巢扩张等级：按历史峰值覆盖格数分档（T1 起始，T2/T3/T4 阈值，docs/08 §2.4） */
+  private static readonly CREEP_TIER_CELLS = [60, 120, 190];
+  /** 各等级全族增益：攻击倍率 / 血量倍率 / 站毯每秒回血（docs/08 §2.4） */
+  private static readonly CREEP_ATK_MUL = [1, 1.1, 1.2, 1.3];
+  private static readonly CREEP_HP_MUL = [1, 1.08, 1.16, 1.25];
+  private static readonly CREEP_REGEN = [6, 10, 14, 18];
 
   wallHp: number;
   wallMaxHp: number; // 可被 B 类卡（加固城墙）提升
@@ -305,7 +324,10 @@ export class GameSession {
 
     // 1) 导演刷怪
     const spawned = this.director.update(this, dt);
-    for (const item of spawned) this.spawnMonster(item.monsterKey, item.spawnX);
+    for (const item of spawned) {
+      if (item.fromCreep && this.trySpawnFromCreep(item)) continue; // 从菌毯中孵化（docs/08 §2.5）
+      this.spawnMonster(item.monsterKey, item.spawnX);
+    }
 
     // 2) 英雄移动（控制器给方向，session 位移 + 钳制在防守区域）
     const move = this.controller.getMoveDir(this);
@@ -331,6 +353,8 @@ export class GameSession {
     for (const cmd of this.fireCommands) {
       if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
         this.doLightning(cmd);
+      } else if (cmd.weapon.cfg.beamBase) {
+        this.doBeam(cmd); // 激光炮：非子弹，生成持续光束
       } else {
         this.spawnProjectile(cmd);
         // 连射（A 类卡 burst）：后续子弹间隔 0.12s
@@ -344,6 +368,7 @@ export class GameSession {
       b.timer -= dt;
       if (b.timer <= 0) {
         if ((b.cmd.weapon.cfg.chainBase ?? 0) > 0 || b.cmd.weapon.affixes.chain > 0) this.doLightning(b.cmd);
+        else if (b.cmd.weapon.cfg.beamBase) this.doBeam(b.cmd);
         else this.spawnProjectile(b.cmd);
         this.burstQueue.splice(i, 1);
       }
@@ -381,10 +406,11 @@ export class GameSession {
       if (m.burrowed) {
         // 钻地：免疫 DoT/状态，仅由 updateMonster 地下分支结算（回血/刺墙/冲锋出土）
         updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
-          this.wallHp = Math.max(0, this.wallHp - dmg);
-          this.totalWallDamage += dmg;
-          this.waveWallDamage += dmg;
-          this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+          const d = Math.round(dmg * this.creepAtkMulFor(src)); // 虫巢扩张：全族攻击随等级增强（docs/08 §2.4）
+          this.wallHp = Math.max(0, this.wallHp - d);
+          this.totalWallDamage += d;
+          this.waveWallDamage += d;
+          this.bus.emit('onWallHit', { dmg: d, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
         }, (src) => {
           this.spawnMonsterShot(src);
         }, (x, y) => this.isCreeped(x, y));
@@ -400,7 +426,7 @@ export class GameSession {
         }
       }
       if (m.cfg.creepBenefit && this.isCreeped(m.x, m.y)) {
-        m.regenAcc += 20 * dt;
+        m.regenAcc += GameSession.CREEP_REGEN[this.creepTier - 1] * dt;
         while (m.regenAcc >= 1) {
           m.regenAcc -= 1;
           m.hp = Math.min(m.maxHp, m.hp + 1);
@@ -408,10 +434,11 @@ export class GameSession {
       }
       if (this.formationMove(m, dt)) continue; // 巫师编队（变阵排排啃墙）由编队逻辑驱动
       updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
-        this.wallHp = Math.max(0, this.wallHp - dmg);
-        this.totalWallDamage += dmg;
-        this.waveWallDamage += dmg;
-        this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+        const d = Math.round(dmg * this.creepAtkMulFor(src)); // 虫巢扩张：全族攻击随等级增强（docs/08 §2.4）
+        this.wallHp = Math.max(0, this.wallHp - d);
+        this.totalWallDamage += d;
+        this.waveWallDamage += d;
+        this.bus.emit('onWallHit', { dmg: d, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
       }, (src) => {
         this.spawnMonsterShot(src);
       }, (x, y) => this.isCreeped(x, y));
@@ -425,10 +452,8 @@ export class GameSession {
       }
     }
 
-    // 5c) 虫苔过期清理
-    for (const [key, until] of this.creep) {
-      if (until <= now) this.creep.delete(key);
-    }
+    // 5c) 虫苔：蔓延 → 过期清理 → 虫巢扩张等级结算（docs/08 §2.2/§2.4）
+    this.tickCreep(dt);
 
     // 5c) 定时分裂：分裂菇周期性分出幼体（幼体血条与母体一致、速度更快、不可再分裂）
     for (const m of this.monsters) {
@@ -648,9 +673,10 @@ export class GameSession {
     this.totalSpawned++;
     const x = clamp(spawnX, 40, this.level.arena.width - 40);
     const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
-    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 10%×n)，血量随波次显著增强
+    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 10%×n)；虫族再乘虫巢扩张血量倍率（docs/08 §2.4）
     const scale = 1 + 0.1 * this.director.currentWave;
-    const hp = Math.round(cfg.hp * scale);
+    const tier = this.creepTier;
+    const hp = Math.round(cfg.hp * scale * (cfg.creepBenefit ? GameSession.CREEP_HP_MUL[tier - 1] : 1));
     this.monsters.push({
       id: this.monsters.length, // tick 内密度数组约定
       cfg,
@@ -670,6 +696,7 @@ export class GameSession {
       dead: false,
       creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
       regenAcc: 0,
+      creepTierApplied: tier,
       groupId: -1,
       formationActive: false,
       slotX: x,
@@ -695,6 +722,45 @@ export class GameSession {
         member.formAngle = (Math.PI * 2 * i) / cfg.escort.count;
       }
     }
+  }
+
+  /**
+   * 激光炮：生成"持续光束"（SegmentField，docs/07 §4）——非子弹、即时命中、逐帧结算。
+   * - 同源旧束在每次齐射首发（index 0）时整体替换：0.4s 重锁不叠加双倍伤害；
+   * - 长度缺省 = 场景对角线：任何朝向都贯穿到界外；
+   * - 余辉：until = now + duration + 持续供能卡加成（熄火后仍灼烧，覆盖散热前段）；
+   * - 扇形分光（count>1）：主束对准目标，附加束左右交替展开（与齐射同一套公式）。
+   */
+  private doBeam(cmd: FireCommand): void {
+    const { weapon, dirX, dirY, index } = cmd;
+    const beam = weapon.cfg.beamBase;
+    if (!beam) return;
+    if (index === 0) {
+      this.segments = this.segments.filter((s) => s.srcWeaponId !== weapon.cfg.id);
+    }
+    let fan = 0;
+    if (index > 0) {
+      const side = index % 2 === 1 ? -1 : 1;
+      const step = Math.ceil(index / 2);
+      fan = side * step * (weapon.cfg.spread ?? 0.1);
+    }
+    const rawLen = Math.hypot(dirX, dirY);
+    const angle = (rawLen > 1e-6 ? Math.atan2(dirY, dirX) : Math.PI / 2) + fan; // 目标与英雄重合时默认向上
+    const length = beam.length ?? Math.hypot(this.level.arena.width, this.level.arena.height); // 贯穿到界外
+    this.segments.push({
+      ax: this.hero.x,
+      ay: this.hero.y,
+      bx: this.hero.x + Math.cos(angle) * length,
+      by: this.hero.y + Math.sin(angle) * length,
+      width: beam.width * weapon.mods.widthMul,
+      dps: cmd.dmg, // 面板伤害即每秒伤害（baseDamage 语义为 DPS）
+      until: this.timeSec + beam.duration + weapon.mods.beamLifeAdd,
+      damageType: weapon.element,
+      followOwner: true,
+      angle,
+      length,
+      srcWeaponId: weapon.cfg.id,
+    });
   }
 
   private spawnProjectile(cmd: FireCommand): void {
@@ -936,7 +1002,7 @@ export class GameSession {
     return this.nearestMonsterRuntime(x, y, radius, exclude);
   }
 
-  // ---------- 虫苔（docs/08） ----------
+  // ---------- 虫苔 / 虫巢扩张（docs/08 §2.2 §2.4 §2.5） ----------
   private creepKey(x: number, y: number): number {
     const c = GameSession.CREEP_CELL;
     return Math.floor(x / c) * 4096 + Math.floor(y / c);
@@ -947,8 +1013,108 @@ export class GameSession {
     return until !== undefined && until > this.timeSec;
   }
 
+  /**
+   * 当前虫巢扩张等级（1-4）：按历史峰值覆盖格数分档，只升不降。
+   * 火焰清苔只会拖慢下一档到来的速度，不会让已扩张的等级回退。
+   */
+  get creepTier(): number {
+    let tier = 1;
+    for (const threshold of GameSession.CREEP_TIER_CELLS) {
+      if (this.creepPeak >= threshold) tier++;
+    }
+    return tier;
+  }
+
+  /** 虫族攻击随扩张等级的倍率（非虫族恒为 1）。 */
+  private creepAtkMulFor(m: MonsterRuntime): number {
+    return m.cfg.creepBenefit ? GameSession.CREEP_ATK_MUL[this.creepTier - 1] : 1;
+  }
+
+  /** 每帧虫苔结算：蔓延（每 3s 一次）→ 过期清理 → 峰值统计 → 等级晋升（全族一次性补血）。 */
+  private tickCreep(dt: number): void {
+    const now = this.timeSec;
+    this.creepSpreadAcc += dt;
+    while (this.creepSpreadAcc >= GameSession.CREEP_SPREAD_INTERVAL) {
+      this.creepSpreadAcc -= GameSession.CREEP_SPREAD_INTERVAL;
+      this.spreadCreepOnce();
+    }
+    for (const [key, until] of this.creep) {
+      if (until <= now) {
+        this.creep.delete(key);
+        this.creepVersion++;
+      }
+    }
+    if (this.creep.size > this.creepPeak) this.creepPeak = this.creep.size;
+
+    const tier = this.creepTier;
+    if (tier <= this.creepTierCurrent) return;
+    // 晋升：场上所有虫族按倍率差额补血（新兵在出生时已按当前等级结算过）
+    for (const m of this.monsters) {
+      if (m.hp <= 0 || !m.cfg.creepBenefit || m.creepTierApplied >= tier) continue;
+      const ratio = GameSession.CREEP_HP_MUL[tier - 1] / GameSession.CREEP_HP_MUL[m.creepTierApplied - 1];
+      m.maxHp = Math.round(m.maxHp * ratio);
+      m.hp = Math.min(m.maxHp, Math.round(m.hp * ratio));
+      m.creepTierApplied = tier;
+    }
+    this.creepTierCurrent = tier;
+    this.bus.emit('onCreepTier', { tier, cells: this.creep.size });
+  }
+
+  /** 蔓延结算：每个地块尝试向随机邻格生长（成功则铺新块并续期自身——领土只积不退）。 */
+  private spreadCreepOnce(): void {
+    if (this.creep.size === 0) return;
+    const c = GameSession.CREEP_CELL;
+    const maxCx = Math.floor((this.level.arena.width - 1) / c);
+    const maxCy = Math.floor((this.level.arena.height - 1) / c);
+    const minCy = Math.ceil(this.level.wall.height / c);
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const key of [...this.creep.keys()]) {
+      const cx = Math.floor(key / 4096);
+      const cy = key % 4096;
+      const [dx, dy] = dirs[this.rng.int(0, 3)];
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx >= 0 && nx <= maxCx && ny >= minCy && ny <= maxCy
+        && this.rng.next() < GameSession.CREEP_SPREAD_CHANCE) {
+        this.dropCreep(nx * c + c / 2, ny * c + c / 2);
+      }
+      this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE); // 续期：虫苔是活领土，只被火焰清除
+    }
+  }
+
   private dropCreep(x: number, y: number): void {
-    this.creep.set(this.creepKey(x, y), this.timeSec + GameSession.CREEP_LIFE);
+    const c = GameSession.CREEP_CELL;
+    const key = this.creepKey(x, y);
+    if (this.creep.has(key)) {
+      this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE); // 已有格：仅续期（无视觉变化）
+      return;
+    }
+    this.creepGlow.push({ x: Math.floor(x / c) * c + c / 2, y: Math.floor(y / c) * c + c / 2, t: this.timeSec });
+    if (this.creepGlow.length > 64) this.creepGlow.shift();
+    this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE);
+    this.creepVersion++;
+  }
+
+  /**
+   * 从菌毯中孵化（docs/08 §2.5）：放行时刻从当前虫苔里随机挑一格钻出（避开城墙近前，给反应窗口）；
+   * 可用虫苔不足 6 格时返回 false，落回顶部出生带（前期没地盘时与普通波次表现一致）。
+   */
+  private trySpawnFromCreep(item: SpawnItem): boolean {
+    const c = GameSession.CREEP_CELL;
+    const minY = this.level.wall.height + 450;
+    const maxY = this.level.arena.height - 100;
+    const candidates: number[] = [];
+    for (const key of this.creep.keys()) {
+      const y = (key % 4096) * c + c / 2;
+      if (y >= minY && y <= maxY) candidates.push(key);
+    }
+    if (candidates.length < 6) return false;
+    const key = candidates[this.rng.int(0, candidates.length - 1)];
+    const x = clamp(Math.floor(key / 4096) * c + c / 2 + this.rng.range(-25, 25), 40, this.level.arena.width - 40);
+    const y = (key % 4096) * c + c / 2 + this.rng.range(-20, 20);
+    this.spawnMonster(item.monsterKey, x, y);
+    this.bus.emit('onMonsterEmerge', { x, y });
+    return true;
   }
 
   /** 火焰清除虫苔：清除以 (x,y) 半径 r 内所有虫苔格。 */
@@ -1100,7 +1266,7 @@ export class GameSession {
     m.attackTimer -= dt;
     if (m.attackTimer <= 0) {
       m.attackTimer += m.cfg.attackInterval;
-      const dmg = m.cfg.atk;
+      const dmg = Math.round(m.cfg.atk * this.creepAtkMulFor(m));
       this.wallHp = Math.max(0, this.wallHp - dmg);
       this.totalWallDamage += dmg;
       this.waveWallDamage += dmg;
@@ -1328,7 +1494,7 @@ export class GameSession {
     if (m.cfg.detonate) {
       this.bus.emit('onExplode', { x: m.x, y: m.y, radius: 70 });
       if (m.state === 'assault') {
-        const dmg = m.cfg.detonate.wallDamage;
+        const dmg = Math.round(m.cfg.detonate.wallDamage * this.creepAtkMulFor(m)); // 扩张等级放大自爆（docs/08）
         this.wallHp = Math.max(0, this.wallHp - dmg);
         this.totalWallDamage += dmg;
         this.waveWallDamage += dmg;

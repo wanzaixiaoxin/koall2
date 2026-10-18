@@ -67,34 +67,82 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
 
   switch (m.cfg.shape) {
     case 'larva': {
-      // 幼虫：小三角（朝下行军）
+      // 幼虫：小三角 + 行军蠕动步足 + 眼点（虫族小型单位读得清）
+      const wig = 0.85 + 0.25 * Math.sin(t * 10 + m.phase);
       ctx.beginPath();
-      ctx.moveTo(x, y - r);
-      ctx.lineTo(x - r * 0.8, y + r * 0.8);
-      ctx.lineTo(x + r * 0.8, y + r * 0.8);
+      ctx.moveTo(x, y - r * 1.1);
+      ctx.lineTo(x - r * 0.85, y + r * wig);
+      ctx.lineTo(x + r * 0.85, y + r * wig);
       ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(26,36,16,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.5, y + r * 0.35);
+      ctx.lineTo(x - r * 0.95, y + r * 0.8);
+      ctx.moveTo(x + r * 0.5, y + r * 0.35);
+      ctx.lineTo(x + r * 0.95, y + r * 0.8);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(26,36,16,0.9)';
+      ctx.beginPath();
+      ctx.arc(x, y - r * 0.4, 1.6, 0, Math.PI * 2);
       ctx.fill();
       break;
     }
     case 'roach': {
-      // 爬虫：扁圆块（可钻地）
+      // 爬虫：椭圆甲壳 + 背脊尖刺 + 步足（可钻地）
       ctx.beginPath();
       ctx.ellipse(x, y, r, r * 0.7, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(26,36,16,0.85)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      for (const dx of [-0.45, 0, 0.45]) {
+        ctx.moveTo(x + r * dx, y - r * 0.48);
+        ctx.lineTo(x + r * dx, y - r * 0.95);
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      for (const s of [-1, 1]) {
+        ctx.moveTo(x - r * 0.6 * s, y + r * 0.35);
+        ctx.lineTo(x - r * 0.98 * s, y + r * 0.72);
+        ctx.moveTo(x + r * 0.55 * s, y + r * 0.42);
+        ctx.lineTo(x + r * 0.92 * s, y + r * 0.78);
+      }
+      ctx.stroke();
       break;
     }
     case 'lurker': {
-      // 潜伏者：竖立尖刺blade
+      // 潜伏者：竖立尖刺 + 四侧尖爪 + 基部土包（地刺伏击感）
       ctx.beginPath();
       ctx.moveTo(x, y + r * 0.6);
       ctx.lineTo(x - r * 0.35, y - r);
       ctx.lineTo(x + r * 0.35, y - r);
       ctx.closePath();
       ctx.fill();
+      ctx.strokeStyle = 'rgba(26,36,16,0.85)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.3, y - r * 0.2);
+      ctx.lineTo(x - r * 0.98, y - r * 0.6);
+      ctx.moveTo(x + r * 0.3, y - r * 0.2);
+      ctx.lineTo(x + r * 0.98, y - r * 0.6);
+      ctx.moveTo(x - r * 0.3, y + r * 0.15);
+      ctx.lineTo(x - r * 0.9, y - r * 0.02);
+      ctx.moveTo(x + r * 0.3, y + r * 0.15);
+      ctx.lineTo(x + r * 0.9, y - r * 0.02);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(101,67,33,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(x, y + r * 0.55, r * 0.8, r * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
       break;
     }
     case 'zqueen': {
-      // 虫后：大菱形 + 头顶孵卵
+      // 虫后：大菱形 + 头冠尖刺 + 头顶孵卵（呼吸浮动）+ 两侧触须
       ctx.beginPath();
       ctx.moveTo(x, y - r);
       ctx.lineTo(x + r * 0.8, y);
@@ -102,26 +150,62 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       ctx.lineTo(x - r * 0.8, y);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = '#F5F5FA';
+      ctx.strokeStyle = 'rgba(26,36,16,0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
       ctx.beginPath();
-      ctx.arc(x, y - r - 6, 4, 0, Math.PI * 2);
-      ctx.fill();
+      for (const dx of [-0.32, 0, 0.32]) {
+        ctx.moveTo(x + r * dx, y - r * 0.85);
+        ctx.lineTo(x + r * dx * 1.6, y - r * 1.18);
+      }
+      ctx.stroke();
+      ctx.fillStyle = '#F5F5FA';
+      for (let i = 0; i < 3; i++) {
+        const ex = x + (i - 1) * 9;
+        const ey = y - r - 8 - Math.sin(t * 3 + i * 2.1 + m.phase) * 2;
+        ctx.beginPath();
+        ctx.arc(ex, ey, 3.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(199,125,255,0.9)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (const s of [-1, 1]) {
+        ctx.moveTo(x + s * r * 0.7, y - r * 0.15);
+        ctx.quadraticCurveTo(
+          x + s * r * 1.35,
+          y - r * 0.5 + Math.sin(t * 4 + m.phase) * 4,
+          x + s * r * 1.5,
+          y - r * 0.95,
+        );
+      }
+      ctx.stroke();
       break;
     }
     case 'baneling': {
-      // 毒爆虫：圆球 + 内核（膨胀感脉动）
+      // 毒爆虫：圆球 + 内核 + 酸液斑点（膨胀感脉动）
       const pulse = 1 + 0.12 * Math.sin(t * 8 + m.phase);
       ctx.beginPath();
       ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(26,36,16,0.85)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
       ctx.fillStyle = 'rgba(11,12,29,0.5)';
       ctx.beginPath();
       ctx.arc(x, y, r * 0.4, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = `rgba(255,241,118,${(0.5 + 0.4 * Math.sin(t * 8 + m.phase)).toFixed(3)})`;
+      for (let i = 0; i < 3; i++) {
+        const a = i * 2.1 + m.phase;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(a) * r * 0.55, y + Math.sin(a) * r * 0.55, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
       break;
     }
     case 'ultra': {
-      // 雷兽：巨型五角
+      // 雷兽：巨型十角甲壳 + 镰刀双臂 + 足部犄角
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const a = (Math.PI / 5) * i - Math.PI / 2;
@@ -133,6 +217,27 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       }
       ctx.closePath();
       ctx.fill();
+      ctx.strokeStyle = 'rgba(26,36,16,0.9)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.strokeStyle = '#69A83B';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.75, y - r * 0.15);
+      ctx.quadraticCurveTo(x - r * 1.5, y - r * 0.5, x - r * 1.45, y - r * 1.05);
+      ctx.moveTo(x + r * 0.75, y - r * 0.15);
+      ctx.quadraticCurveTo(x + r * 1.5, y - r * 0.5, x + r * 1.45, y - r * 1.05);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = 'rgba(26,36,16,0.9)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - r * 0.3, y + r * 0.75);
+      ctx.lineTo(x - r * 0.55, y + r * 1.05);
+      ctx.moveTo(x + r * 0.3, y + r * 0.75);
+      ctx.lineTo(x + r * 0.55, y + r * 1.05);
+      ctx.stroke();
       break;
     }
     case 'wolf': {
