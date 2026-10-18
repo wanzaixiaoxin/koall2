@@ -5,6 +5,7 @@
  *   node dist/tools/sim/index.js --level configs/levels/level_1_1.json [--seed 42]
  *      [--weapon gun_rifle] [--runs 5] [--json] [--watch]
  *      [--move sim|sim-legacy|casual] [--cards greedy|random]
+ *   node dist/tools/sim/index.js --replay <trace.jsonl> [--json]   # 回放人工轨迹并校验逐位一致
  *
  * 走位与选卡相互独立（--move × --cards 可做对照矩阵）：
  *   sim        武器感知版 SimAI（默认）
@@ -31,6 +32,7 @@ import {
 } from '../../src/gamecore';
 import { createController, MoveName } from './agents';
 import { getPolicy, CardPolicyName } from './policies';
+import { formatReplayReport, replayFromFile } from './replay';
 import { runWatch } from './watch';
 
 interface Args {
@@ -42,6 +44,7 @@ interface Args {
   runs: number;
   json: boolean;
   watch: boolean;
+  replay: string;
 }
 
 const MOVES: MoveName[] = ['sim', 'sim-legacy', 'casual'];
@@ -56,7 +59,7 @@ const LEGACY_POLICY_MAP: Record<string, { move: MoveName; cards: CardPolicyName 
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
-    level: '', seed: 42, weapon: 'gun_rifle', move: 'sim', cards: 'greedy', runs: 1, json: false, watch: false,
+    level: '', seed: 42, weapon: 'gun_rifle', move: 'sim', cards: 'greedy', runs: 1, json: false, watch: false, replay: '',
   };
   let moveSet = false;
   let cardsSet = false;
@@ -73,6 +76,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === '--runs') args.runs = Number(next());
     else if (a === '--json') args.json = true;
     else if (a === '--watch') args.watch = true;
+    else if (a === '--replay') args.replay = next();
   }
   if (legacyPolicy) {
     const mapped = LEGACY_POLICY_MAP[legacyPolicy];
@@ -91,8 +95,8 @@ function parseArgs(argv: string[]): Args {
     console.error(`未知 --cards: ${args.cards}（可选: ${CARD_POLICIES.join(' | ')}）`);
     process.exit(1);
   }
-  if (!args.level) {
-    console.error('缺少 --level 参数');
+  if (!args.level && !args.replay) {
+    console.error('缺少 --level 参数（或使用 --replay <trace.jsonl> 回放人工轨迹）');
     process.exit(1);
   }
   return args;
@@ -196,6 +200,21 @@ function runOnce(
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
   const root = process.cwd();
+
+  // 人工轨迹回放：与录制端逐位比对（退出码 1 = 有分歧，便于脚本化校验）
+  if (args.replay) {
+    let report;
+    try {
+      report = replayFromFile(args.replay, root);
+    } catch (e) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+    if (args.json) console.log(JSON.stringify(report, null, 2));
+    console.log(formatReplayReport(report));
+    if (!report.consistent) process.exitCode = 1;
+    return;
+  }
 
   const level = loadJson<LevelConfig>(path.resolve(root, args.level));
   const weapons = loadJson<{ weapons: WeaponConfig[] }>(path.resolve(root, 'configs/weapons.json')).weapons;

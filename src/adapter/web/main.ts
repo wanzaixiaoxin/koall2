@@ -11,9 +11,9 @@ import {
   CardConfig,
   TICK_DT,
   xpNeed,
-  Vec2,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
+import { HumanInputController, TraceRecorder, TraceRecord } from '../../../tools/sim/human';
 import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool } from './render/shapes';
 
 const W = 1080;
@@ -51,12 +51,14 @@ function strokeBoltPath(ctx: CanvasRenderingContext2D, pts: number[][]): void {
 }
 
 async function boot(): Promise<void> {
+  const params = new URLSearchParams(location.search);
+  const levelFile = params.get('level') ?? 'level_1_1.json';
   const [palette, weaponsFile, monstersFile, cardsFile, level] = await Promise.all([
     fetchJson<Palette>('/configs/art-style/palette.json'),
     fetchJson<{ weapons: WeaponConfig[] }>('/configs/weapons.json'),
     fetchJson<{ monsters: MonsterConfig[] }>('/configs/monsters.json'),
     fetchJson<{ cards: CardConfig[] }>('/configs/cards.json'),
-    fetchJson<LevelConfig>(`/configs/levels/${new URLSearchParams(location.search).get('level') ?? 'level_1_1.json'}`),  ]);
+    fetchJson<LevelConfig>(`/configs/levels/${levelFile}`),  ]);
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   canvas.width = W;
@@ -71,8 +73,46 @@ async function boot(): Promise<void> {
   const cardOverlay = document.getElementById('cards')!;
   const gameOver = document.getElementById('gameover')!;
 
+  // ---------- 人工轨迹录制：POST /api/trace（npm run play 的静态服务器自带录制端点）----------
+  // 只录"输入流"（变化点）+ 存档点/选卡/结算：gamecore 完全确定性 ⇒ sim 可逐位回放重建全程状态。
+  const BUNDLE_VERSION = (() => {
+    const src = (document.currentScript as HTMLScriptElement | null)?.src ?? '';
+    const m = /[?&]v=(\d+)/.exec(src);
+    if (m) return m[1];
+    for (const e of performance.getEntriesByType('resource')) {
+      const m2 = /bundle\.js\?v=(\d+)/.exec((e as PerformanceResourceTiming).name);
+      if (m2) return m2[1];
+    }
+    return 'dev';
+  })();
+  const traceQueue: TraceRecord[] = [];
+  let traceWarned = false;
+  function flushTrace(): void {
+    if (traceQueue.length === 0) return;
+    const body = traceQueue.map((r) => JSON.stringify(r)).join('\n') + '\n';
+    traceQueue.length = 0;
+    void fetch('/api/trace', { method: 'POST', headers: { 'Content-Type': 'application/x-ndjson' }, body }).catch(() => {
+      if (!traceWarned) {
+        traceWarned = true;
+        console.warn('[轨迹] POST /api/trace 不可用（静态服务器缺少录制端点）——本局轨迹仅留在内存，不会落盘');
+      }
+    });
+  }
+  const recorder = new TraceRecorder((r) => {
+    traceQueue.push(r);
+    if (traceQueue.length > 6000) traceQueue.splice(0, traceQueue.length - 6000); // 端点缺失时防内存膨胀
+  });
+  setInterval(flushTrace, 1500);
+  window.addEventListener('pagehide', () => {
+    if (traceQueue.length === 0) return;
+    const blob = new Blob([traceQueue.map((r) => JSON.stringify(r)).join('\n') + '\n'], { type: 'application/x-ndjson' });
+    navigator.sendBeacon('/api/trace', blob);
+    traceQueue.length = 0;
+  });
+
   // ---------- 输入：点按移动（触屏/鼠标）+ WASD/方向键 ----------
-  const input = { tx: W / 2, ty: 300, hasTarget: false, keys: new Set<string>() };
+  // 控制器本体在 tools/sim/human.ts（与 sim 回放共用同一逻辑，保证录制/回放逐帧同源）
+  const controller = new HumanInputController(W / 2, 300);
 
   function toGameCoords(e: PointerEvent): { x: number; y: number } {
     const rect = canvas.getBoundingClientRect();
@@ -84,62 +124,40 @@ async function boot(): Promise<void> {
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
     const p = toGameCoords(e);
-    input.tx = p.x;
-    input.ty = p.y;
-    input.hasTarget = true;
+    controller.tx = p.x;
+    controller.ty = p.y;
+    controller.hasTarget = true;
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (input.hasTarget) { // 按住拖动跟随
+    if (controller.hasTarget) { // 按住拖动跟随
       const p = toGameCoords(e);
-      input.tx = p.x;
-      input.ty = p.y;
+      controller.tx = p.x;
+      controller.ty = p.y;
     }
   });
-  const release = (): void => { input.hasTarget = false; }; // 松开即停
+  const release = (): void => { controller.hasTarget = false; }; // 松开即停
   canvas.addEventListener('pointerup', release);
   canvas.addEventListener('pointercancel', release);
-  window.addEventListener('keydown', (e) => input.keys.add(e.key.toLowerCase()));
-  window.addEventListener('keyup', (e) => input.keys.delete(e.key.toLowerCase()));
-  window.addEventListener('blur', () => input.keys.clear()); // 失焦清空按键，防按键卡住
-
-  const controller = {
-    getMoveDir(s: GameSession): Vec2 {
-      let dx = 0;
-      let dy = 0;
-      const k = input.keys;
-      if (k.has('a') || k.has('arrowleft')) dx -= 1;
-      if (k.has('d') || k.has('arrowright')) dx += 1;
-      if (k.has('w') || k.has('arrowup')) dy += 1;
-      if (k.has('s') || k.has('arrowdown')) dy -= 1;
-      if (dx !== 0 || dy !== 0) return { x: dx, y: dy };
-      if (input.hasTarget) {
-        const ddx = input.tx - s.hero.x;
-        const ddy = input.ty - s.hero.y;
-        const d = Math.hypot(ddx, ddy);
-        if (d < 14) {
-          input.hasTarget = false;
-          return { x: 0, y: 0 };
-        }
-        return { x: ddx / d, y: ddy / d };
-      }
-      return { x: 0, y: 0 }; // 无输入时静止（不自动回中）
-    },
-  };
+  window.addEventListener('keydown', (e) => controller.keys.add(e.key.toLowerCase()));
+  window.addEventListener('keyup', (e) => controller.keys.delete(e.key.toLowerCase()));
+  window.addEventListener('blur', () => controller.keys.clear()); // 失焦清空按键，防按键卡住
 
   // ---------- 会话 ----------
+  const weaponCfg = weaponsFile.weapons.find((w) => w.id === params.get('weapon')) ?? weaponsFile.weapons[0];
+  // ?seed=123 可复现指定种子（默认随机）；配合轨迹回放做 A/B 对照
+  const seedParam = Number(params.get('seed'));
+  const seed = Number.isInteger(seedParam) && seedParam > 0 ? seedParam : (Date.now() % 100000) | 0;
   const session = new GameSession({
     level,
-    weaponConfigs: [
-      weaponsFile.weapons.find((w) => w.id === new URLSearchParams(location.search).get('weapon'))
-        ?? weaponsFile.weapons[0],
-    ],
+    weaponConfigs: [weaponCfg],
     monsterConfigs: new Map(monstersFile.monsters.map((m) => [m.id, m])),
     cardConfigs: cardsFile.cards,
-    seed: (Date.now() % 100000) | 0,
+    seed,
     controller,
     cardPolicy: greedyDpsPolicy,
   });
   session.externalLevelUps = true;
+  recorder.start({ t0: Date.now(), seed, level: levelFile, weapon: weaponCfg.id, version: BUNDLE_VERSION });
 
   let bannerTimer = 0;
   let prevRenderMs = 0;
@@ -213,6 +231,15 @@ async function boot(): Promise<void> {
     bolts.push({ pts: points, life: 0.22 });
   });
   session.bus.on<{ result: string }>('onGameOver', ({ result }) => {
+    recorder.end(session.tick, {
+      result,
+      kills: session.totalKills,
+      wallHp: session.wallHp,
+      wallMax: session.wallMaxHp,
+      lv: session.hero.level,
+      sec: +session.timeSec.toFixed(3),
+    });
+    flushTrace();
     const stars = result === 'victory'
       ? '★'.repeat(session.wallHp / session.wallMaxHp > 0.7 ? 3 : session.wallHp / session.wallMaxHp > 0.4 ? 2 : 1)
       : '☆';
@@ -260,6 +287,7 @@ async function boot(): Promise<void> {
     }
   }
   function pick(c: CardConfig): void {
+    recorder.pick(session.tick, c.id, session.pendingLevelChoices.map((x) => x.id));
     session.resolveLevelUp(c);
     refreshCards();
   }
@@ -505,7 +533,13 @@ async function boot(): Promise<void> {
     last = now;
     const paused = session.pendingLevelChoices.length > 0 || session.result !== null;
     while (acc >= TICK_DT && !paused) {
+      recorder.observe(controller.snapshot(), session.tick); // 步进前采样（仅记变化点）
       session.step();
+      if (session.tick % 30 === 0) {
+        recorder.check(session.tick, {
+          x: session.hero.x, y: session.hero.y, wallHp: session.wallHp, kills: session.totalKills, lv: session.hero.level,
+        });
+      }
       acc -= TICK_DT;
     }
     if (paused) acc = 0;

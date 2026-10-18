@@ -23,6 +23,8 @@ import {
   WeaponConfig,
 } from '../../src/gamecore';
 import { greedyDpsPolicy } from '../sim/policies';
+import { HumanInputController, TraceRecorder, parseTrace, serializeTrace } from '../sim/human';
+import { runTraceReplay } from '../sim/replay';
 
 const root = process.cwd();
 
@@ -825,6 +827,63 @@ const tests: TestCase[] = [
     s.debugSpawn('bulwark', 540, 900);
     runFor(s, 10, () => false);
     return s.result !== 'defeat'; // 10 秒无崩溃、无异常城破（实验室空波次胜利属正常）
+  } },
+
+  // ===== 人工轨迹（录制 → sim 回放链路） =====
+  { name: 'H-人工轨迹：录制→sim 回放逐位一致（含升选卡）', run: () => {
+    const { monsters, cards } = loadConfigs();
+    const level = JSON.parse(fs.readFileSync(path.join(root, 'configs/levels/level_1_1.json'), 'utf-8')) as LevelConfig;
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const ctrl = new HumanInputController();
+    const rec = new TraceRecorder();
+    const s = new GameSession({
+      level,
+      weaponConfigs: [weapons[0]],
+      monsterConfigs: monsters,
+      cardConfigs: cards,
+      seed: 1234,
+      controller: ctrl,
+      cardPolicy: greedyDpsPolicy,
+    });
+    s.externalLevelUps = true;
+    rec.start({ t0: 0, seed: 1234, level: 'level_1_1.json', weapon: weapons[0].id, version: 'test' });
+    // 脚本化"人工"输入：指针正弦巡游 + 周期性拖动/松开 + 按键切换（40s 保证覆盖升选卡）
+    let picks = 0;
+    for (let i = 0; i < 30 * 40 && !s.result; i++) {
+      const t = i / 30;
+      ctrl.tx = 540 + Math.sin(t * 1.1) * 320;
+      ctrl.ty = 500 + Math.sin(t * 2.3) * 160;
+      ctrl.hasTarget = i % 210 < 150;
+      if (i % 97 === 0) ctrl.keys = new Set(['a']);
+      if (i % 97 === 45) ctrl.keys = new Set(['d']);
+      rec.observe(ctrl.snapshot(), s.tick);
+      s.step();
+      if (s.pendingLevelChoices.length > 0) {
+        const c = s.pendingLevelChoices[i % s.pendingLevelChoices.length];
+        rec.pick(s.tick, c.id, s.pendingLevelChoices.map((x) => x.id));
+        s.resolveLevelUp(c);
+        picks++;
+      }
+      if (s.tick % 30 === 0) {
+        rec.check(s.tick, { x: s.hero.x, y: s.hero.y, wallHp: s.wallHp, kills: s.totalKills, lv: s.hero.level });
+      }
+    }
+    rec.end(s.tick, {
+      result: s.result ?? 'timeout',
+      kills: s.totalKills,
+      wallHp: s.wallHp,
+      wallMax: s.wallMaxHp,
+      lv: s.hero.level,
+      sec: +s.timeSec.toFixed(3),
+    });
+    if (picks === 0) return '40s 内未触发选卡（样本未覆盖升选卡，请调整脚本）';
+    const parsed = parseTrace(serializeTrace(rec.records));
+    const report = runTraceReplay(parsed, { level, weapon: weapons[0], monsters, cards });
+    if (!report.consistent) {
+      const m = report.mismatches[0];
+      return `回放分歧：t=${m.t} ${m.field} 录制 ${m.recorded} ≠ 回放 ${m.replayed}`;
+    }
+    return report.checksTotal > 0 ? true : '存档点缺失（录制未产出 check 记录）';
   } },
 ];
 
