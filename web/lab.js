@@ -1936,28 +1936,100 @@
         break;
       }
       case "zqueen": {
-        ctx.beginPath();
-        ctx.moveTo(x, y - r);
-        ctx.lineTo(x + r * 0.8, y);
-        ctx.lineTo(x, y + r);
-        ctx.lineTo(x - r * 0.8, y);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = "#F5F5FA";
-        ctx.beginPath();
-        ctx.arc(x, y - r - 6, 4, 0, Math.PI * 2);
-        ctx.fill();
+        const aura = m.cfg.healAura;
+        if (aura) {
+          const total = Math.max(1e-3, aura.interval);
+          const k = Math.min(1, Math.max(0, 1 - m.healTimer / total));
+          const eased = 1 - Math.pow(1 - k, 3);
+          const ringR = r * 1.15 + (aura.radius - r * 1.15) * eased;
+          const glow = ctx.createRadialGradient(x, y, r * 0.6, x, y, aura.radius);
+          const ga = 0.05 + 0.1 * (1 - k);
+          glow.addColorStop(0, `rgba(124,179,66,${ga * 1.6})`);
+          glow.addColorStop(0.72, `rgba(124,179,66,${ga * 0.6})`);
+          glow.addColorStop(1, "rgba(124,179,66,0)");
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(x, y, aura.radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = `rgba(124,179,66,${0.15 + 0.45 * k})`;
+          ctx.lineWidth = 2.5 - 1.5 * k;
+          ctx.beginPath();
+          ctx.arc(x, y, ringR, 0, Math.PI * 2);
+          ctx.stroke();
+          const n = Math.min(6, Math.max(3, Math.round(aura.radius / 60)));
+          for (let i = 0; i < n; i++) {
+            const a = Math.PI * 2 * i / n + t * 0.45 + m.phase;
+            const rise = (t * 0.18 + i * 0.37) % 1;
+            const rr2 = ringR * (0.35 + 0.62 * rise);
+            const px = x + Math.cos(a) * rr2;
+            const py = y + Math.sin(a) * rr2 * 0.82;
+            const al = (1 - rise) * 0.55 * (0.35 + 0.65 * k);
+            ctx.fillStyle = `rgba(174,234,0,${al})`;
+            ctx.beginPath();
+            ctx.arc(px, py, 2.4 - 1 * rise, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        const layers = [
+          [1, color],
+          [0.64, "#A46BE0"],
+          [0.3, "#D9A6FF"]
+        ];
+        for (const [k2, c2] of layers) {
+          ctx.fillStyle = c2;
+          ctx.beginPath();
+          ctx.moveTo(x, y - r * k2);
+          ctx.lineTo(x + r * 0.8 * k2, y);
+          ctx.lineTo(x, y + r * k2);
+          ctx.lineTo(x - r * 0.8 * k2, y);
+          ctx.closePath();
+          ctx.fill();
+        }
         break;
       }
       case "baneling": {
-        const pulse = 1 + 0.12 * Math.sin(t * 8 + m.phase);
+        const hpK = Math.min(1, Math.max(0, 1 - m.hp / m.maxHp));
+        const danger = m.state === "assault" ? 1 : Math.max(hpK, 0);
+        const rate = 4 + 10 * danger;
+        const amp = 0.1 + 0.16 * danger;
+        const pulse = 1 + amp * Math.sin(t * rate + m.phase);
+        if (danger > 0.35) {
+          const warnK = (danger - 0.35) / 0.65;
+          ctx.strokeStyle = `rgba(255,90,60,${(0.25 + 0.5 * warnK) * (0.6 + 0.4 * Math.sin(t * rate + m.phase))})`;
+          ctx.lineWidth = 2 + 2 * warnK;
+          ctx.beginPath();
+          ctx.arc(x, y, r * pulse + 3, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "rgba(11,12,29,0.5)";
+        const coreK = 0.4 + 0.6 * danger;
+        ctx.fillStyle = `rgba(255,${Math.round(220 - 90 * danger)},${Math.round(120 - 100 * danger)},${0.55 + 0.4 * danger})`;
         ctx.beginPath();
-        ctx.arc(x, y, r * 0.4, 0, Math.PI * 2);
+        ctx.arc(x, y, r * 0.45 * pulse * coreK, 0, Math.PI * 2);
         ctx.fill();
+        if (danger > 0.5) {
+          const cr = (danger - 0.5) / 0.5;
+          ctx.strokeStyle = `rgba(216,255,80,${0.5 * cr})`;
+          ctx.lineWidth = 1.5;
+          for (let i = 0; i < 4; i++) {
+            const a = Math.PI / 2 * i + t * 1.2 + m.phase;
+            ctx.beginPath();
+            ctx.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3);
+            ctx.lineTo(x + Math.cos(a) * r * pulse * 0.92, y + Math.sin(a) * r * pulse * 0.92);
+            ctx.stroke();
+          }
+        }
+        if (danger > 0.75) {
+          const finalK = (danger - 0.75) / 0.25;
+          const flash = Math.max(0, Math.sin(t * 26 + m.phase));
+          ctx.fillStyle = `rgba(255,255,255,${0.55 * finalK * flash * flash})`;
+          ctx.beginPath();
+          ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
+          ctx.fill();
+        }
         break;
       }
       case "ultra": {
@@ -1989,12 +2061,34 @@
         break;
       }
       case "charger": {
+        if (m.state === "march") {
+          const trail = 3;
+          for (let i = trail; i >= 1; i--) {
+            const back = i * 9;
+            const k = 1 - i / (trail + 0.6);
+            const shrink = 1 - i * 0.1;
+            ctx.fillStyle = `rgba(255,190,130,${0.5 * k})`;
+            ctx.beginPath();
+            ctx.moveTo(x, y - r * 1.4 * shrink + back);
+            ctx.lineTo(x - r * 0.55 * shrink, y + r * shrink + back);
+            ctx.lineTo(x + r * 0.55 * shrink, y + r * shrink + back);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
         ctx.save();
         ctx.translate(x, y);
         ctx.beginPath();
         ctx.moveTo(0, -r * 1.4);
         ctx.lineTo(-r * 0.55, r);
         ctx.lineTo(r * 0.55, r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,235,200,0.55)";
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 1.4);
+        ctx.lineTo(-r * 0.16, -r * 0.55);
+        ctx.lineTo(r * 0.16, -r * 0.55);
         ctx.closePath();
         ctx.fill();
         ctx.restore();

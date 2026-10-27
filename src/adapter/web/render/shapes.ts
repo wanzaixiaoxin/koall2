@@ -94,30 +94,128 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       break;
     }
     case 'zqueen': {
-      // 虫后：大菱形 + 头顶孵卵
-      ctx.beginPath();
-      ctx.moveTo(x, y - r);
-      ctx.lineTo(x + r * 0.8, y);
-      ctx.lineTo(x, y + r);
-      ctx.lineTo(x - r * 0.8, y);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#F5F5FA';
-      ctx.beginPath();
-      ctx.arc(x, y - r - 6, 4, 0, Math.PI * 2);
-      ctx.fill();
+      // 虫后：全游戏唯一的奶妈单位（healAura）。
+      // 表现身份 = 孵育/生命 → 菱形主体 + 治疗光环（唯一语义：绿色=生命）。
+      // 「好>无>有」：此前头顶是纯白点，与普通白点同义 = 有但没有表达身份，故移除。
+      const aura = m.cfg.healAura;
+      if (aura) {
+        // 光环进度与真实治疗计时同步：环扩张到位的一刻正是治疗落下的时刻（信息型表现）
+        const total = Math.max(0.001, aura.interval);
+        const k = Math.min(1, Math.max(0, 1 - m.healTimer / total));
+        const eased = 1 - Math.pow(1 - k, 3); // easeOut：前期快、后期收束
+        const ringR = r * 1.15 + (aura.radius - r * 1.15) * eased;
+
+        // 领域底光：随进度呼吸，只画一次径向渐变（比逐帧多层描边便宜且更"活"）
+        const glow = ctx.createRadialGradient(x, y, r * 0.6, x, y, aura.radius);
+        const ga = 0.05 + 0.10 * (1 - k);
+        glow.addColorStop(0, `rgba(124,179,66,${ga * 1.6})`);
+        glow.addColorStop(0.72, `rgba(124,179,66,${ga * 0.6})`);
+        glow.addColorStop(1, 'rgba(124,179,66,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, y, aura.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 扩散环：越接近治疗越亮、越细（蓄势感）
+        ctx.strokeStyle = `rgba(124,179,66,${0.15 + 0.45 * k})`;
+        ctx.lineWidth = 2.5 - 1.5 * k;
+        ctx.beginPath();
+        ctx.arc(x, y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 环绕卵粒：带相位差绕环上升，缓慢循环（数量与半径成比例，封顶 6 个）
+        const n = Math.min(6, Math.max(3, Math.round(aura.radius / 60)));
+        for (let i = 0; i < n; i++) {
+          const a = (Math.PI * 2 * i) / n + t * 0.45 + m.phase;
+          const rise = (t * 0.18 + i * 0.37) % 1; // 0→1 循环上升
+          const rr2 = ringR * (0.35 + 0.62 * rise);
+          const px = x + Math.cos(a) * rr2;
+          const py = y + Math.sin(a) * rr2 * 0.82; // 略压扁：贴合俯视地面
+          const al = (1 - rise) * 0.55 * (0.35 + 0.65 * k);
+          ctx.fillStyle = `rgba(174,234,0,${al})`;
+          ctx.beginPath();
+          ctx.arc(px, py, 2.4 - 1.0 * rise, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // 菱形主体：三层同心做出体积，但内芯保留本体紫色系——
+      // 身份由光环承担（绿=治疗），本体不应抢戏，否则同屏会误读成「发光杂兵」。
+      const layers: Array<[number, string]> = [
+        [1.0, color],
+        [0.64, '#A46BE0'],
+        [0.30, '#D9A6FF'],
+      ];
+      for (const [k2, c2] of layers) {
+        ctx.fillStyle = c2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - r * k2);
+        ctx.lineTo(x + r * 0.8 * k2, y);
+        ctx.lineTo(x, y + r * k2);
+        ctx.lineTo(x - r * 0.8 * k2, y);
+        ctx.closePath();
+        ctx.fill();
+      }
       break;
     }
     case 'baneling': {
-      // 毒爆虫：圆球 + 内核（膨胀感脉动）
-      const pulse = 1 + 0.12 * Math.sin(t * 8 + m.phase);
+      // 毒爆虫：自爆单位（detonate）。表现身份 = 不稳定的炸弹。
+      // 核心：脉动频率随「真实危险度」加快 —— 低血或贴近城墙时闪得更急，玩家可据此预判爆炸时机。
+      // 这是信息型表现：它告诉玩家「什么时候会炸」，而不是单纯装饰。
+      const hpK = Math.min(1, Math.max(0, 1 - m.hp / m.maxHp)); // 0=满血 1=濒死
+      // 已抵达城墙（assault）即为最高威胁
+      const danger = m.state === 'assault' ? 1 : Math.max(hpK, 0);
+      const rate = 4 + 10 * danger;          // 4rad/s(满血慢) → 14rad/s(濒死急促)
+      const amp = 0.10 + 0.16 * danger;      // 濒死时膨胀更夸张
+      const pulse = 1 + amp * Math.sin(t * rate + m.phase);
+
+      // 外圈警示光：危险度越高越亮（红→黄），濒死时明显可见
+      if (danger > 0.35) {
+        const warnK = (danger - 0.35) / 0.65;
+        ctx.strokeStyle = `rgba(255,90,60,${(0.25 + 0.5 * warnK) * (0.6 + 0.4 * Math.sin(t * rate + m.phase))})`;
+        ctx.lineWidth = 2 + 2 * warnK;
+        ctx.beginPath();
+        ctx.arc(x, y, r * pulse + 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // 本体：外壳
+      ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = 'rgba(11,12,29,0.5)';
+
+      // 内核：随危险度变亮变大，像即将失控的反应堆
+      const coreK = 0.4 + 0.6 * danger;
+      ctx.fillStyle = `rgba(255,${Math.round(220 - 90 * danger)},${Math.round(120 - 100 * danger)},${0.55 + 0.4 * danger})`;
       ctx.beginPath();
-      ctx.arc(x, y, r * 0.4, 0, Math.PI * 2);
+      ctx.arc(x, y, r * 0.45 * pulse * coreK, 0, Math.PI * 2);
       ctx.fill();
+
+      // 内裂纹：濒死时向外辐射的酸性亮线（临爆信号）
+      if (danger > 0.5) {
+        const cr = (danger - 0.5) / 0.5;
+        ctx.strokeStyle = `rgba(216,255,80,${0.5 * cr})`;
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 4; i++) {
+          const a = (Math.PI / 2) * i + t * 1.2 + m.phase;
+          ctx.beginPath();
+          ctx.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3);
+          ctx.lineTo(x + Math.cos(a) * r * pulse * 0.92, y + Math.sin(a) * r * pulse * 0.92);
+          ctx.stroke();
+        }
+      }
+
+      // 临爆闪白（danger > 0.75）：最后阶段的紧迫感。
+      // 用高频闪烁区分「接近危险」与「马上要炸」——这一档只属于真正濒死的瞬间。
+      if (danger > 0.75) {
+        const finalK = (danger - 0.75) / 0.25;
+        const flash = Math.max(0, Math.sin(t * 26 + m.phase));
+        ctx.fillStyle = `rgba(255,255,255,${0.55 * finalK * flash * flash})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
       break;
     }
     case 'ultra': {
@@ -151,13 +249,40 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       break;
     }
     case 'charger': {
-      // 瘦长尖梭（极速感）
+      // 冲锋鼠：全游戏最快单位（speed 260）。表现身份 = 速度本身。
+      // 用「动能残影」：沿与前进相反方向拖出 3 段越来越淡的三角。
+      // 行军方向恒为 -y（朝底部城墙推进），故残影落在 +y 侧（身后）。
+      // 抵达城墙后（assault）速度已归零，此时不画残影——否则会误导玩家（无 > 有）。
+      if (m.state === 'march') {
+        const trail = 3;
+        for (let i = trail; i >= 1; i--) {
+          const back = i * 9;                    // 每段向身后偏移
+          const k = 1 - i / (trail + 0.6);       // 越远越淡
+          const shrink = 1 - i * 0.10;
+          ctx.fillStyle = `rgba(255,190,130,${0.5 * k})`;
+          ctx.beginPath();
+          ctx.moveTo(x, y - r * 1.4 * shrink + back);
+          ctx.lineTo(x - r * 0.55 * shrink, y + r * shrink + back);
+          ctx.lineTo(x + r * 0.55 * shrink, y + r * shrink + back);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      // 本体：瘦长尖梭（极速感）
       ctx.save();
       ctx.translate(x, y);
       ctx.beginPath();
       ctx.moveTo(0, -r * 1.4);
       ctx.lineTo(-r * 0.55, r);
       ctx.lineTo(r * 0.55, r);
+      ctx.closePath();
+      ctx.fill();
+      // 前端高光：尖端一点亮，强化「冲」的方向感
+      ctx.fillStyle = 'rgba(255,235,200,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(0, -r * 1.4);
+      ctx.lineTo(-r * 0.16, -r * 0.55);
+      ctx.lineTo(r * 0.16, -r * 0.55);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
