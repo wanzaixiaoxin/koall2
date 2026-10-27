@@ -1889,7 +1889,7 @@
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
-  function drawMonster(ctx, m, t) {
+  function drawMonster(ctx, m, t, flash = 0, squash = 1) {
     const r = m.cfg.radius;
     const color = monsterColor(m);
     const x = m.x;
@@ -1908,8 +1908,30 @@
       ctx.setLineDash([]);
       return;
     }
+    const deform = Math.abs(squash - 1) > 1e-3;
+    if (deform) {
+      ctx.save();
+      ctx.translate(x, y - r);
+      ctx.scale(1 / squash, squash);
+      ctx.translate(-x, -(y - r));
+    }
+    drawMonsterBody(ctx, m, t);
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${0.9 * flash})`;
+      drawMonsterBody(ctx, m, t, true);
+    }
+    if (deform) ctx.restore();
+  }
+  function drawMonsterBody(ctx, m, t, tint = false) {
+    const r = m.cfg.radius;
+    const color = tint ? "#FFFFFF" : monsterColor(m);
+    const x = m.x;
+    const y = m.y;
     const moving = m.state === "march";
     ctx.fillStyle = color;
+    drawMonsterShape(ctx, m, t, color, x, y, r, moving, !tint);
+  }
+  function drawMonsterShape(ctx, m, t, color, x, y, r, moving, deco) {
     switch (m.cfg.shape) {
       case "larva": {
         ctx.beginPath();
@@ -1937,7 +1959,7 @@
       }
       case "zqueen": {
         const aura = m.cfg.healAura;
-        if (aura) {
+        if (aura && deco) {
           const total = Math.max(1e-3, aura.interval);
           const k = Math.min(1, Math.max(0, 1 - m.healTimer / total));
           const eased = 1 - Math.pow(1 - k, 3);
@@ -1970,11 +1992,11 @@
             ctx.fill();
           }
         }
-        const layers = [
+        const layers = deco ? [
           [1, color],
           [0.64, "#A46BE0"],
           [0.3, "#D9A6FF"]
-        ];
+        ] : [[1, color]];
         for (const [k2, c2] of layers) {
           ctx.fillStyle = c2;
           ctx.beginPath();
@@ -1993,7 +2015,7 @@
         const rate = 4 + 10 * danger;
         const amp = 0.1 + 0.16 * danger;
         const pulse = 1 + amp * Math.sin(t * rate + m.phase);
-        if (danger > 0.35) {
+        if (danger > 0.35 && deco) {
           const warnK = (danger - 0.35) / 0.65;
           ctx.strokeStyle = `rgba(255,90,60,${(0.25 + 0.5 * warnK) * (0.6 + 0.4 * Math.sin(t * rate + m.phase))})`;
           ctx.lineWidth = 2 + 2 * warnK;
@@ -2005,12 +2027,14 @@
         ctx.beginPath();
         ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
         ctx.fill();
-        const coreK = 0.4 + 0.6 * danger;
-        ctx.fillStyle = `rgba(255,${Math.round(220 - 90 * danger)},${Math.round(120 - 100 * danger)},${0.55 + 0.4 * danger})`;
-        ctx.beginPath();
-        ctx.arc(x, y, r * 0.45 * pulse * coreK, 0, Math.PI * 2);
-        ctx.fill();
-        if (danger > 0.5) {
+        if (deco) {
+          const coreK = 0.4 + 0.6 * danger;
+          ctx.fillStyle = `rgba(255,${Math.round(220 - 90 * danger)},${Math.round(120 - 100 * danger)},${0.55 + 0.4 * danger})`;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 0.45 * pulse * coreK, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        if (danger > 0.5 && deco) {
           const cr = (danger - 0.5) / 0.5;
           ctx.strokeStyle = `rgba(216,255,80,${0.5 * cr})`;
           ctx.lineWidth = 1.5;
@@ -2061,7 +2085,7 @@
         break;
       }
       case "charger": {
-        if (m.state === "march") {
+        if (m.state === "march" && deco) {
           const trail = 3;
           for (let i = trail; i >= 1; i--) {
             const back = i * 9;
@@ -2084,13 +2108,15 @@
         ctx.lineTo(r * 0.55, r);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = "rgba(255,235,200,0.55)";
-        ctx.beginPath();
-        ctx.moveTo(0, -r * 1.4);
-        ctx.lineTo(-r * 0.16, -r * 0.55);
-        ctx.lineTo(r * 0.16, -r * 0.55);
-        ctx.closePath();
-        ctx.fill();
+        if (deco) {
+          ctx.fillStyle = "rgba(255,235,200,0.55)";
+          ctx.beginPath();
+          ctx.moveTo(0, -r * 1.4);
+          ctx.lineTo(-r * 0.16, -r * 0.55);
+          ctx.lineTo(r * 0.16, -r * 0.55);
+          ctx.closePath();
+          ctx.fill();
+        }
         ctx.restore();
         break;
       }
@@ -2102,12 +2128,14 @@
         ctx.lineTo(x - r * 0.5, y + r * 0.8);
         ctx.closePath();
         ctx.fill();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(x, y + r * 0.3);
-        ctx.lineTo(x, y + r * 1.6);
-        ctx.stroke();
+        if (deco) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(x, y + r * 0.3);
+          ctx.lineTo(x, y + r * 1.6);
+          ctx.stroke();
+        }
         break;
       }
       case "bulwark": {
@@ -2121,18 +2149,20 @@
         }
         ctx.closePath();
         ctx.fill();
-        ctx.strokeStyle = "rgba(11,12,29,.55)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const a = Math.PI / 3 * i + Math.PI / 6;
-          const px = x + Math.cos(a) * r * 0.55;
-          const py = y + Math.sin(a) * r * 0.55;
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
+        if (deco) {
+          ctx.strokeStyle = "rgba(11,12,29,.55)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const a = Math.PI / 3 * i + Math.PI / 6;
+            const px = x + Math.cos(a) * r * 0.55;
+            const py = y + Math.sin(a) * r * 0.55;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.stroke();
         }
-        ctx.closePath();
-        ctx.stroke();
         break;
       }
       case "bat": {
@@ -2180,10 +2210,12 @@
         }
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = "rgba(11,12,29,.5)";
-        ctx.beginPath();
-        ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
-        ctx.fill();
+        if (deco) {
+          ctx.fillStyle = "rgba(11,12,29,.5)";
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.restore();
         break;
       }
@@ -2196,10 +2228,12 @@
         ctx.lineTo(x - r * 0.75, y);
         ctx.closePath();
         ctx.fill();
-        ctx.fillStyle = "#F5F5FA";
-        ctx.beginPath();
-        ctx.arc(x, y - r - 8 + bob, 5, 0, Math.PI * 2);
-        ctx.fill();
+        if (deco) {
+          ctx.fillStyle = "#F5F5FA";
+          ctx.beginPath();
+          ctx.arc(x, y - r - 8 + bob, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
         break;
       }
       case "slime":
@@ -2388,6 +2422,94 @@
     }
   }
 
+  // src/adapter/web/render/fx.ts
+  var clamp01 = (t) => t < 0 ? 0 : t > 1 ? 1 : t;
+  var Easing = {
+    linear: (t) => t,
+    easeOut: (t) => 1 - Math.pow(1 - t, 3),
+    easeIn: (t) => t * t * t,
+    easeInOut: (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+    /** 超调回弹：末段越过 1 再收回，用于挤压/弹出，产生「弹性」而非「软绵绵」 */
+    easeOutBack: (t) => {
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    },
+    /** 多次振荡衰减：用于升级选卡这种「有仪式感」的弹出 */
+    elastic: (t) => {
+      if (t === 0 || t === 1) return t;
+      const c4 = 2 * Math.PI / 3;
+      return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+    },
+    /** 单调衰减：用于震屏、闪白这类「瞬间冲高后衰减」的曲线 */
+    decay: (t) => 1 - t
+  };
+  function easingOf(name) {
+    if (name && Easing[name]) return Easing[name];
+    return Easing.linear;
+  }
+  function sampleKeyframes(frames, t, easingName) {
+    if (!frames || frames.length === 0) return 1;
+    if (frames.length === 1) return frames[0];
+    const k = clamp01(easingOf(easingName)(clamp01(t)));
+    const seg = frames.length - 1;
+    const pos = k * seg;
+    const i = Math.min(seg - 1, Math.floor(pos));
+    const local = pos - i;
+    return frames[i] + (frames[i + 1] - frames[i]) * local;
+  }
+  var FxRuntime = class {
+    constructor(cfg) {
+      /** monsterId → 闪白到期时刻（秒，与 session.timeSec 同一时间基准） */
+      this.flashUntil = /* @__PURE__ */ new Map();
+      this.cfg = cfg;
+    }
+    get flashSec() {
+      return (this.cfg.hitFlash?.duration ?? 80) / 1e3;
+    }
+    /** 登记一次受击闪白（由 onHit 事件调用）。now 用渲染时间秒。 */
+    markHit(monsterId, now) {
+      this.flashUntil.set(monsterId, now + this.flashSec);
+    }
+    /** 查询闪白强度 0~1（0=无闪白，1=刚被打中）。 */
+    flashAlpha(monsterId, now) {
+      const until = this.flashUntil.get(monsterId);
+      if (until === void 0) return 0;
+      const left = until - now;
+      if (left <= 0) {
+        this.flashUntil.delete(monsterId);
+        return 0;
+      }
+      const dur = this.flashSec;
+      const t = dur > 0 ? 1 - left / dur : 0;
+      return clamp01(t < 0.3 ? 1 : easingOf(this.cfg.hitFlash?.easing ?? "decay")((t - 0.3) / 0.7));
+    }
+    /**
+     * 挤压回弹倍率（纵向），1 = 不变形。
+     * 语义约束：**只有受击期间才允许偏离 1**。
+     * 未受击时无条件返回 1，否则配置里的关键帧序列（如 [1,0.75,1.15,1]）
+     * 会在怪物静止时被采样，导致全体永久变形。
+     */
+    hitSquash(monsterId, now) {
+      const a = this.flashAlpha(monsterId, now);
+      if (a <= 0) return 1;
+      const frames = this.cfg.squashStretch?.scaleY;
+      const v = sampleKeyframes(frames, a, this.cfg.squashStretch?.easing);
+      const base = frames && frames.length > 0 ? frames[0] : 1;
+      return base === 0 ? v : v / base;
+    }
+  };
+  async function loadFxConfig(baseUrl = "/configs/art-style/fx-config.json") {
+    try {
+      const r = await fetch(baseUrl);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch {
+      console.warn("[fx] fx-config.json \u52A0\u8F7D\u5931\u8D25\uFF0C\u52A8\u6548\u56DE\u843D\u4E3A\u4E2D\u6027\u9ED8\u8BA4\u503C");
+      return {};
+    }
+  }
+
   // src/adapter/web/main.ts
   var W = 1080;
   var H = 1920;
@@ -2412,13 +2534,15 @@
     }
   }
   async function boot() {
-    const [palette, weaponsFile, monstersFile, cardsFile, level] = await Promise.all([
+    const [palette, weaponsFile, monstersFile, cardsFile, level, fxConfig] = await Promise.all([
       fetchJson("/configs/art-style/palette.json"),
       fetchJson("/configs/weapons.json"),
       fetchJson("/configs/monsters.json"),
       fetchJson("/configs/cards.json"),
-      fetchJson(`/configs/levels/${new URLSearchParams(location.search).get("level") ?? "level_1_1.json"}`)
+      fetchJson(`/configs/levels/${new URLSearchParams(location.search).get("level") ?? "level_1_1.json"}`),
+      loadFxConfig()
     ]);
+    const fx = new FxRuntime(fxConfig);
     const canvas = document.getElementById("game");
     canvas.width = W;
     canvas.height = H;
@@ -2510,7 +2634,8 @@
     };
     session.bus.on(
       "onHit",
-      ({ dmg, isCrit, blocked, mitigated, x, y }) => {
+      ({ monsterId, dmg, isCrit, blocked, mitigated, x, y }) => {
+        if (monsterId !== void 0 && !blocked) fx.markHit(monsterId, session.timeSec);
         if (blocked) {
           pushFloat(x, y - 12, "\u6321", "#8A93B8", 16);
           return;
@@ -2651,7 +2776,7 @@
       const now = session.timeSec;
       for (const m of session.monsters) {
         const r = m.cfg.radius;
-        drawMonster(ctx, m, t);
+        drawMonster(ctx, m, t, fx.flashAlpha(m.id, now), fx.hitSquash(m.id, now));
         if (m.hp < m.maxHp) {
           ctx.fillStyle = "rgba(255,255,255,0.25)";
           ctx.fillRect(m.x - r, m.y - r - 10, r * 2, 4);

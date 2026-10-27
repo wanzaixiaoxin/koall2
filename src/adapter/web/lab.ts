@@ -11,6 +11,7 @@ import {
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
 import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool } from './render/shapes';
+import { FxRuntime, loadFxConfig } from './render/fx';
 
 const W = 1080;
 const H = 1920;
@@ -49,13 +50,16 @@ function strokeBoltPath(ctx: CanvasRenderingContext2D, pts: number[][]): void {
 let prevMs = 0;
 
 async function boot(): Promise<void> {
-  const [palette, weaponsFile, monstersFile, cardsFile, level] = await Promise.all([
+  const [palette, weaponsFile, monstersFile, cardsFile, level, fxConfig] = await Promise.all([
     fetchJson<Palette>('/configs/art-style/palette.json'),
     fetchJson<{ weapons: WeaponConfig[] }>('/configs/weapons.json'),
     fetchJson<{ monsters: MonsterConfig[] }>('/configs/monsters.json'),
     fetchJson<{ cards: CardConfig[] }>('/configs/cards.json'),
     fetchJson<LevelConfig>(LAB_LEVEL),
+    loadFxConfig(),
   ]);
+  // 与主游戏共用同一套动效参数，保证两端视觉一致（shapes.ts 的约定）
+  const fx = new FxRuntime(fxConfig);
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   canvas.width = W;
@@ -143,9 +147,13 @@ async function boot(): Promise<void> {
       bolts.push({ pts: points, life: 0.22 });
     });
     // 与主游戏同款飘字表现
-    session.bus.on<{ dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number }>(
+    session.bus.on<{
+      monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number;
+    }>(
       'onHit',
-      ({ dmg, isCrit, blocked, mitigated, x, y }) => {
+      ({ monsterId, dmg, isCrit, blocked, mitigated, x, y }) => {
+        // 受击闪白登记：与主游戏一致（实验室里也能看到打击反馈）
+        if (monsterId !== undefined && !blocked) fx.markHit(monsterId, session.timeSec);
         if (blocked) {
           pushFloat(x, y - 12, '挡', '#8A93B8', 16);
           return;
@@ -617,7 +625,8 @@ async function boot(): Promise<void> {
     const now = session.timeSec;
     const tNow = now; // 渲染动效时钟与逻辑时钟一致（实验室确定性优先）
     for (const m of session.monsters) {
-      drawMonster(ctx, m, tNow);
+      // 与主游戏一致：闪白 + 挤压回弹都走 fx-config.json
+      drawMonster(ctx, m, tNow, fx.flashAlpha(m.id, now), fx.hitSquash(m.id, now));
       if (now < m.slowUntil) {
         ctx.strokeStyle = 'rgba(79,195,247,0.9)';
         ctx.lineWidth = 2;
