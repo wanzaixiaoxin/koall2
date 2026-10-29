@@ -68,8 +68,8 @@ export class ThreatHud {
       if (nx < -0.3) wL += Math.min(1, (420 - d) / 420);
       else if (nx > 0.3) wR += Math.min(1, (420 - d) / 420);
     }
-    this.edgeL.style.opacity = String(Math.min(0.9, wL * 0.35));
-    this.edgeR.style.opacity = String(Math.min(0.9, wR * 0.35));
+    this.edgeL.style.opacity = String(Math.min(0.5, wL * 0.12));
+    this.edgeR.style.opacity = String(Math.min(0.5, wR * 0.12));
 
     // ---- 2) 罗盘：城墙血条底 + 受击点闪 ----
     const g = this.compassCtx;

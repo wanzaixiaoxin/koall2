@@ -117,14 +117,16 @@ export class ProjectilesRender {
         : p.damageType === 'frost' ? '#4FC3F7'
         : p.damageType === 'lightning' ? '#B388FF' : '#7CB342');
       this.mesh.setColorAt(n, c);
-      // 拖尾：当前 → 上一帧位置
+      // 拖尾：当前 → 上一帧位置（×4 拉长速度线）
       const px = toX(p.px);
       const pz = toZ(p.py);
+      const vx = (x - px) * 4;
+      const vz = (z - pz) * 4;
       const vi = (n * 2) * 3;
-      this.trailPos[vi] = px; this.trailPos[vi + 1] = h; this.trailPos[vi + 2] = pz;
+      this.trailPos[vi] = x - vx; this.trailPos[vi + 1] = h; this.trailPos[vi + 2] = z - vz;
       this.trailPos[vi + 3] = x; this.trailPos[vi + 4] = h; this.trailPos[vi + 5] = z;
       this.trailAlpha[n * 2] = 0.0;
-      this.trailAlpha[n * 2 + 1] = 0.7;
+      this.trailAlpha[n * 2 + 1] = 0.85;
       n++;
     }
     this.mesh.count = n;

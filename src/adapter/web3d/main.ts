@@ -20,6 +20,7 @@ import { GemsRender } from './render/gems-render';
 import { ThreatHud } from './threat-hud';
 import { Sfx } from './sfx';
 import { StartScreen } from './start-screen';
+import { HpBarsRender } from './render/hp-bars-render';
 import { Vector3 } from 'three';
 
 interface Palette { damageType: Record<string, string> }
@@ -130,6 +131,7 @@ async function boot(): Promise<void> {
   const fx = new Fx3D(world.scene);
   const floats = new FloatsRender(new Vector3());
   const gems = new GemsRender(world.scene);
+  const hpBars = new HpBarsRender(world.scene);
   const threat = new ThreatHud();
   const wallHitMarks: number[] = [];   // 本帧城墙受击 x（罗盘用）
 
@@ -334,6 +336,7 @@ async function boot(): Promise<void> {
 
     // ---- 同步怪物/投射物 ----
     monstersR.sync(session.monsters, session.timeSec, dtR);
+    hpBars.sync(session.monsters);
     projR.sync(session.projectiles, session.monsterShots, session.pools, session.segments,
       session.hero.x, session.hero.y);
 

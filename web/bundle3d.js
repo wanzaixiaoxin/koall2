@@ -24591,15 +24591,17 @@ void main() {
         this.mesh.setColorAt(n, c);
         const px2 = toX(p.px);
         const pz2 = toZ(p.py);
+        const vx = (x - px2) * 4;
+        const vz = (z - pz2) * 4;
         const vi = n * 2 * 3;
-        this.trailPos[vi] = px2;
+        this.trailPos[vi] = x - vx;
         this.trailPos[vi + 1] = h;
-        this.trailPos[vi + 2] = pz2;
+        this.trailPos[vi + 2] = z - vz;
         this.trailPos[vi + 3] = x;
         this.trailPos[vi + 4] = h;
         this.trailPos[vi + 5] = z;
         this.trailAlpha[n * 2] = 0;
-        this.trailAlpha[n * 2 + 1] = 0.7;
+        this.trailAlpha[n * 2 + 1] = 0.85;
         n++;
       }
       this.mesh.count = n;
@@ -25142,8 +25144,8 @@ void main() {
         if (nx < -0.3) wL += Math.min(1, (420 - d) / 420);
         else if (nx > 0.3) wR += Math.min(1, (420 - d) / 420);
       }
-      this.edgeL.style.opacity = String(Math.min(0.9, wL * 0.35));
-      this.edgeR.style.opacity = String(Math.min(0.9, wR * 0.35));
+      this.edgeL.style.opacity = String(Math.min(0.5, wL * 0.12));
+      this.edgeR.style.opacity = String(Math.min(0.5, wR * 0.12));
       const g = this.compassCtx;
       g.clearRect(0, 0, 680, 18);
       g.fillStyle = "rgba(255,255,255,0.08)";
@@ -25375,6 +25377,73 @@ void main() {
     }
   };
 
+  // src/adapter/web3d/render/hp-bars-render.ts
+  var CAP3 = 220;
+  var HpBarsRender = class {
+    constructor(scene) {
+      const geo = new BufferGeometry();
+      this.posAttr = new Float32Array(CAP3 * 3);
+      this.ratioAttr = new Float32Array(CAP3);
+      this.sizeAttr = new Float32Array(CAP3);
+      geo.setAttribute("position", new BufferAttribute(this.posAttr, 3));
+      geo.setAttribute("aRatio", new BufferAttribute(this.ratioAttr, 1));
+      geo.setAttribute("aSize", new BufferAttribute(this.sizeAttr, 1));
+      const mat = new ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        vertexShader: (
+          /* glsl */
+          `
+        attribute float aRatio; attribute float aSize;
+        varying float vR;
+        void main(){
+          vR = aRatio;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_PointSize = aSize * (60.0 / -mv.z);
+          gl_Position = projectionMatrix * mv;
+        }`
+        ),
+        fragmentShader: (
+          /* glsl */
+          `
+        varying float vR;
+        void main(){
+          // \u6761\u5F62\u533A\u57DF\uFF08\u70B9\u7CBE\u7075\u5185 0.72\xD70.14\uFF09
+          vec2 uv = gl_PointCoord - 0.5;
+          if (abs(uv.x) > 0.36 || abs(uv.y) > 0.07) discard;
+          vec2 b = abs(vec2(uv.x / 0.36, uv.y / 0.07));
+          float border = max(b.x, b.y);
+          if (border > 0.94) { gl_FragColor = vec4(0.05,0.05,0.09,0.9); return; } // \u6DF1\u5E95\u8FB9\u6846
+          float fill = step(uv.x / 0.36 + 0.5, vR) * step(abs(uv.y), 0.055);
+          vec3 col = vR > 0.5 ? vec3(0.42,0.95,0.55) : vR > 0.25 ? vec3(1.0,0.78,0.3) : vec3(1.0,0.35,0.3);
+          gl_FragColor = vec4(col, fill > 0.5 ? 0.95 : 0.18);
+        }`
+        )
+      });
+      this.points = new Points(geo, mat);
+      this.points.frustumCulled = false;
+      scene.add(this.points);
+    }
+    /** 每帧同步：只收 hp<maxHp 的活怪 */
+    sync(monsters) {
+      let n = 0;
+      for (const m of monsters) {
+        if (m.burrowed || m.hp >= m.maxHp) continue;
+        if (n >= CAP3) break;
+        this.posAttr[n * 3] = toX(m.x);
+        this.posAttr[n * 3 + 1] = Math.max(0.5, m.cfg.radius * S) * 2 + 0.35;
+        this.posAttr[n * 3 + 2] = toZ(m.y);
+        this.ratioAttr[n] = Math.max(0, m.hp / m.maxHp);
+        this.sizeAttr[n] = 16;
+        n++;
+      }
+      this.points.geometry.setDrawRange(0, n);
+      this.points.geometry.getAttribute("position").needsUpdate = true;
+      this.points.geometry.getAttribute("aRatio").needsUpdate = true;
+      this.points.geometry.getAttribute("aSize").needsUpdate = true;
+    }
+  };
+
   // src/adapter/web3d/main.ts
   async function fetchJson(url) {
     const r = await fetch(url);
@@ -25469,6 +25538,7 @@ void main() {
     const fx = new Fx3D(world.scene);
     const floats = new FloatsRender(new Vector3());
     const gems = new GemsRender(world.scene);
+    const hpBars = new HpBarsRender(world.scene);
     const threat = new ThreatHud();
     const wallHitMarks = [];
     const SHAPE_COLOR2 = {
@@ -25659,6 +25729,7 @@ void main() {
       const heroPos = hero.update(dtR, session.timeSec, face);
       gems.setHero(heroPos.x, heroPos.z);
       monstersR.sync(session.monsters, session.timeSec, dtR);
+      hpBars.sync(session.monsters);
       projR.sync(
         session.projectiles,
         session.monsterShots,
