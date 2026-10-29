@@ -89,28 +89,28 @@ function makeSky(): THREE.Mesh {
   return sky;
 }
 
-/** 城墙：12 段石砖体块，横跨全宽（墙体在 z=0.7..1.8，避免与英雄最小 yMin=96→z=-0.32 穿模） */
+/** 城墙：12 段石砖体块，横跨全宽（墙体在 z=1.85..2.95——在英雄与镜头之外，不遮挡防守区前沿） */
 function makeWall(wallHalfW: number): { group: THREE.Group; segments: THREE.Mesh[] } {
   const group = new THREE.Group();
   const segs = 12;
   const segW = (wallHalfW * 2) / segs;
   const segments: THREE.Mesh[] = [];
-  const geo = new THREE.BoxGeometry(segW - 0.12, 3.2, 1.1);
+  const geo = new THREE.BoxGeometry(segW - 0.12, 2.6, 1.1);
   for (let i = 0; i < segs; i++) {
     const mat = new THREE.MeshStandardMaterial({
       color: '#3D4470', roughness: 0.85, metalness: 0.1,
       emissive: '#000000',
     });
     const m = new THREE.Mesh(geo, mat);
-    m.position.set(-wallHalfW + segW * (i + 0.5), 1.6, 1.25);
+    m.position.set(-wallHalfW + segW * (i + 0.5), 1.3, 2.4);
     group.add(m);
     segments.push(m);
     // 城垛
     const cap = new THREE.Mesh(
-      new THREE.BoxGeometry(segW - 0.3, 0.32, 1.3),
+      new THREE.BoxGeometry(segW - 0.3, 0.3, 1.3),
       new THREE.MeshStandardMaterial({ color: '#2E3454', roughness: 0.9 }),
     );
-    cap.position.set(m.position.x, 3.36, 1.25);
+    cap.position.set(m.position.x, 2.75, 2.4);
     group.add(cap);
   }
   return { group, segments };

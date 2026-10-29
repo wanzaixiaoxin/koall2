@@ -160,7 +160,7 @@ async function boot(): Promise<void> {
     fx.wallDebris(x);
     rig.shake(0.06);
     sfx.wallHit();
-    floats.push(toX(x), 2.2, 1.2, `-${Math.round(dmg)}`, '#FF6B57', 17);
+    floats.push(toX(x), 2.0, 2.4, `-${Math.round(dmg)}`, '#FF6B57', 17);
     wallHitMarks.push(x);
   });
 

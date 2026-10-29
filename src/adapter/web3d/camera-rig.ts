@@ -35,11 +35,11 @@ export class CameraRig {
 
   /** hero3 = 英雄 3D 坐标；threatDistPx = 最近怪距墙（逻辑 px） */
   update(hero3: THREE.Vector3, threatDistPx: number, dt: number): void {
-    // 俯角随威胁收紧：威胁 <300px 时从 0.55 抬到 0.75（更俯视，越过墙顶）
+    // 俯角随威胁收紧：威胁 <300px 时更深俯视，保证英雄与墙前沿同框（防城垛遮挡）
     const k = THREE.MathUtils.clamp(1 - (threatDistPx - 150) / 450, 0, 1);
-    const back = THREE.MathUtils.lerp(7.6, 6.4, k);      // 相机后撤距离
-    const height = THREE.MathUtils.lerp(6.4, 8.2, k);    // 相机高度
-    const lookAhead = THREE.MathUtils.lerp(-5.2, -3.4, k); // 视线落点纵深
+    const back = THREE.MathUtils.lerp(6.8, 5.6, k);        // 相机后撤距离
+    const height = THREE.MathUtils.lerp(8.0, 9.8, k);      // 相机高度（加深俯角防遮挡）
+    const lookAhead = THREE.MathUtils.lerp(-4.6, -3.0, k); // 视线落点纵深
 
     const targetPos = new THREE.Vector3(
       THREE.MathUtils.lerp(this.pos.x, hero3.x * 0.72, 1 - Math.exp(-6 * dt)),

@@ -24030,7 +24030,7 @@ void main() {
     const segs = 12;
     const segW = wallHalfW * 2 / segs;
     const segments = [];
-    const geo = new BoxGeometry(segW - 0.12, 3.2, 1.1);
+    const geo = new BoxGeometry(segW - 0.12, 2.6, 1.1);
     for (let i = 0; i < segs; i++) {
       const mat = new MeshStandardMaterial({
         color: "#3D4470",
@@ -24039,14 +24039,14 @@ void main() {
         emissive: "#000000"
       });
       const m = new Mesh(geo, mat);
-      m.position.set(-wallHalfW + segW * (i + 0.5), 1.6, 1.25);
+      m.position.set(-wallHalfW + segW * (i + 0.5), 1.3, 2.4);
       group.add(m);
       segments.push(m);
       const cap = new Mesh(
-        new BoxGeometry(segW - 0.3, 0.32, 1.3),
+        new BoxGeometry(segW - 0.3, 0.3, 1.3),
         new MeshStandardMaterial({ color: "#2E3454", roughness: 0.9 })
       );
-      cap.position.set(m.position.x, 3.36, 1.25);
+      cap.position.set(m.position.x, 2.75, 2.4);
       group.add(cap);
     }
     return { group, segments };
@@ -24148,9 +24148,9 @@ void main() {
     /** hero3 = 英雄 3D 坐标；threatDistPx = 最近怪距墙（逻辑 px） */
     update(hero3, threatDistPx, dt) {
       const k = MathUtils.clamp(1 - (threatDistPx - 150) / 450, 0, 1);
-      const back = MathUtils.lerp(7.6, 6.4, k);
-      const height = MathUtils.lerp(6.4, 8.2, k);
-      const lookAhead = MathUtils.lerp(-5.2, -3.4, k);
+      const back = MathUtils.lerp(6.8, 5.6, k);
+      const height = MathUtils.lerp(8, 9.8, k);
+      const lookAhead = MathUtils.lerp(-4.6, -3, k);
       const targetPos = new Vector3(
         MathUtils.lerp(this.pos.x, hero3.x * 0.72, 1 - Math.exp(-6 * dt)),
         0,
@@ -24408,9 +24408,9 @@ void main() {
       const cap = POOL_CAPS[key] ?? 40;
       const mat = new MeshStandardMaterial({
         color: SHAPE_COLOR[key] ?? "#FF6B57",
-        roughness: 0.45,
+        roughness: 0.35,
         metalness: 0.1,
-        emissive: new Color(SHAPE_COLOR[key] ?? "#FF6B57").multiplyScalar(0.85)
+        emissive: new Color(SHAPE_COLOR[key] ?? "#FF6B57").multiplyScalar(1.3)
       });
       const mesh = new InstancedMesh(geo, mat, cap);
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -25505,7 +25505,7 @@ void main() {
       fx.wallDebris(x);
       rig.shake(0.06);
       sfx.wallHit();
-      floats.push(toX(x), 2.2, 1.2, `-${Math.round(dmg)}`, "#FF6B57", 17);
+      floats.push(toX(x), 2, 2.4, `-${Math.round(dmg)}`, "#FF6B57", 17);
       wallHitMarks.push(x);
     });
     session.bus.on("onShoot", () => {

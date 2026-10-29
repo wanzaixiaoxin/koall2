@@ -68,8 +68,8 @@ export class MonstersRender {
     const cap = POOL_CAPS[key] ?? 40;
     const mat = new THREE.MeshStandardMaterial({
       color: SHAPE_COLOR[key] ?? '#FF6B57',
-      roughness: 0.45, metalness: 0.1,
-      emissive: new THREE.Color(SHAPE_COLOR[key] ?? '#FF6B57').multiplyScalar(0.85),
+      roughness: 0.35, metalness: 0.1,
+      emissive: new THREE.Color(SHAPE_COLOR[key] ?? '#FF6B57').multiplyScalar(1.3),
     });
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
