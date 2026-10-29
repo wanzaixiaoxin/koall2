@@ -24278,11 +24278,18 @@ void main() {
       this.targetX = wx;
       this.targetZ = wz;
     }
-    /** 平滑插值 + 呼吸；返回当前世界坐标供镜头使用 */
-    update(dt, timeSec) {
+    /** 平滑插值 + 呼吸；faceDir 为期望朝向（世界 xz 单位向量，null 不变）；返回当前世界坐标供镜头使用 */
+    update(dt, timeSec, faceDir) {
       const k = 1 - Math.exp(-14 * dt);
       this.group.position.x += (this.targetX - this.group.position.x) * k;
       this.group.position.z += (this.targetZ - this.group.position.z) * k;
+      if (faceDir) {
+        const want = Math.atan2(faceDir.x, faceDir.z);
+        let d = want - this.group.rotation.y;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        this.group.rotation.y += d * (1 - Math.exp(-10 * dt));
+      }
       const breathe = Math.sin(timeSec * 2.4) * 0.03;
       this.body.position.y = 0.55 + breathe;
       this.ring.rotation.z = timeSec * 0.8;
@@ -24401,9 +24408,9 @@ void main() {
       const cap = POOL_CAPS[key] ?? 40;
       const mat = new MeshStandardMaterial({
         color: SHAPE_COLOR[key] ?? "#FF6B57",
-        roughness: 0.6,
-        metalness: 0.15,
-        emissive: new Color(SHAPE_COLOR[key] ?? "#FF6B57").multiplyScalar(0.25)
+        roughness: 0.45,
+        metalness: 0.1,
+        emissive: new Color(SHAPE_COLOR[key] ?? "#FF6B57").multiplyScalar(0.85)
       });
       const mesh = new InstancedMesh(geo, mat, cap);
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -24451,11 +24458,11 @@ void main() {
         }
         const bob = Math.sin(nowSec * 6 + p.offset[idx]) * 0.06;
         const buried = m.burrowed ? 1e-3 : 1;
-        const pop = m.hp > 0 && m.state === "march" ? 1 : 1;
+        const glowPulse = 0.7 + Math.sin(nowSec * 5 + p.offset[idx]) * 0.3;
         const sq = 1 + Math.sin(nowSec * 9 + p.offset[idx]) * 0.07;
         DUMMY.position.set(toX(m.x), p.radius * buried + bob, toZ(m.y));
         DUMMY.rotation.set(0, Math.sin(nowSec * 1.3 + p.offset[idx]) * 0.25, 0);
-        DUMMY.scale.set(1 * sq * pop * buried, (2 - sq) * pop * buried, 1 * sq * pop * buried);
+        DUMMY.scale.set(1 * sq * buried, (2 - sq) * buried, 1 * sq * buried);
         DUMMY.updateMatrix();
         p.mesh.setMatrixAt(idx, DUMMY.matrix);
         const base = new Color(SHAPE_COLOR[shape] ?? "#FF6B57");
@@ -24467,6 +24474,7 @@ void main() {
           const hpr = m.hp / m.maxHp;
           if (hpr < 0.5) base.multiplyScalar(0.55 + hpr * 0.9);
         }
+        base.multiplyScalar(glowPulse);
         p.mesh.setColorAt(idx, base);
       }
       for (const p of this.pools.values()) {
@@ -25018,7 +25026,7 @@ void main() {
     constructor(scene) {
       this.gems = [];
       this.heroPos = { x: 0, z: 0 };
-      const geo = new OctahedronGeometry(0.13, 0);
+      const geo = new OctahedronGeometry(0.22, 0);
       const mat = new MeshBasicMaterial({ color: "#4FC3F7", toneMapped: false });
       this.mesh = new InstancedMesh(geo, mat, CAP2);
       this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -25173,6 +25181,200 @@ void main() {
     }
   };
 
+  // src/adapter/web3d/sfx.ts
+  var Sfx = class {
+    constructor() {
+      this.ctx = null;
+      this.master = null;
+      this.noiseBuf = null;
+      this.muted = false;
+    }
+    ensure() {
+      if (this.muted) return null;
+      if (!this.ctx) {
+        try {
+          this.ctx = new AudioContext();
+          this.master = this.ctx.createGain();
+          this.master.gain.value = 0.16;
+          this.master.connect(this.ctx.destination);
+          const len2 = this.ctx.sampleRate * 0.5;
+          this.noiseBuf = this.ctx.createBuffer(1, len2, this.ctx.sampleRate);
+          const data = this.noiseBuf.getChannelData(0);
+          for (let i = 0; i < len2; i++) data[i] = Math.random() * 2 - 1;
+        } catch {
+          return null;
+        }
+      }
+      if (this.ctx.state === "suspended") void this.ctx.resume();
+      return this.ctx;
+    }
+    toggleMute() {
+      this.muted = !this.muted;
+      if (this.master) this.master.gain.value = this.muted ? 0 : 0.16;
+      return this.muted;
+    }
+    /** 短促射击（方波 blip + 噪声瞬态） */
+    shoot() {
+      const ctx = this.ensure();
+      if (!ctx || !this.master) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(880, t);
+      osc.frequency.exponentialRampToValueAtTime(220, t + 0.08);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.12, t);
+      g.gain.exponentialRampToValueAtTime(1e-3, t + 0.09);
+      osc.connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
+    /** 命中 tick（高频短噪声） */
+    hit() {
+      const ctx = this.ensure();
+      if (!ctx || !this.master || !this.noiseBuf) return;
+      const t = ctx.currentTime;
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuf;
+      src.playbackRate.value = 1.8;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "highpass";
+      filter.frequency.value = 2400;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.09, t);
+      g.gain.exponentialRampToValueAtTime(1e-3, t + 0.05);
+      src.connect(filter).connect(g).connect(this.master);
+      src.start(t);
+      src.stop(t + 0.06);
+    }
+    /** 爆炸（低频正弦下扫 + 噪声轰） */
+    explode() {
+      const ctx = this.ensure();
+      if (!ctx || !this.master || !this.noiseBuf) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(110, t);
+      osc.frequency.exponentialRampToValueAtTime(30, t + 0.4);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.5, t);
+      g.gain.exponentialRampToValueAtTime(1e-3, t + 0.45);
+      osc.connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.5);
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuf;
+      src.playbackRate.value = 0.7;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 900;
+      const g2 = ctx.createGain();
+      g2.gain.setValueAtTime(0.4, t);
+      g2.gain.exponentialRampToValueAtTime(1e-3, t + 0.35);
+      src.connect(lp).connect(g2).connect(this.master);
+      src.start(t);
+      src.stop(t + 0.4);
+    }
+    /** 城墙受击（闷响） */
+    wallHit() {
+      const ctx = this.ensure();
+      if (!ctx || !this.master) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(140, t);
+      osc.frequency.exponentialRampToValueAtTime(55, t + 0.18);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.4, t);
+      g.gain.exponentialRampToValueAtTime(1e-3, t + 0.2);
+      osc.connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.22);
+    }
+    /** 升级（上行琶音） */
+    levelUp() {
+      const ctx = this.ensure();
+      if (!ctx || !this.master) return;
+      const t = ctx.currentTime;
+      [523, 659, 784, 1047].forEach((f, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = "triangle";
+        osc.frequency.value = f;
+        const g = ctx.createGain();
+        const t0 = t + i * 0.07;
+        g.gain.setValueAtTime(1e-3, t0);
+        g.gain.linearRampToValueAtTime(0.2, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(1e-3, t0 + 0.22);
+        osc.connect(g).connect(this.master);
+        osc.start(t0);
+        osc.stop(t0 + 0.25);
+      });
+    }
+    /** 拾取宝石（短叮） */
+    gem() {
+      const ctx = this.ensure();
+      if (!ctx || !this.master) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1318, t);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.08, t);
+      g.gain.exponentialRampToValueAtTime(1e-3, t + 0.08);
+      osc.connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.09);
+    }
+    /** 波次开始（低鸣号角感） */
+    wave() {
+      const ctx = this.ensure();
+      if (!ctx || !this.master) return;
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(98, t);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(1e-3, t);
+      g.gain.linearRampToValueAtTime(0.25, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(1e-3, t + 0.8);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 500;
+      osc.connect(lp).connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.85);
+    }
+  };
+
+  // src/adapter/web3d/start-screen.ts
+  var StartScreen = class {
+    constructor(levelName) {
+      this.onStart = null;
+      this.root = document.createElement("div");
+      this.root.style.cssText = `
+      position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:22px;background:radial-gradient(ellipse 60% 40% at 50% 30%, rgba(53,224,195,.08), transparent), #07080F;
+      font-family:"PingFang SC","Microsoft YaHei",sans-serif;color:#F5F5FA;`;
+      this.root.innerHTML = `
+      <div style="font-size:46px;font-weight:800;letter-spacing:.3em;text-indent:.3em;color:#35E0C3;text-shadow:0 0 40px rgba(53,224,195,.35);">\u82F1\u96C4\u5B88\u536B\u6218</div>
+      <div style="font-size:12px;letter-spacing:.5em;text-indent:.5em;color:rgba(245,245,250,.45);">3 D &nbsp;\u7248 \xB7 ${levelName}</div>
+      <div style="width:120px;height:1px;background:linear-gradient(90deg,transparent,#3D4470,transparent);"></div>
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:14px;color:rgba(245,245,250,.75);text-align:center;line-height:1.9;">
+        <div><b style="color:#35E0C3;">WASD / \u65B9\u5411\u952E</b> \u6216 <b style="color:#35E0C3;">\u6309\u4F4F\u62D6\u62FD</b> \u2014\u2014 \u79FB\u52A8</div>
+        <div>\u6B66\u5668\u81EA\u52A8\u5F00\u706B \xB7 <b style="color:#FFD54F;">\u6570\u5B57\u952E 1~3</b> \u9009\u5347\u7EA7\u5361</div>
+        <div>\u602A\u7269\u4ECE\u5730\u5E73\u7EBF\u88C2\u9699\u6D8C\u6765 \xB7 <b style="color:#FF3D71;">\u5B88\u4F4F\u57CE\u5899</b></div>
+        <div style="font-size:12px;color:rgba(245,245,250,.4);">\u5DE6\u4E0B\u96F7\u8FBE\u770B\u6F0F\u602A \xB7 M \u952E\u9759\u97F3</div>
+      </div>
+      <button id="start3dbtn" style="margin-top:8px;padding:14px 60px;font-size:19px;border:none;border-radius:999px;
+        background:#35E0C3;color:#0B0C1D;font-weight:700;cursor:pointer;letter-spacing:.2em;">\u5F00 \u59CB \u5B88 \u57CE</button>`;
+      document.body.appendChild(this.root);
+      this.root.querySelector("#start3dbtn").addEventListener("click", () => {
+        this.root.remove();
+        this.onStart?.();
+      });
+    }
+  };
+
   // src/adapter/web3d/main.ts
   async function fetchJson(url) {
     const r = await fetch(url);
@@ -25233,6 +25435,19 @@ void main() {
     const wallText = el("w3walltext");
     const xpBar = el("w3xp");
     const hudText = el("w3text");
+    const sfx = new Sfx();
+    let started = false;
+    const startScreen = new StartScreen(level.name);
+    startScreen.onStart = () => {
+      started = true;
+      sfx.wave();
+    };
+    window.addEventListener("keydown", (e) => {
+      if (e.key.toLowerCase() === "m") {
+        const muted = sfx.toggleMute();
+        hint.textContent = muted ? "\u5DF2\u9759\u97F3\uFF08M \u6062\u590D\uFF09" : "WASD / \u65B9\u5411\u952E\u79FB\u52A8\uFF08\u6216\u6309\u4F4F\u62D6\u62FD\uFF09\xB7 \u6570\u5B57\u952E 1~3 \u9009\u5361 \xB7 M \u9759\u97F3";
+      }
+    });
     const input = new Input3D(canvas);
     const session = new GameSession({
       level,
@@ -25281,6 +25496,7 @@ void main() {
       banner.textContent = b;
       banner.style.opacity = "1";
       bannerTimer = 2.2;
+      sfx.wave();
     });
     session.bus.on("onWallHit", ({ dmg, x }) => {
       const halfW = level.arena.width / 2 / 100;
@@ -25288,15 +25504,18 @@ void main() {
       world.wallFlash[segIdx] = 0.18;
       fx.wallDebris(x);
       rig.shake(0.06);
+      sfx.wallHit();
       floats.push(toX(x), 2.2, 1.2, `-${Math.round(dmg)}`, "#FF6B57", 17);
       wallHitMarks.push(x);
     });
     session.bus.on("onShoot", () => {
       world.muzzleLife = 0.05;
+      sfx.shoot();
     });
     session.bus.on("onExplode", ({ x, y, radius }) => {
       fx.explode(x, y, radius);
       rig.shake(0.1);
+      sfx.explode();
     });
     session.bus.on("onChain", ({ points }) => {
       for (const p of points) fx.bolt(p[0], p[1]);
@@ -25310,7 +25529,10 @@ void main() {
         const m = session.monsters[monsterId];
         const shape = m?.cfg.shape ?? "slime";
         if (monsterId !== void 0 && !blocked) monstersR.markHit(monsterId, shape);
-        if (!blocked) fx.hit(x, y, dmgColor(m?.cfg ? "physical" : "physical"), 4);
+        if (!blocked) {
+          fx.hit(x, y, dmgColor("physical"), 4);
+          sfx.hit();
+        }
         if (blocked) {
           floats.push(toX(x), 0.8, toZ(y), "\u6321", "#8A93B8", 15);
           return;
@@ -25334,6 +25556,7 @@ void main() {
       const ky = m?.y ?? 0;
       fx.death(toX(kx), toZ(ky), SHAPE_COLOR2[m?.cfg.shape ?? "slime"] ?? "#FF6B57");
       gems.spawn(toX(kx), toZ(ky));
+      sfx.gem();
     });
     session.bus.on("onBurnTick", ({ dmg, x, y }) => {
       floats.push(toX(x), 0.6, toZ(y), String(Math.round(dmg * 10) / 10), "#FF9A3C", 13);
@@ -25346,6 +25569,17 @@ void main() {
     });
     session.bus.on("onLevelUpPending", () => {
       fx.heal(session.hero.x, session.hero.y, 60);
+      sfx.levelUp();
+    });
+    session.bus.on("onWaveClear", () => {
+      const sec = level.intermissionSec;
+      banner.textContent = `\u2714 \u6CE2\u6B21\u8083\u6E05 \xB7 \u4E0B\u4E00\u6CE2 ${sec}s`;
+      banner.style.color = "#35E0C3";
+      banner.style.opacity = "1";
+      bannerTimer = sec - 0.2;
+      setTimeout(() => {
+        banner.style.color = "#FFD54F";
+      }, sec * 1e3);
     });
     session.bus.on("onGameOver", ({ result }) => {
       const ratio = session.wallHp / session.wallMaxHp;
@@ -25401,7 +25635,7 @@ void main() {
       last = nowMs;
       const dtR = Math.min(0.05, (nowMs - prevRenderMs) / 1e3 || 0.016);
       prevRenderMs = nowMs;
-      const paused = session.pendingLevelChoices.length > 0 || session.result !== null;
+      const paused = !started || session.pendingLevelChoices.length > 0 || session.result !== null;
       acc += dtReal;
       while (acc >= TICK_DT && !paused) {
         session.step();
@@ -25410,7 +25644,19 @@ void main() {
       if (paused) acc = 0;
       refreshCards();
       hero.setTarget(toX(session.hero.x), toZ(session.hero.y));
-      const heroPos = hero.update(dtR, session.timeSec);
+      let face = null;
+      let bestD = Infinity;
+      for (const m of session.monsters) {
+        if (m.burrowed) continue;
+        const dx = m.x - session.hero.x;
+        const dy = m.y - session.hero.y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          face = { x: toX(m.x) - toX(session.hero.x), z: toZ(m.y) - toZ(session.hero.y) };
+        }
+      }
+      const heroPos = hero.update(dtR, session.timeSec, face);
       gems.setHero(heroPos.x, heroPos.z);
       monstersR.sync(session.monsters, session.timeSec, dtR);
       projR.sync(

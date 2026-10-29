@@ -24,7 +24,7 @@ export class GemsRender {
   private heroPos = { x: 0, z: 0 };
 
   constructor(scene: THREE.Scene) {
-    const geo = new THREE.OctahedronGeometry(0.13, 0);
+    const geo = new THREE.OctahedronGeometry(0.22, 0);
     const mat = new THREE.MeshBasicMaterial({ color: '#4FC3F7', toneMapped: false });
     this.mesh = new THREE.InstancedMesh(geo, mat, CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

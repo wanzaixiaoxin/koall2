@@ -68,8 +68,8 @@ export class MonstersRender {
     const cap = POOL_CAPS[key] ?? 40;
     const mat = new THREE.MeshStandardMaterial({
       color: SHAPE_COLOR[key] ?? '#FF6B57',
-      roughness: 0.6, metalness: 0.15,
-      emissive: new THREE.Color(SHAPE_COLOR[key] ?? '#FF6B57').multiplyScalar(0.25),
+      roughness: 0.45, metalness: 0.1,
+      emissive: new THREE.Color(SHAPE_COLOR[key] ?? '#FF6B57').multiplyScalar(0.85),
     });
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -118,11 +118,12 @@ export class MonstersRender {
       }
       const bob = Math.sin(nowSec * 6 + p.offset[idx]) * 0.06;
       const buried = m.burrowed ? 0.001 : 1;
-      const pop = m.hp > 0 && m.state === 'march' ? 1 : 1;
+      // 呼吸发光：每实例相位错开，深色地面也能一眼分辨
+      const glowPulse = 0.7 + Math.sin(nowSec * 5 + p.offset[idx]) * 0.3;
       const sq = 1 + Math.sin(nowSec * 9 + p.offset[idx]) * 0.07; // squash&stretch 脉动
       DUMMY.position.set(toX(m.x), p.radius * buried + bob, toZ(m.y));
       DUMMY.rotation.set(0, Math.sin(nowSec * 1.3 + p.offset[idx]) * 0.25, 0);
-      DUMMY.scale.set(1 * sq * pop * buried, (2 - sq) * pop * buried, 1 * sq * pop * buried);
+      DUMMY.scale.set(1 * sq * buried, (2 - sq) * buried, 1 * sq * buried);
       DUMMY.updateMatrix();
       p.mesh.setMatrixAt(idx, DUMMY.matrix);
 
@@ -136,6 +137,7 @@ export class MonstersRender {
         const hpr = m.hp / m.maxHp;
         if (hpr < 0.5) base.multiplyScalar(0.55 + hpr * 0.9);
       }
+      base.multiplyScalar(glowPulse);
       p.mesh.setColorAt(idx, base);
     }
 

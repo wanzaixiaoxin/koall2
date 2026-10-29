@@ -18,6 +18,8 @@ import { Fx3D } from './render/fx3d';
 import { FloatsRender } from './render/floats';
 import { GemsRender } from './render/gems-render';
 import { ThreatHud } from './threat-hud';
+import { Sfx } from './sfx';
+import { StartScreen } from './start-screen';
 import { Vector3 } from 'three';
 
 interface Palette { damageType: Record<string, string> }
@@ -91,6 +93,19 @@ async function boot(): Promise<void> {
   const xpBar = el<HTMLDivElement>('w3xp');
   const hudText = el<HTMLDivElement>('w3text');
 
+  // ---------- 音效 + 开始画面 ----------
+  const sfx = new Sfx();
+  let started = false;
+  const startScreen = new StartScreen(level.name);
+  // 点击开始前不推进逻辑；开始时解锁 AudioContext
+  startScreen.onStart = () => { started = true; sfx.wave(); };
+  window.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'm') {
+      const muted = sfx.toggleMute();
+      hint.textContent = muted ? '已静音（M 恢复）' : 'WASD / 方向键移动（或按住拖拽）· 数字键 1~3 选卡 · M 静音';
+    }
+  });
+
   // ---------- 输入 + 会话 ----------
   const input = new Input3D(canvas);
   const session = new GameSession({
@@ -134,6 +149,7 @@ async function boot(): Promise<void> {
     banner.textContent = b;
     banner.style.opacity = '1';
     bannerTimer = 2.2;
+    sfx.wave();
   });
 
   session.bus.on<{ dmg: number; x: number; y: number }>('onWallHit', ({ dmg, x }) => {
@@ -143,17 +159,20 @@ async function boot(): Promise<void> {
     world.wallFlash[segIdx] = 0.18;
     fx.wallDebris(x);
     rig.shake(0.06);
+    sfx.wallHit();
     floats.push(toX(x), 2.2, 1.2, `-${Math.round(dmg)}`, '#FF6B57', 17);
     wallHitMarks.push(x);
   });
 
   session.bus.on<Record<string, never>>('onShoot', () => {
     world.muzzleLife = 0.05;
+    sfx.shoot();
   });
 
   session.bus.on<{ x: number; y: number; radius: number }>('onExplode', ({ x, y, radius }) => {
     fx.explode(x, y, radius);
     rig.shake(0.1);
+    sfx.explode();
   });
 
   session.bus.on<{ points: number[][] }>('onChain', ({ points }) => {
@@ -169,7 +188,10 @@ async function boot(): Promise<void> {
       const m: MonsterRuntime | undefined = session.monsters[monsterId];
       const shape = m?.cfg.shape ?? 'slime';
       if (monsterId !== undefined && !blocked) monstersR.markHit(monsterId, shape);
-      if (!blocked) fx.hit(x, y, dmgColor(m?.cfg ? 'physical' : 'physical'), 4);
+      if (!blocked) {
+        fx.hit(x, y, dmgColor('physical'), 4);
+        sfx.hit();
+      }
       if (blocked) {
         floats.push(toX(x), 0.8, toZ(y), '挡', '#8A93B8', 15);
         return;
@@ -189,6 +211,7 @@ async function boot(): Promise<void> {
     const ky = m?.y ?? 0;
     fx.death(toX(kx), toZ(ky), SHAPE_COLOR[m?.cfg.shape ?? 'slime'] ?? '#FF6B57');
     gems.spawn(toX(kx), toZ(ky));
+    sfx.gem();
     void key;
   });
 
@@ -206,6 +229,17 @@ async function boot(): Promise<void> {
 
   session.bus.on<{ level: number }>('onLevelUpPending', () => {
     fx.heal(session.hero.x, session.hero.y, 60);
+    sfx.levelUp();
+  });
+
+  session.bus.on<{ index: number }>('onWaveClear', () => {
+    // 波间预告：下一波倒计时（intermission 由逻辑层控制，这里做视觉预告）
+    const sec = level.intermissionSec;
+    banner.textContent = `✔ 波次肃清 · 下一波 ${sec}s`;
+    banner.style.color = '#35E0C3';
+    banner.style.opacity = '1';
+    bannerTimer = sec - 0.2;
+    setTimeout(() => { banner.style.color = '#FFD54F'; }, sec * 1000);
   });
 
   session.bus.on<{ result: string }>('onGameOver', ({ result }) => {
@@ -274,7 +308,7 @@ async function boot(): Promise<void> {
     const dtR = Math.min(0.05, (nowMs - prevRenderMs) / 1000 || 0.016);
     prevRenderMs = nowMs;
 
-    const paused = session.pendingLevelChoices.length > 0 || session.result !== null;
+    const paused = !started || session.pendingLevelChoices.length > 0 || session.result !== null;
     acc += dtReal;
     while (acc >= TICK_DT && !paused) {
       session.step();
@@ -284,9 +318,18 @@ async function boot(): Promise<void> {
 
     refreshCards();
 
-    // ---- 同步英雄 ----
+    // ---- 同步英雄（朝向 = 最近敌人的方向，表达火力指向） ----
     hero.setTarget(toX(session.hero.x), toZ(session.hero.y));
-    const heroPos = hero.update(dtR, session.timeSec);
+    let face: { x: number; z: number } | null = null;
+    let bestD = Infinity;
+    for (const m of session.monsters) {
+      if (m.burrowed) continue;
+      const dx = m.x - session.hero.x;
+      const dy = m.y - session.hero.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; face = { x: toX(m.x) - toX(session.hero.x), z: toZ(m.y) - toZ(session.hero.y) }; }
+    }
+    const heroPos = hero.update(dtR, session.timeSec, face);
     gems.setHero(heroPos.x, heroPos.z);
 
     // ---- 同步怪物/投射物 ----

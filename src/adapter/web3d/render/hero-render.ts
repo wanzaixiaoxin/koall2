@@ -54,11 +54,18 @@ export class HeroRender {
     this.targetZ = wz;
   }
 
-  /** 平滑插值 + 呼吸；返回当前世界坐标供镜头使用 */
-  update(dt: number, timeSec: number): THREE.Vector3 {
+  /** 平滑插值 + 呼吸；faceDir 为期望朝向（世界 xz 单位向量，null 不变）；返回当前世界坐标供镜头使用 */
+  update(dt: number, timeSec: number, faceDir: { x: number; z: number } | null): THREE.Vector3 {
     const k = 1 - Math.exp(-14 * dt);
     this.group.position.x += (this.targetX - this.group.position.x) * k;
     this.group.position.z += (this.targetZ - this.group.position.z) * k;
+    if (faceDir) {
+      const want = Math.atan2(faceDir.x, faceDir.z);
+      let d = want - this.group.rotation.y;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      this.group.rotation.y += d * (1 - Math.exp(-10 * dt));
+    }
     const breathe = Math.sin(timeSec * 2.4) * 0.03;
     this.body.position.y = 0.55 + breathe;
     this.ring.rotation.z = timeSec * 0.8;
