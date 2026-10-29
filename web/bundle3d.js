@@ -24007,13 +24007,13 @@ void main() {
         float h = vDir.y;                       // -1..1
         vec3 top = vec3(0.028, 0.031, 0.078);   // #07080F
         vec3 mid = vec3(0.070, 0.078, 0.169);   // #12142B
-        vec3 hor = vec3(0.10, 0.07, 0.13);
+        vec3 hor = vec3(0.043, 0.047, 0.114);   // = \u96FE\u8272 #0B0C1D\uFF08\u5BF9\u9F50\u5730\u5E73\u7EBF\u6D88\u63A5\u7F1D\uFF09
         vec3 col = mix(mid, top, smoothstep(0.05, 0.6, h));
         col = mix(hor, col, smoothstep(-0.02, 0.16, h));
         // \u88C2\u9699\uFF1A-Z \u65B9\u5411\u5730\u5E73\u7EBF\u7EA2\u9752\u53CC\u8272\u8F89\u5149
-        float rift = pow(max(0.0, -vDir.z), 3.0) * smoothstep(0.22, 0.0, abs(h - 0.03));
-        col += vec3(0.35, 0.10, 0.16) * rift;             // \u6697\u7EA2\u5E95
-        col += vec3(0.05, 0.30, 0.26) * pow(rift, 2.0);   // \u9752\u8272\u82AF
+        float rift = pow(max(0.0, -vDir.z), 4.0) * smoothstep(0.16, 0.0, abs(h - 0.02));
+        col += vec3(0.28, 0.08, 0.13) * rift;             // \u6697\u7EA2\u5E95
+        col += vec3(0.04, 0.22, 0.19) * pow(rift, 2.0);   // \u9752\u8272\u82AF
         // \u661F\u5149\u9897\u7C92
         float star = step(0.9985, fract(sin(dot(vDir.xy * 417.0, vec2(12.9898, 78.233))) * 43758.5453));
         col += vec3(0.7) * star * smoothstep(0.15, 0.5, h);
@@ -24039,14 +24039,14 @@ void main() {
         emissive: "#000000"
       });
       const m = new Mesh(geo, mat);
-      m.position.set(-wallHalfW + segW * (i + 0.5), 1.6, 0.1);
+      m.position.set(-wallHalfW + segW * (i + 0.5), 1.6, 1.25);
       group.add(m);
       segments.push(m);
       const cap = new Mesh(
         new BoxGeometry(segW - 0.3, 0.32, 1.3),
         new MeshStandardMaterial({ color: "#2E3454", roughness: 0.9 })
       );
-      cap.position.set(m.position.x, 3.36, 0.1);
+      cap.position.set(m.position.x, 3.36, 1.25);
       group.add(cap);
     }
     return { group, segments };
@@ -25011,6 +25011,168 @@ void main() {
     }
   };
 
+  // src/adapter/web3d/render/gems-render.ts
+  var CAP2 = 60;
+  var DUMMY3 = new Object3D();
+  var GemsRender = class {
+    constructor(scene) {
+      this.gems = [];
+      this.heroPos = { x: 0, z: 0 };
+      const geo = new OctahedronGeometry(0.13, 0);
+      const mat = new MeshBasicMaterial({ color: "#4FC3F7", toneMapped: false });
+      this.mesh = new InstancedMesh(geo, mat, CAP2);
+      this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+      this.mesh.frustumCulled = false;
+      for (let i = 0; i < CAP2; i++) {
+        DUMMY3.position.set(0, -50, 0);
+        DUMMY3.scale.setScalar(1e-3);
+        DUMMY3.updateMatrix();
+        this.mesh.setMatrixAt(i, DUMMY3.matrix);
+      }
+      scene.add(this.mesh);
+    }
+    /** onKill：尸体位置弹出宝石（世界坐标入口） */
+    spawn(wx, wz) {
+      if (this.gems.length >= CAP2) this.gems.shift();
+      const a = Math.random() * Math.PI * 2;
+      this.gems.push({
+        x: wx,
+        z: wz,
+        vx: Math.cos(a) * (0.6 + Math.random() * 1.2),
+        vz: Math.sin(a) * (0.6 + Math.random() * 1.2),
+        y: 0.35,
+        vy: 2 + Math.random() * 1.5,
+        t: 0,
+        phase: "burst"
+      });
+    }
+    setHero(wx, wz) {
+      this.heroPos.x = wx;
+      this.heroPos.z = wz;
+    }
+    update(dt) {
+      for (let i = this.gems.length - 1; i >= 0; i--) {
+        const g = this.gems[i];
+        g.t += dt;
+        if (g.phase === "burst") {
+          g.vy -= 9 * dt;
+          g.x += g.vx * dt;
+          g.z += g.vz * dt;
+          g.y += g.vy * dt;
+          if (g.y < 0.12) {
+            g.y = 0.12;
+            g.vy *= -0.45;
+            g.vx *= 0.7;
+            g.vz *= 0.7;
+          }
+          if (g.t > 0.4) g.phase = "fly";
+        } else {
+          const dx = this.heroPos.x - g.x;
+          const dz = this.heroPos.z - g.z;
+          const d = Math.hypot(dx, dz);
+          if (d < 0.5) {
+            this.gems.splice(i, 1);
+            continue;
+          }
+          const sp = Math.min(22, 6 + g.t * 14);
+          g.x += dx / d * sp * dt;
+          g.z += dz / d * sp * dt;
+          g.y += (1 - g.y) * 6 * dt;
+        }
+      }
+      let n = 0;
+      for (const g of this.gems) {
+        if (n >= CAP2) break;
+        DUMMY3.position.set(g.x, g.y + Math.sin(g.t * 8) * 0.04, g.z);
+        DUMMY3.rotation.set(0, g.t * 4, 0);
+        DUMMY3.scale.setScalar(1);
+        DUMMY3.updateMatrix();
+        this.mesh.setMatrixAt(n++, DUMMY3.matrix);
+      }
+      this.mesh.count = n;
+      this.mesh.instanceMatrix.needsUpdate = true;
+    }
+  };
+
+  // src/adapter/web3d/threat-hud.ts
+  var ThreatHud = class {
+    constructor() {
+      this.root = document.createElement("div");
+      this.root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:9;font-family:"PingFang SC","Microsoft YaHei",sans-serif;';
+      document.body.appendChild(this.root);
+      const mk = (side) => {
+        const d = document.createElement("div");
+        d.style.cssText = `position:absolute;top:0;bottom:0;${side}:0;width:12vw;pointer-events:none;
+        opacity:0;transition:opacity .18s;
+        background:linear-gradient(to ${side === "left" ? "right" : "left"}, rgba(255,61,113,.55), transparent);`;
+        this.root.appendChild(d);
+        return d;
+      };
+      this.edgeL = mk("left");
+      this.edgeR = mk("right");
+      this.compass = document.createElement("canvas");
+      this.compass.width = 680;
+      this.compass.height = 18;
+      this.compass.style.cssText = "position:absolute;top:44px;left:50%;transform:translateX(-50%);width:min(680px,86vw);height:14px;opacity:.9;";
+      this.root.appendChild(this.compass);
+      this.compassCtx = this.compass.getContext("2d");
+      this.radar = document.createElement("canvas");
+      this.radar.width = 240;
+      this.radar.height = 152;
+      this.radar.style.cssText = "position:absolute;left:14px;bottom:14px;width:120px;height:76px;border-radius:8px;opacity:.85;";
+      this.root.appendChild(this.radar);
+      this.radarCtx = this.radar.getContext("2d");
+    }
+    /** 每渲染帧：monsters 为逻辑怪物数组，wallHits 本帧受击 x 列表 */
+    update(monsters, wallHits, wallRatio) {
+      let wL = 0;
+      let wR = 0;
+      for (const m of monsters) {
+        const d = m.y - WALL_Y;
+        if (d > 420) continue;
+        const nx = (m.x - 540) / 540;
+        if (nx < -0.3) wL += Math.min(1, (420 - d) / 420);
+        else if (nx > 0.3) wR += Math.min(1, (420 - d) / 420);
+      }
+      this.edgeL.style.opacity = String(Math.min(0.9, wL * 0.35));
+      this.edgeR.style.opacity = String(Math.min(0.9, wR * 0.35));
+      const g = this.compassCtx;
+      g.clearRect(0, 0, 680, 18);
+      g.fillStyle = "rgba(255,255,255,0.08)";
+      g.fillRect(0, 4, 680, 8);
+      g.fillStyle = wallRatio < 0.3 ? "#FF3D71" : "#3D4470";
+      g.fillRect(0, 4, 680 * wallRatio, 8);
+      for (const hx of wallHits) {
+        const nx = (hx - 540) / 1080;
+        g.fillStyle = "#FF6B57";
+        g.beginPath();
+        g.arc(nx * 680, 8, 7, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = "rgba(255,107,87,.5)";
+        g.beginPath();
+        g.arc(nx * 680, 8, 12, 0, Math.PI * 2);
+        g.stroke();
+      }
+      const r = this.radarCtx;
+      r.clearRect(0, 0, 240, 152);
+      r.fillStyle = "rgba(11,12,29,0.72)";
+      r.fillRect(0, 0, 240, 152);
+      r.strokeStyle = "rgba(53,224,195,0.5)";
+      r.strokeRect(0.5, 0.5, 239, 151);
+      r.fillStyle = "rgba(61,68,112,0.9)";
+      r.fillRect(0, 128, 240, 6);
+      for (const m of monsters) {
+        if (m.burrowed) continue;
+        const px2 = (m.x - 0) / 1080 * 240;
+        const py2 = 128 - (m.y - WALL_Y) / 1900 * 128;
+        const threat = Math.max(0, 1 - (m.y - WALL_Y) / 900);
+        r.fillStyle = threat > 0.66 ? "#FF3D71" : threat > 0.33 ? "#FF9A3C" : "rgba(255,107,87,0.45)";
+        const s = 3 + threat * 3;
+        r.fillRect(px2 - s / 2, py2 - s / 2, s, s);
+      }
+    }
+  };
+
   // src/adapter/web3d/main.ts
   async function fetchJson(url) {
     const r = await fetch(url);
@@ -25091,6 +25253,9 @@ void main() {
     projR.setScene(world.scene);
     const fx = new Fx3D(world.scene);
     const floats = new FloatsRender(new Vector3());
+    const gems = new GemsRender(world.scene);
+    const threat = new ThreatHud();
+    const wallHitMarks = [];
     const SHAPE_COLOR2 = {
       slime: "#7CB342",
       larva: "#9CCC65",
@@ -25123,7 +25288,8 @@ void main() {
       world.wallFlash[segIdx] = 0.18;
       fx.wallDebris(x);
       rig.shake(0.06);
-      floats.push(toX(x), 2.2, 0.6, `-${Math.round(dmg)}`, "#FF6B57", 17);
+      floats.push(toX(x), 2.2, 1.2, `-${Math.round(dmg)}`, "#FF6B57", 17);
+      wallHitMarks.push(x);
     });
     session.bus.on("onShoot", () => {
       world.muzzleLife = 0.05;
@@ -25164,7 +25330,10 @@ void main() {
     );
     session.bus.on("onKill", ({ monsterId, key }) => {
       const m = session.monsters[monsterId];
-      fx.death(toX(m?.x ?? 0), toZ(m?.y ?? 0), SHAPE_COLOR2[m?.cfg.shape ?? "slime"] ?? "#FF6B57");
+      const kx = m?.x ?? 0;
+      const ky = m?.y ?? 0;
+      fx.death(toX(kx), toZ(ky), SHAPE_COLOR2[m?.cfg.shape ?? "slime"] ?? "#FF6B57");
+      gems.spawn(toX(kx), toZ(ky));
     });
     session.bus.on("onBurnTick", ({ dmg, x, y }) => {
       floats.push(toX(x), 0.6, toZ(y), String(Math.round(dmg * 10) / 10), "#FF9A3C", 13);
@@ -25242,6 +25411,7 @@ void main() {
       refreshCards();
       hero.setTarget(toX(session.hero.x), toZ(session.hero.y));
       const heroPos = hero.update(dtR, session.timeSec);
+      gems.setHero(heroPos.x, heroPos.z);
       monstersR.sync(session.monsters, session.timeSec, dtR);
       projR.sync(
         session.projectiles,
@@ -25276,7 +25446,10 @@ void main() {
         }
       }
       fx.update(dtR);
+      gems.update(dtR);
       floats.update(world.camera, window.innerWidth, window.innerHeight, dtR);
+      threat.update(session.monsters, wallHitMarks, session.wallHp / session.wallMaxHp);
+      wallHitMarks.length = 0;
       if (bannerTimer > 0) {
         bannerTimer -= dtR;
         if (bannerTimer <= 0) banner.style.opacity = "0";

@@ -16,6 +16,8 @@ import { MonstersRender } from './render/monsters-render';
 import { ProjectilesRender } from './render/projectiles-render';
 import { Fx3D } from './render/fx3d';
 import { FloatsRender } from './render/floats';
+import { GemsRender } from './render/gems-render';
+import { ThreatHud } from './threat-hud';
 import { Vector3 } from 'three';
 
 interface Palette { damageType: Record<string, string> }
@@ -112,6 +114,9 @@ async function boot(): Promise<void> {
   projR.setScene(world.scene);
   const fx = new Fx3D(world.scene);
   const floats = new FloatsRender(new Vector3());
+  const gems = new GemsRender(world.scene);
+  const threat = new ThreatHud();
+  const wallHitMarks: number[] = [];   // 本帧城墙受击 x（罗盘用）
 
   const SHAPE_COLOR: Record<string, string> = {
     slime: '#7CB342', larva: '#9CCC65', wolf: '#FF6B57', charger: '#FF8A50',
@@ -138,7 +143,8 @@ async function boot(): Promise<void> {
     world.wallFlash[segIdx] = 0.18;
     fx.wallDebris(x);
     rig.shake(0.06);
-    floats.push(toX(x), 2.2, 0.6, `-${Math.round(dmg)}`, '#FF6B57', 17);
+    floats.push(toX(x), 2.2, 1.2, `-${Math.round(dmg)}`, '#FF6B57', 17);
+    wallHitMarks.push(x);
   });
 
   session.bus.on<Record<string, never>>('onShoot', () => {
@@ -179,7 +185,10 @@ async function boot(): Promise<void> {
 
   session.bus.on<{ monsterId: number; key: string }>('onKill', ({ monsterId, key }) => {
     const m = session.monsters[monsterId];
-    fx.death(toX(m?.x ?? 0), toZ(m?.y ?? 0), SHAPE_COLOR[m?.cfg.shape ?? 'slime'] ?? '#FF6B57');
+    const kx = m?.x ?? 0;
+    const ky = m?.y ?? 0;
+    fx.death(toX(kx), toZ(ky), SHAPE_COLOR[m?.cfg.shape ?? 'slime'] ?? '#FF6B57');
+    gems.spawn(toX(kx), toZ(ky));
     void key;
   });
 
@@ -278,6 +287,7 @@ async function boot(): Promise<void> {
     // ---- 同步英雄 ----
     hero.setTarget(toX(session.hero.x), toZ(session.hero.y));
     const heroPos = hero.update(dtR, session.timeSec);
+    gems.setHero(heroPos.x, heroPos.z);
 
     // ---- 同步怪物/投射物 ----
     monstersR.sync(session.monsters, session.timeSec, dtR);
@@ -312,9 +322,14 @@ async function boot(): Promise<void> {
       }
     }
 
-    // ---- 粒子/飘字 ----
+    // ---- 粒子/飘字/宝石 ----
     fx.update(dtR);
+    gems.update(dtR);
     floats.update(world.camera, window.innerWidth, window.innerHeight, dtR);
+
+    // ---- 威胁三件套 ----
+    threat.update(session.monsters, wallHitMarks, session.wallHp / session.wallMaxHp);
+    wallHitMarks.length = 0;
 
     // ---- 横幅计时 ----
     if (bannerTimer > 0) {

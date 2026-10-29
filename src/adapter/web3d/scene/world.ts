@@ -65,19 +65,19 @@ function makeSky(): THREE.Mesh {
         vec4 p = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * p;
       }`,
-    fragmentShader: /* glsl */`
+      fragmentShader: /* glsl */`
       varying vec3 vDir;
       void main() {
         float h = vDir.y;                       // -1..1
         vec3 top = vec3(0.028, 0.031, 0.078);   // #07080F
         vec3 mid = vec3(0.070, 0.078, 0.169);   // #12142B
-        vec3 hor = vec3(0.10, 0.07, 0.13);
+        vec3 hor = vec3(0.043, 0.047, 0.114);   // = 雾色 #0B0C1D（对齐地平线消接缝）
         vec3 col = mix(mid, top, smoothstep(0.05, 0.6, h));
         col = mix(hor, col, smoothstep(-0.02, 0.16, h));
         // 裂隙：-Z 方向地平线红青双色辉光
-        float rift = pow(max(0.0, -vDir.z), 3.0) * smoothstep(0.22, 0.0, abs(h - 0.03));
-        col += vec3(0.35, 0.10, 0.16) * rift;             // 暗红底
-        col += vec3(0.05, 0.30, 0.26) * pow(rift, 2.0);   // 青色芯
+        float rift = pow(max(0.0, -vDir.z), 4.0) * smoothstep(0.16, 0.0, abs(h - 0.02));
+        col += vec3(0.28, 0.08, 0.13) * rift;             // 暗红底
+        col += vec3(0.04, 0.22, 0.19) * pow(rift, 2.0);   // 青色芯
         // 星光颗粒
         float star = step(0.9985, fract(sin(dot(vDir.xy * 417.0, vec2(12.9898, 78.233))) * 43758.5453));
         col += vec3(0.7) * star * smoothstep(0.15, 0.5, h);
@@ -89,7 +89,7 @@ function makeSky(): THREE.Mesh {
   return sky;
 }
 
-/** 城墙：12 段石砖体块，横跨全宽，位于 z=0（受击红闪由 main 驱动） */
+/** 城墙：12 段石砖体块，横跨全宽（墙体在 z=0.7..1.8，避免与英雄最小 yMin=96→z=-0.32 穿模） */
 function makeWall(wallHalfW: number): { group: THREE.Group; segments: THREE.Mesh[] } {
   const group = new THREE.Group();
   const segs = 12;
@@ -102,7 +102,7 @@ function makeWall(wallHalfW: number): { group: THREE.Group; segments: THREE.Mesh
       emissive: '#000000',
     });
     const m = new THREE.Mesh(geo, mat);
-    m.position.set(-wallHalfW + segW * (i + 0.5), 1.6, 0.1);
+    m.position.set(-wallHalfW + segW * (i + 0.5), 1.6, 1.25);
     group.add(m);
     segments.push(m);
     // 城垛
@@ -110,7 +110,7 @@ function makeWall(wallHalfW: number): { group: THREE.Group; segments: THREE.Mesh
       new THREE.BoxGeometry(segW - 0.3, 0.32, 1.3),
       new THREE.MeshStandardMaterial({ color: '#2E3454', roughness: 0.9 }),
     );
-    cap.position.set(m.position.x, 3.36, 0.1);
+    cap.position.set(m.position.x, 3.36, 1.25);
     group.add(cap);
   }
   return { group, segments };
