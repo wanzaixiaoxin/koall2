@@ -75,8 +75,9 @@ export interface MonsterConfig {
   burnImmune?: boolean;
   /** 治疗光环：每 interval 秒为半径内友军回血 amount（不可超过上限） */
   healAura?: { radius: number; amount: number; interval: number };
-  /** 定时分裂：每 interval 秒在身旁分裂 1 只 splitBaby（幼体不可再分裂） */
-  splitTimer?: { interval: number; baby: string };
+  /** 定时分裂：每 interval 秒在身旁分裂 1 只 splitBaby（幼体不可再分裂）
+   *  inheritHp：幼体血条与母体一致（分裂菇专用；虫后幼虫用自身血量） */
+  splitTimer?: { interval: number; baby: string; inheritHp?: boolean };
   /** 死亡分裂：死亡时分裂为 count 只 splitBaby（splitter 行为） */
   deathSplit?: { count: number; baby: string };
   /** 出场护卫：生成时在自身周围 radius 半径部署 count 只 escort 怪（环形站位） */
@@ -87,8 +88,11 @@ export interface MonsterConfig {
   formationDist?: number;
   /** 钻地回血（爬虫）：血量低于 maxHp×threshold 时钻地 duration 秒，出土回复 maxHp×heal */
   burrowRegen?: { threshold: number; duration: number; heal: number };
-  /** 钻地攻墙（潜伏者）：行进到距墙 dist 时永久钻地，以 attackInterval/atk 刺击城墙，只能被爆炸/火焰轰出 */
-  burrowSiege?: { dist: number };
+  /** 钻地攻墙（潜伏者）：行进到距墙 dist 时钻地，以 attackInterval/atk 刺击城墙；
+   *  每 surfaceEvery 秒上浮 surfaceFor 秒（可索敌/可击杀，不再永久隐身），爆炸/火焰可提前轰出 */
+  burrowSiege?: { dist: number; surfaceEvery?: number; surfaceFor?: number };
+  /** 变态（虫后幼虫）：delay 秒后随机变为 pool 中某形态（按权重；虫后除外），新形态按波次/扩张重算血量 */
+  morph?: { delay: number; pool: { id: string; weight: number }[] };
   /** 钻地冲锋（雷兽）：每 interval 秒钻地 duration 秒，出现在墙前并重击城墙 dmg */
   burrowCharge?: { interval: number; duration: number; dmg: number };
   /** 自爆（毒爆虫）：接触城墙或死亡时爆炸，造成 wallDamage 城防伤害 */
@@ -295,6 +299,10 @@ export interface MonsterRuntime {
   /** 钻地状态（docs/08）：不可索敌/不可命中/免疫DoT；burrowTimer 为地下倒计时 */
   burrowed: boolean;
   burrowTimer: number;
+  /** 上浮剩余时间（>0 期间不重新入地；潜伏者周期上浮用） */
+  surfaceLeft: number;
+  /** 变态倒计时（虫后幼虫；0 = 不变态/已完成） */
+  morphLeft: number;
   /** 本 tick 已结算击杀（防止连锁/DoT/弹坑等多伤害源同 tick 重复计数） */
   dead: boolean;
   creepTimerLeft: number;  // 虫苔铺设计时（creepTrail）

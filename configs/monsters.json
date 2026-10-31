@@ -136,7 +136,8 @@
       "shape": "shroom",
       "splitTimer": {
         "interval": 6,
-        "baby": "shroom_baby"
+        "baby": "shroom_baby",
+        "inheritHp": true
       },
       "deathSplit": {
         "count": 2,
@@ -245,7 +246,33 @@
       "creepBenefit": true,
       "shape": "lurker",
       "burrowSiege": {
-        "dist": 400
+        "dist": 400,
+        "surfaceEvery": 10,
+        "surfaceFor": 10
+      }
+    },
+    {
+      "id": "zerg_larva",
+      "name": "幼虫",
+      "hp": 140,
+      "def": 0,
+      "speed": 60,
+      "radius": 12,
+      "atk": 15,
+      "attackInterval": 1.2,
+      "behavior": "march",
+      "xp": 12,
+      "creepBenefit": true,
+      "shape": "larva",
+      "morph": {
+        "delay": 5,
+        "pool": [
+          { "id": "zerg_ling", "weight": 35 },
+          { "id": "baneling", "weight": 20 },
+          { "id": "zerg_roach", "weight": 25 },
+          { "id": "zerg_lurker", "weight": 15 },
+          { "id": "zerg_ultra", "weight": 5 }
+        ]
       }
     },
     {
@@ -271,7 +298,7 @@
       },
       "splitTimer": {
         "interval": 8,
-        "baby": "zerg_ling"
+        "baby": "zerg_larva"
       }
     },
     {

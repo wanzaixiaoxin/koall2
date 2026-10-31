@@ -224,7 +224,10 @@ export class GameSession {
   segments: SegmentField[] = []; // 光束/连线伤害场（docs/07 §4）
   /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
   creep = new Map<number, number>();
-  /** 虫苔版本号（任一次增删 +1；web 渲染层据此重建离屏缓存） */
+  /** 菌毯灼烧层（docs/08 §2.2）：仅记录受损格 → 剩余层数（缺失 = 满层）；
+   *  火焰每命中烧 1 层，烧到 0 格毁并被火焰清除；蔓延节拍给受损格回层。 */
+  creepHp = new Map<number, number>();
+  /** 虫苔版本号（任一次增删/烧伤 +1；web 渲染层据此重建离屏缓存） */
   creepVersion = 0;
   /** 最近新生虫苔（渲染层蔓延光环用）：坐标 + 发生时刻，短名单自动裁剪 */
   creepGlow: { x: number; y: number; t: number }[] = [];
@@ -237,12 +240,15 @@ export class GameSession {
   /** 虫苔蔓延：每 interval 秒每个地块尝试向外扩一格（概率 chance；成功则向随机邻格生长并续期自身） */
   private static readonly CREEP_SPREAD_INTERVAL = 3;
   private static readonly CREEP_SPREAD_CHANCE = 0.12;
+  /** 菌毯灼烧层（docs/08 §2.2）：每格 3 层"血量"，火焰每命中一次烧 1 层，烧穿才格毁；
+   *  蔓延节拍会给受损格回 1 层（持续火压制仍能清毯，零星火焰烧不穿）。 */
+  static readonly CREEP_LAYERS = 3;
   /** 虫巢扩张等级：按历史峰值覆盖格数分档（T1 起始，T2/T3/T4 阈值，docs/08 §2.4） */
   private static readonly CREEP_TIER_CELLS = [60, 120, 190];
   /** 各等级全族增益：攻击倍率 / 血量倍率 / 站毯每秒回血（docs/08 §2.4） */
   private static readonly CREEP_ATK_MUL = [1, 1.1, 1.2, 1.3];
   private static readonly CREEP_HP_MUL = [1, 1.08, 1.16, 1.25];
-  private static readonly CREEP_REGEN = [6, 10, 14, 18];
+  private static readonly CREEP_REGEN = [10, 16, 24, 36];
 
   wallHp: number;
   wallMaxHp: number; // 可被 B 类卡（加固城墙）提升
@@ -418,6 +424,11 @@ export class GameSession {
       }
       this.tickBurns(m, dt);
       if (m.hp <= 0) continue;
+      // 变态（虫后幼虫，docs/08 §2.6）：倒计时结束随机变为池中虫形态（虫后除外）
+      if (m.cfg.morph) {
+        m.morphLeft -= dt;
+        if (m.morphLeft <= 0) this.morphMonster(m);
+      }
       if (m.cfg.creepTrail && m.state === 'march') {
         m.creepTimerLeft -= dt;
         if (m.creepTimerLeft <= 0) {
@@ -455,13 +466,14 @@ export class GameSession {
     // 5c) 虫苔：蔓延 → 过期清理 → 虫巢扩张等级结算（docs/08 §2.2/§2.4）
     this.tickCreep(dt);
 
-    // 5c) 定时分裂：分裂菇周期性分出幼体（幼体血条与母体一致、速度更快、不可再分裂）
+    // 5c) 定时分裂：分裂菇周期性分出幼体（幼体血条与母体一致、速度更快、不可再分裂）；
+    //     虫后产幼虫（幼虫用自身血量，delay 后变态，docs/08 §2.6）
     for (const m of this.monsters) {
       if (!m.cfg.splitTimer || m.hp <= 0) continue;
       m.splitTimerLeft -= dt;
       if (m.splitTimerLeft > 0) continue;
       m.splitTimerLeft += m.cfg.splitTimer.interval;
-      this.spawnBaby(m, m.cfg.splitTimer.baby, 1);
+      this.spawnBaby(m, m.cfg.splitTimer.baby, 1, m.cfg.splitTimer.inheritHp ?? false);
     }
 
     // 5d) 巫师编队：领队近墙激活变阵（护卫排一排啃墙、巫师居中）；编队成员由 formationMove 驱动
@@ -519,11 +531,12 @@ export class GameSession {
     //    跳伤在过期清理之前结算：寿命终点那一跳（覆盖最后一个 0.5s 窗口）照常生效
     for (let i = this.pools.length - 1; i >= 0; i--) {
       const pool = this.pools[i];
-      if (pool.damageType === 'fire') this.burnCreep(pool.x, pool.y, pool.radius); // 火焰烧虫苔
       const tick = now >= pool.nextTick;
       let dmg = 0;
       if (tick) {
         pool.nextTick = now + 0.5;
+        // 火焰圈跟随 0.5s 跳伤节拍烧毯（不是每帧）：灼烧层机制下持续踩圈才烧穿（docs/08 §2.2）
+        if (pool.damageType === 'fire') this.burnCreep(pool.x, pool.y, pool.radius);
         pool.acc += pool.dps * 0.5;
         dmg = Math.floor(pool.acc); // 整数结算，零头结转下一跳（总伤 = dps×时长，取整不丢）
         pool.acc -= dmg;
@@ -693,6 +706,8 @@ export class GameSession {
       splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
       burrowed: false,
       burrowTimer: 0,
+      surfaceLeft: 0,
+      morphLeft: cfg.morph ? cfg.morph.delay : 0,
       dead: false,
       creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
       regenAcc: 0,
@@ -1041,6 +1056,7 @@ export class GameSession {
     for (const [key, until] of this.creep) {
       if (until <= now) {
         this.creep.delete(key);
+        this.creepHp.delete(key);
         this.creepVersion++;
       }
     }
@@ -1079,14 +1095,26 @@ export class GameSession {
         this.dropCreep(nx * c + c / 2, ny * c + c / 2);
       }
       this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE); // 续期：虫苔是活领土，只被火焰清除
+      this.regrowCreepLayer(key); // 蔓延节拍回层：受损格每节拍恢复 1 层焦痕
     }
+  }
+
+  /** 恢复 1 层灼烧层（上限满层；满层时清掉记录）。 */
+  private regrowCreepLayer(key: number): void {
+    const layers = this.creepHp.get(key);
+    if (layers === undefined) return; // 已是满层
+    const next = layers + 1;
+    if (next >= GameSession.CREEP_LAYERS) this.creepHp.delete(key);
+    else this.creepHp.set(key, next);
+    this.creepVersion++; // 焦痕视觉变化，重绘缓存
   }
 
   private dropCreep(x: number, y: number): void {
     const c = GameSession.CREEP_CELL;
     const key = this.creepKey(x, y);
     if (this.creep.has(key)) {
-      this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE); // 已有格：仅续期（无视觉变化）
+      this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE); // 已有格：续期
+      this.regrowCreepLayer(key); // 虫后在本格持续铺毯 → 焦痕回层
       return;
     }
     this.creepGlow.push({ x: Math.floor(x / c) * c + c / 2, y: Math.floor(y / c) * c + c / 2, t: this.timeSec });
@@ -1096,19 +1124,19 @@ export class GameSession {
   }
 
   /**
-   * 从菌毯中孵化（docs/08 §2.5）：放行时刻从当前虫苔里随机挑一格钻出（避开城墙近前，给反应窗口）；
-   * 可用虫苔不足 6 格时返回 false，落回顶部出生带（前期没地盘时与普通波次表现一致）。
+   * 从菌毯中孵化（docs/08 §2.5）：放行时刻从当前虫苔里随机挑一格钻出（避开城墙贴脸，留一点反应窗口）；
+   * 可用虫苔不足 3 格时返回 false，落回顶部出生带（前期没地盘时与普通波次表现一致）。
    */
   private trySpawnFromCreep(item: SpawnItem): boolean {
     const c = GameSession.CREEP_CELL;
-    const minY = this.level.wall.height + 450;
+    const minY = this.level.wall.height + 300;
     const maxY = this.level.arena.height - 100;
     const candidates: number[] = [];
     for (const key of this.creep.keys()) {
       const y = (key % 4096) * c + c / 2;
       if (y >= minY && y <= maxY) candidates.push(key);
     }
-    if (candidates.length < 6) return false;
+    if (candidates.length < 3) return false;
     const key = candidates[this.rng.int(0, candidates.length - 1)];
     const x = clamp(Math.floor(key / 4096) * c + c / 2 + this.rng.range(-25, 25), 40, this.level.arena.width - 40);
     const y = (key % 4096) * c + c / 2 + this.rng.range(-20, 20);
@@ -1117,7 +1145,8 @@ export class GameSession {
     return true;
   }
 
-  /** 火焰清除虫苔：清除以 (x,y) 半径 r 内所有虫苔格。 */
+  /** 火焰灼烧虫苔（docs/08 §2.2）：半径内每格烧掉 1 层灼烧层；烧穿（0 层）才清除该格，
+   *  焦痕随蔓延节拍/虫后铺毯回层——零星火焰烧不穿整片毯，持续火压制才能清出走廊。 */
   private burnCreep(x: number, y: number, r: number): void {
     const c = GameSession.CREEP_CELL;
     const minCx = Math.floor((x - r) / c);
@@ -1126,16 +1155,31 @@ export class GameSession {
     const maxCy = Math.floor((y + r) / c);
     for (let cx = minCx; cx <= maxCx; cx++) {
       for (let cy = minCy; cy <= maxCy; cy++) {
-        this.creep.delete(cx * 4096 + cy);
+        const key = cx * 4096 + cy;
+        if (!this.creep.has(key)) continue;
+        const layers = (this.creepHp.get(key) ?? GameSession.CREEP_LAYERS) - 1;
+        if (layers <= 0) {
+          this.creep.delete(key);
+          this.creepHp.delete(key);
+        } else {
+          this.creepHp.set(key, layers);
+        }
+        this.creepVersion++;
       }
     }
   }
 
-  /** 强制出土：钻地怪被爆炸/火焰波及立即出土。 */
+  /** 测试入口：火焰灼烧虫苔（与火焰命中同一条 burnCreep 路径）。 */
+  debugBurnCreep(x: number, y: number, r: number): void {
+    this.burnCreep(x, y, r);
+  }
+
+  /** 强制出土：钻地怪被爆炸/火焰波及立即出土（同样给足上浮窗口，否则一帧后又会缩回地下）。 */
   private forceEmerge(m: MonsterRuntime): void {
     if (m.burrowed) {
       m.burrowed = false;
       m.burrowTimer = 0;
+      m.surfaceLeft = Math.max(m.surfaceLeft, m.cfg.burrowSiege?.surfaceFor ?? 0);
     }
   }
 
@@ -1462,8 +1506,8 @@ export class GameSession {
     this.bus.emit('onLevelUp', { level: this.hero.level, picked: picked.id });
   }
 
-  /** 分裂幼体：血条与母体一致（maxHp 覆盖），速度取幼体配置（更快），不可再分裂。 */
-  private spawnBaby(parent: MonsterRuntime, babyKey: string, count: number): void {
+  /** 分裂幼体：inheritHp = 血条与母体一致（分裂菇）；速度取幼体配置（更快），不可再分裂。 */
+  private spawnBaby(parent: MonsterRuntime, babyKey: string, count: number, inheritHp = true): void {
     for (let i = 0; i < count; i++) {
       const ang = this.rng.range(0, Math.PI * 2);
       const bx = clamp(parent.x + Math.cos(ang) * (parent.cfg.radius + 20), 40, this.level.arena.width - 40);
@@ -1471,10 +1515,46 @@ export class GameSession {
       const before = this.monsters.length;
       this.spawnMonster(babyKey, bx, by);
       const baby = this.monsters[this.monsters.length - 1];
-      if (this.monsters.length > before) {
+      if (this.monsters.length > before && inheritHp) {
         baby.hp = baby.maxHp = parent.maxHp; // 血条一样
       }
     }
+  }
+
+  /**
+   * 变态（docs/08 §2.6 虫后幼虫）：按权重随机变为池中虫形态（虫后除外），
+   * 新形态血量按波次成长 + 虫巢扩张倍率重算（与 spawnMonster 同式），并播出土烟尘。
+   */
+  private morphMonster(m: MonsterRuntime): void {
+    const morph = m.cfg.morph;
+    m.morphLeft = 0;
+    if (!morph || morph.pool.length === 0) return;
+    let total = 0;
+    for (const e of morph.pool) total += e.weight;
+    let roll = this.rng.range(0, total);
+    let pick = morph.pool[morph.pool.length - 1].id;
+    for (const e of morph.pool) {
+      roll -= e.weight;
+      if (roll <= 0) { pick = e.id; break; }
+    }
+    const cfg = this.monsterCfgs.get(pick);
+    if (!cfg) return;
+    const scale = 1 + 0.1 * this.director.currentWave;
+    const tier = this.creepTier;
+    const hp = Math.round(cfg.hp * scale * (cfg.creepBenefit ? GameSession.CREEP_HP_MUL[tier - 1] : 1));
+    m.cfg = cfg;
+    m.hp = hp;
+    m.maxHp = hp;
+    m.state = 'march';
+    m.attackTimer = cfg.attackInterval;
+    m.burrowed = false;
+    m.burrowTimer = 0;
+    m.surfaceLeft = 0;
+    m.splitTimerLeft = cfg.splitTimer ? cfg.splitTimer.interval : 0;
+    m.healTimer = cfg.healAura ? cfg.healAura.interval : 0;
+    m.creepTimerLeft = cfg.creepTrail ? cfg.creepTrail.interval : 0;
+    m.regenAcc = 0;
+    this.bus.emit('onMonsterEmerge', { x: m.x, y: m.y }); // 蜕变烟尘（复用菌毯孵化出土视觉）
   }
 
   private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime): void {
@@ -1487,7 +1567,7 @@ export class GameSession {
 
     // 死亡分裂：splitter 死亡裂为 N 只幼体（不可再分裂）
     if (m.cfg.deathSplit) {
-      this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
+      this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count, true);
     }
 
     // 自爆（毒爆虫）：仅贴墙爆炸才伤城墙（docs/08"逼玩家中途拦截"——野外点燃拦截则爆炸波及不到墙）

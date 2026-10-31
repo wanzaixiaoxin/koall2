@@ -488,14 +488,67 @@ const tests: TestCase[] = [
     const after = s.monsters.filter((m) => m.cfg.id === 'shroom_baby').length;
     return after >= 2 ? true : `死后分裂 ${after} 只（应 ≥2）`;
   } },
-  { name: 'Z-虫族：爬虫低血钻地回血、潜伏者不可被直击、爆炸强制出土', run: () => {
+  { name: 'Z-虫族：潜伏者钻地后不可被直击；爆炸可提前轰出（周期上浮见下条）', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 10000;
+    s.wallHp = 10000;
+    s.debugSpawn('zerg_lurker', 540, 460); // 距墙 396 ≈ siegeDist 400+r → 接近即钻地
+    const lurker = s.monsters.find((m) => m.cfg.id === 'zerg_lurker')!;
+    const lurkerBurrowed = runFor(s, 2, () => lurker.burrowed);
+    if (!lurkerBurrowed) return '潜伏者未钻地';
+    runFor(s, 2, () => false);
+    // 爆炸强制出土：在潜伏者脚下放火属性伤害圈（surfaceEvery=10 前完成，验证的是"轰出"而非"到点上浮"）
+    s.debugLink(lurker.x - 10, lurker.y, lurker.x + 10, lurker.y, 60, 0.5, 120);
+    s.debugLink(lurker.x, lurker.y - 10, lurker.x, lurker.y + 10, 60, 0.5, 120);
+    return runFor(s, 2, () => !lurker.burrowed) ? true : '爆炸未轰出潜伏者';
+  } },
+  { name: 'Z-虫族：潜伏者周期上浮（不再永久隐身，上浮期可索敌击杀；结束后重新入地）', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 10000;
+    s.wallHp = 10000;
+    s.debugSpawn('zerg_lurker', 540, 460);
+    const lurker = s.monsters.find((m) => m.cfg.id === 'zerg_lurker')!;
+    const every = lurker.cfg.burrowSiege!.surfaceEvery!;
+    const forSec = lurker.cfg.burrowSiege!.surfaceFor!;
+    lurker.hp = lurker.maxHp = 1e6; // 测试靶：避免上浮期被英雄直接打死，专注验证周期
+    if (!runFor(s, 2, () => lurker.burrowed)) return '潜伏者未入地';
+    // 周期前保持钻地（打不到）
+    if (runFor(s, every - 2, () => !lurker.burrowed)) return `潜伏者提前上浮（应 ${every}s 周期）`;
+    if (!runFor(s, 3, () => !lurker.burrowed)) return `潜伏者 ${every}s 后仍未上浮（永久隐身）`;
+    // 上浮期可索敌：英雄直接命中掉血
+    const hp0 = lurker.hp;
+    runFor(s, 2.5, () => false);
+    if (!(lurker.hp < hp0)) return '上浮期仍无法被攻击（hp 未下降）';
+    if (forSec > 4 && lurker.burrowed) return '上浮期太短，立即又入地（无击杀窗口）';
+    // 上浮结束后重新入地
+    return runFor(s, forSec + 2, () => lurker.burrowed) ? true : '上浮结束后未重新入地';
+  } },
+  { name: 'Z-虫族：虫后产幼虫（自身血量，不继承 2000）→ 5s 后变态为池中随机形态（不含虫后）', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 10000;
+    s.wallHp = 10000;
+    s.debugSpawn('zerg_queen', 540, 900);
+    const queen = s.monsters.find((m) => m.cfg.id === 'zerg_queen')!;
+    queen.hp = queen.maxHp = 1e6; // 测试靶：保证虫后活到产卵
+    const born = runFor(s, 10, () => s.monsters.some((m) => m.cfg.id === 'zerg_larva'));
+    if (!born) return '虫后未产幼虫';
+    const larva = s.monsters.find((m) => m.cfg.id === 'zerg_larva')!;
+    if (larva.maxHp >= queen.maxHp) return `幼虫继承了虫后血量（${larva.maxHp}）`;
+    larva.hp = larva.maxHp = 1e6; // 保活到变态
+    const pool = ['zerg_ling', 'baneling', 'zerg_roach', 'zerg_lurker', 'zerg_ultra'];
+    const morphed = runFor(s, 7, () => larva.cfg.id !== 'zerg_larva');
+    if (!morphed) return '幼虫未变态';
+    if (!pool.includes(larva.cfg.id)) return `变态目标不在池中：${larva.cfg.id}`;
+    if (larva.cfg.id === 'zerg_queen') return '变态成了虫后（应排除）';
+    if (larva.maxHp === 1e6) return '变态后血量未按新形态重算';
+    return true;
+  } },
+  { name: 'Z-虫族：爬虫低血钻地回血（出土回 50%）', run: () => {
     const s = freshSession();
     s.wallMaxHp = 10000;
     s.wallHp = 10000;
     s.debugSpawn('zerg_roach', 300, 500);
-    s.debugSpawn('zerg_lurker', 540, 460); // 距墙 396 ≈ siegeDist 400+r → 接近即钻地
     const roach = s.monsters.find((m) => m.cfg.id === 'zerg_roach')!;
-    const lurker = s.monsters.find((m) => m.cfg.id === 'zerg_lurker')!;
     roach.hp = roach.maxHp = 1e6;
     // 打伤爬虫触发钻地回血
     roach.hp = Math.round(1e6 * 0.2);
@@ -505,16 +558,7 @@ const tests: TestCase[] = [
     const emerged = runFor(s, 5, () => !roach.burrowed);
     if (!emerged) return '爬虫未出土';
     if (!(roach.hp > hpAtBurrow)) return `钻地未回血（${hpAtBurrow} → ${roach.hp}）`;
-    // 潜伏者到阵位钻地且不可被直击
-    const lurkerBurrowed = runFor(s, 6, () => lurker.burrowed);
-    if (!lurkerBurrowed) return '潜伏者未钻地';
-    const shotsBefore = s.totalKills;
-    runFor(s, 3, () => false);
-    // 爆炸强制出土：在潜伏者脚下放火属性伤害圈
-    s.debugLink(lurker.x - 10, lurker.y, lurker.x + 10, lurker.y, 60, 0.5, 120);
-    s.debugLink(lurker.x, lurker.y - 10, lurker.x, lurker.y + 10, 60, 0.5, 120);
-    void shotsBefore;
-    return runFor(s, 2, () => !lurker.burrowed) ? true : '爆炸未轰出潜伏者';
+    return true;
   } },
   { name: 'Z-虫族：毒爆贴墙自爆单次 -300（野外拦截 0 墙伤）；虫后铺虫苔且火焰可烧', run: () => {
     // A) 野外拦截：步枪半路点燃毒爆 → 爆炸事件 1 次、城墙分文不扣
@@ -548,20 +592,34 @@ const tests: TestCase[] = [
       if (s.wallHp !== 10000 - 300) return `贴墙自爆扣墙 ${10000 - s.wallHp}（期望单次 300）`;
       if (explodes !== 1 || wallHits !== 1) return `事件次数异常（explode ${explodes} / wallHit ${wallHits}，期望各 1）`;
     }
-    // C) 虫后铺苔 + 火焰可烧
-    const s = freshSession();
-    s.wallMaxHp = 10000;
-    s.wallHp = 10000;
-    s.debugSpawn('zerg_queen', 700, 900);
-    const creepGrown = runFor(s, 12, () => s.creep.size > 0);
-    if (!creepGrown) return '虫苔未铺设';
-    // 火焰烧苔（火焰弹命中点烧苔）
-    s.grantCard('flame');
-    s.debugSpawn('bulwark', 700, 860);
-    const target = s.monsters[s.monsters.length - 1];
-    target.hp = target.maxHp = 1e6;
-    const burned = runFor(s, 8, () => s.creep.size === 0);
-    return burned ? true : `虫苔未被火焰清除（剩余 ${s.creep.size} 格）`;
+    // C1) 虫后铺苔
+    {
+      const s = freshSession();
+      s.wallMaxHp = 10000;
+      s.wallHp = 10000;
+      s.debugSpawn('zerg_queen', 700, 900);
+      if (!runFor(s, 12, () => s.creep.size > 0)) return '虫苔未铺设';
+    }
+    // C2) 火焰烧穿（灼烧层）：走廊上的毯块被逐层烧穿清除——1 击不秒删、持续压制全清
+    {
+      const s = freshSession();
+      s.sandboxMode = true; // 无波次场景防判胜冻结
+      s.wallMaxHp = s.wallHp = 1e9;
+      s.hero.weapons[0].cooldown = 1e9;
+      const cellKey = (x: number, y: number): number => Math.floor(x / 90) * 4096 + Math.floor(y / 90);
+      const keys = [cellKey(675, 675), cellKey(675, 765), cellKey(675, 855)];
+      for (const k of keys) s.creep.set(k, s.timeSec + 600);
+      s.grantCard('flame');
+      s.hero.weapons[0].cooldown = 0;
+      s.debugSpawn('bulwark', 700, 860);
+      const target = s.monsters[s.monsters.length - 1];
+      target.hp = target.maxHp = 1e6;
+      runFor(s, 1, () => false); // 打 1s：3 层血下不秒删，毯块仍在（有焦痕）
+      if (!keys.some((k) => s.creep.has(k))) return '火焰一击秒删毯块（灼烧层未生效）';
+      const cleared = runFor(s, 10, () => keys.every((k) => !s.creep.has(k)));
+      if (!cleared) return `火焰未烧穿走廊毯块（剩 ${keys.filter((k) => s.creep.has(k)).length}/3）`;
+    }
+    return true;
   } },
   { name: 'Z-虫苔蔓延：无虫后也自行扩张（单格起步）；缺口由边缘长回', run: () => {
     const key = (x: number, y: number): number => Math.floor(x / 90) * 4096 + Math.floor(y / 90);
@@ -599,13 +657,13 @@ const tests: TestCase[] = [
       return hole.some((k) => s.creep.has(k)) ? true : '缺口一直空缺（未重新覆盖）';
     }
   } },
-  { name: 'Z-虫巢扩张：峰值 60 格晋升 T2（全族攻+10%/血+8%，站毯回血 10/s）', run: () => {
+  { name: 'Z-虫巢扩张：峰值 60 格晋升 T2（全族攻+10%/血+8%，站毯回血 16/s）', run: () => {
     const seedBlock = (s: GameSession, cx0: number, cy0: number, w: number, h: number): void => {
       for (let dx = 0; dx < w; dx++) {
         for (let dy = 0; dy < h; dy++) s.creep.set((cx0 + dx) * 4096 + (cy0 + dy), s.timeSec + 600);
       }
     };
-    // A) 30 格（T1）放爬虫 → 补到 62 格晋升 T2：事件 1 次、存量按血倍率补足、站毯回血 10/s
+    // A) 30 格（T1）放爬虫 → 补到 62 格晋升 T2：事件 1 次、存量按血倍率补足、站毯回血 16/s
     const a = freshSession(11);
     a.sandboxMode = true;
     a.hero.weapons[0].cooldown = 1e9;
@@ -631,7 +689,7 @@ const tests: TestCase[] = [
     const hpBefore = roach.hp;
     runFor(a, 1, () => false);
     const healed = roach.hp - hpBefore;
-    if (healed < 8 || healed > 12) return `T2 站毯回血 ${healed} hp/s（期望 10）`;
+    if (healed < 14 || healed > 18) return `T2 站毯回血 ${healed} hp/s（期望 16）`;
     // 攻击增强：贴墙爬虫单次墙伤 = 基数 ×1.1
     let dmgT2 = 0;
     a.bus.on<{ dmg: number }>('onWallHit', ({ dmg }) => { if (!dmgT2) dmgT2 = dmg; });
@@ -695,7 +753,7 @@ const tests: TestCase[] = [
       }
       return seen;
     };
-    // A) 有毯（12 格可用）：全部从毯里钻出——出土点都在虫苔上、且在城墙远侧
+    // A) 有毯（12 格可用）：全部从毯里钻出——出土点都在虫苔上、且在城墙远侧（wall.height+300 起）
     {
       const s = build(true, 21);
       const emerges: { x: number; y: number }[] = [];
@@ -704,7 +762,7 @@ const tests: TestCase[] = [
       if (s.monsters.length < 6) return `孵化数量不足（${s.monsters.length}/6）`;
       if (emerges.length !== 6) return `出土事件 ${emerges.length} 次（期望 6）`;
       for (const e of emerges) {
-        if (e.y < 514 || e.y > 1820) return `出土位置越界（y=${e.y.toFixed(0)}）`;
+        if (e.y < 364 || e.y > 1820) return `出土位置越界（y=${e.y.toFixed(0)}）`;
         if (!s.isCreeped(e.x, e.y)) return `出土点不在虫苔上（${e.x.toFixed(0)}, ${e.y.toFixed(0)}）`;
       }
     }
@@ -720,7 +778,7 @@ const tests: TestCase[] = [
         if (y < 1700 || y > 1900) return `出生点不在顶部出生带（y=${y.toFixed(0)}）`;
       }
     }
-    // C) 毯不足 6 格可用（4 格在 maxY 之外）：同样回落顶部出生带
+    // C) 毯不足 3 格可用（4 格在 maxY 之外）：同样回落顶部出生带
     {
       const s = build(false, 22);
       for (let dx = 0; dx < 4; dx++) s.creep.set((4 + dx) * 4096 + 20, s.timeSec + 600); // y=1845 > maxY 1820 → 不算可用
@@ -730,6 +788,34 @@ const tests: TestCase[] = [
       if (seen.size < 6) return `C 组数量不足（${seen.size}/6）`;
       if (emerges.length !== 0) return `可用毯不足却触发出土 ${emerges.length} 次`;
     }
+    return true;
+  } },
+  { name: 'Z-菌毯灼烧层：火焰每击烧 1 层不秒删，蔓延节拍回层，烧穿才清除', run: () => {
+    const cellKey = (x: number, y: number): number => Math.floor(x / 90) * 4096 + Math.floor(y / 90);
+    const s = freshSession(31);
+    s.sandboxMode = true;
+    s.hero.weapons[0].cooldown = 1e9;
+    const k = cellKey(540, 900); // 格中心 (585, 945)
+    // A) 单次灼烧：格仍在（满 3 层 → 2 层），留下焦痕记录
+    s.creep.set(k, s.timeSec + 600);
+    s.debugBurnCreep(585, 945, 40);
+    if (!s.creep.has(k)) return '一次灼烧即被秒删（未见灼烧层）';
+    if ((s.creepHp.get(k) ?? GameSession.CREEP_LAYERS) !== GameSession.CREEP_LAYERS - 1) {
+      return `灼烧层未扣减（剩余 ${s.creepHp.get(k) ?? GameSession.CREEP_LAYERS}）`;
+    }
+    // B) 烧穿：再烧 2 次（累计 3 层）格毁
+    s.debugBurnCreep(585, 945, 40);
+    s.debugBurnCreep(585, 945, 40);
+    if (s.creep.has(k)) return `烧穿后格未清除（余层 ${s.creepHp.get(k) ?? GameSession.CREEP_LAYERS}）`;
+    // C) 回层：重新种格、烧掉 2 层后，蔓延节拍（3s）恢复 1 层
+    s.creep.set(k, s.timeSec + 600);
+    s.debugBurnCreep(585, 945, 40);
+    s.debugBurnCreep(585, 945, 40);
+    const layersAfterBurn = s.creepHp.get(k) ?? GameSession.CREEP_LAYERS;
+    if (layersAfterBurn !== 1) return `烧 2 层后剩余 ${layersAfterBurn}（期望 1）`;
+    runFor(s, 3.3, () => (s.creepHp.get(k) ?? GameSession.CREEP_LAYERS) > 1);
+    const layersAfterRegrow = s.creepHp.get(k) ?? GameSession.CREEP_LAYERS;
+    if (layersAfterRegrow <= layersAfterBurn) return `蔓延节拍未回层（${layersAfterBurn} → ${layersAfterRegrow}）`;
     return true;
   } },
   { name: 'M-巫师编队：近墙变阵排排啃墙，巫师伤害转嫁给周围怪物', run: () => {

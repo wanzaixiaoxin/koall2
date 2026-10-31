@@ -106,9 +106,16 @@
       "spawns": [
         {
           "monster": "zerg_ling",
-          "count": 80,
+          "count": 66,
           "spawnPoints": "all",
           "releasePerTick": 3
+        },
+        {
+          "monster": "zerg_ling",
+          "count": 14,
+          "spawnPoints": "all",
+          "releasePerTick": 3,
+          "fromCreep": true
         },
         {
           "monster": "baneling",
@@ -137,9 +144,16 @@
         },
         {
           "monster": "zerg_ling",
-          "count": 40,
+          "count": 30,
           "spawnPoints": "all",
           "releasePerTick": 2
+        },
+        {
+          "monster": "zerg_ling",
+          "count": 10,
+          "spawnPoints": "all",
+          "releasePerTick": 2,
+          "fromCreep": true
         }
       ]
     },
@@ -150,13 +164,13 @@
       "spawns": [
         {
           "monster": "zerg_ling",
-          "count": 40,
+          "count": 32,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "zerg_ling",
-          "count": 30,
+          "count": 38,
           "spawnPoints": "all",
           "releasePerTick": 3,
           "fromCreep": true
@@ -214,13 +228,13 @@
       "spawns": [
         {
           "monster": "zerg_ling",
-          "count": 60,
+          "count": 45,
           "spawnPoints": "all",
           "releasePerTick": 4
         },
         {
           "monster": "zerg_ling",
-          "count": 30,
+          "count": 45,
           "spawnPoints": "all",
           "releasePerTick": 4,
           "fromCreep": true
@@ -233,13 +247,13 @@
         },
         {
           "monster": "zerg_roach",
-          "count": 20,
+          "count": 16,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "zerg_roach",
-          "count": 10,
+          "count": 14,
           "spawnPoints": "all",
           "releasePerTick": 2,
           "fromCreep": true
@@ -253,13 +267,13 @@
       "spawns": [
         {
           "monster": "zerg_roach",
-          "count": 30,
+          "count": 27,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "zerg_roach",
-          "count": 10,
+          "count": 13,
           "spawnPoints": "all",
           "releasePerTick": 3,
           "fromCreep": true
@@ -290,26 +304,26 @@
       "spawns": [
         {
           "monster": "zerg_ling",
-          "count": 50,
+          "count": 45,
           "spawnPoints": "all",
           "releasePerTick": 4
         },
         {
           "monster": "zerg_ling",
-          "count": 25,
+          "count": 30,
           "spawnPoints": "all",
           "releasePerTick": 4,
           "fromCreep": true
         },
         {
           "monster": "zerg_roach",
-          "count": 25,
+          "count": 22,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "zerg_roach",
-          "count": 8,
+          "count": 11,
           "spawnPoints": "all",
           "releasePerTick": 2,
           "fromCreep": true

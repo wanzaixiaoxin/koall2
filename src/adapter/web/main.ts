@@ -7,6 +7,7 @@ import {
   GameSession,
   LevelConfig,
   MonsterConfig,
+  MonsterRuntime,
   WeaponConfig,
   CardConfig,
   TICK_DT,
@@ -119,27 +120,44 @@ function rebuildCreepCache(session: GameSession, w: number, h: number): void {
     cctx.fill();
   }
   const dirs: [number, number, number][] = [[1, 0, 0], [0, 1, Math.PI / 2], [-1, 0, Math.PI], [0, -1, -Math.PI / 2]];
+  // 层 4：焦痕（docs/08 §2.2 灼烧层）——受损格压暗 + 健康点缀随层数减少而消失
+  const fullLayers = GameSession.CREEP_LAYERS;
+  for (const key of keys) {
+    const layersLeft = session.creepHp.get(key) ?? fullLayers;
+    if (layersLeft >= fullLayers) continue;
+    const x = Math.floor(key / 4096) * c + 45;
+    const y = (key % 4096) * c + 45;
+    const missing = fullLayers - layersLeft;
+    cctx.fillStyle = `rgba(22,24,14,${(0.22 + 0.3 * missing).toFixed(2)})`;
+    cctx.beginPath();
+    cctx.arc(x, y, 36 + creepHash(key + 29) * 6, 0, Math.PI * 2);
+    cctx.fill();
+  }
   for (const key of keys) {
     const cx = Math.floor(key / 4096);
     const cy = key % 4096;
     const x = cx * c + 45;
     const y = cy * c + 45;
-    // 脉纹（深色短弧）
-    const a0 = creepHash(key + 13) * Math.PI * 2;
-    cctx.strokeStyle = 'rgba(20,32,8,0.4)';
-    cctx.lineWidth = 3;
-    cctx.beginPath();
-    cctx.arc(x - Math.cos(a0) * 14, y - Math.sin(a0) * 14, 26 + creepHash(key + 17) * 14, a0 - 1.2, a0 + 1.2);
-    cctx.stroke();
-    // 瘤节点 + 脉动候选（稀疏：点缀感，不喧宾夺主）
-    if (creepHash(key + 23) < 0.22) {
+    const layersLeft = session.creepHp.get(key) ?? fullLayers;
+    // 脉纹（深色短弧；焦壳上不画健康细节）
+    if (layersLeft >= 2) {
+      const a0 = creepHash(key + 13) * Math.PI * 2;
+      cctx.strokeStyle = 'rgba(20,32,8,0.4)';
+      cctx.lineWidth = 3;
+      cctx.beginPath();
+      cctx.arc(x - Math.cos(a0) * 14, y - Math.sin(a0) * 14, 26 + creepHash(key + 17) * 14, a0 - 1.2, a0 + 1.2);
+      cctx.stroke();
+    }
+    // 瘤节点 + 脉动候选（稀疏：点缀感，不喧宾夺主；满层才有）
+    if (layersLeft >= fullLayers && creepHash(key + 23) < 0.22) {
       cctx.fillStyle = 'rgba(156,204,101,0.4)';
       cctx.beginPath();
       cctx.arc(x, y, 3 + creepHash(key + 29) * 3, 0, Math.PI * 2);
       cctx.fill();
     }
-    if (creepHash(key + 31) < 0.3) creepPulseNodes.push({ x, y, s: creepHash(key + 37) });
-    // 外缘亮弧（面向空缺方向 = 正在蔓延的边缘）
+    if (layersLeft >= 2 && creepHash(key + 31) < 0.3) creepPulseNodes.push({ x, y, s: creepHash(key + 37) });
+    // 外缘亮弧（面向空缺方向 = 正在蔓延的边缘；烧焦格不亮）
+    if (layersLeft < 2) continue;
     cctx.strokeStyle = 'rgba(156,204,101,0.35)';
     cctx.lineWidth = 4;
     for (const [dx, dy, ang] of dirs) {
@@ -325,6 +343,10 @@ async function boot(): Promise<void> {
     if (emerges.length >= 24) emerges.shift();
     emerges.push({ x, y, life: 0.55 });
   });
+
+  // 站毯回血可视（docs/08）：受损虫族在毯上回血时节拍冒绿色愈合粒子（纯渲染层，观察 hp 上升）
+  const healMarks: { x: number; y: number; life: number }[] = [];
+  const healSeen = new WeakMap<MonsterRuntime, { hp: number; next: number }>();
 
   // 伤害飘字（渲染层对象池语义：上限 40，见 docs/01 §4）
   interface FloatText { x: number; y: number; text: string; color: string; size: number; life: number; maxLife: number }
@@ -546,12 +568,21 @@ async function boot(): Promise<void> {
     drawCreepField(ctx, session, t, W, H);
     for (const m of session.monsters) {
       const r = m.cfg.radius;
-      // 虫族站毯提示（docs/08）：脚下酸绿微光（加速/回血生效中；扩张等级增益为全族恒定，不单独提示）
+      // 虫族站毯提示（docs/08）：脚下酸绿微光（加速/回血生效中）；受伤时微光随呼吸脉动 = 回血中
       if (m.cfg.creepBenefit && !m.burrowed && session.isCreeped(m.x, m.y)) {
-        ctx.fillStyle = 'rgba(156,204,101,0.16)';
+        const pulse = m.hp < m.maxHp ? 0.18 + 0.1 * Math.sin(t * 4 + m.phase) : 0.16;
+        ctx.fillStyle = `rgba(156,204,101,${pulse.toFixed(3)})`;
         ctx.beginPath();
         ctx.ellipse(m.x, m.y + r * 0.55, r * 1.35, r * 0.6, 0, 0, Math.PI * 2);
         ctx.fill();
+        // 愈合粒子：hp 上升（站毯回血/虫后治疗）时节拍冒一颗绿十字，≤0.8s/只、全场 20 上限
+        const seen = healSeen.get(m) ?? { hp: m.hp, next: t + 0.8 };
+        if (m.hp > seen.hp && t >= seen.next && healMarks.length < 20) {
+          seen.next = t + 0.8;
+          healMarks.push({ x: m.x + (m.phase % 1) * 8 - 4, y: m.y + r * 0.3, life: 0.7 });
+        }
+        seen.hp = m.hp;
+        healSeen.set(m, seen);
       }
       drawMonster(ctx, m, t);
       // 血条
@@ -816,6 +847,26 @@ async function boot(): Promise<void> {
       ctx.lineWidth = 2;
       ctx.beginPath();
       strokeBoltPath(ctx, b.pts, frac);
+      ctx.stroke();
+    }
+
+    // 站毯回血粒子：绿色小十字缓升消散（docs/08 回血支援的可视反馈）
+    for (let i = healMarks.length - 1; i >= 0; i--) {
+      const hm = healMarks[i];
+      hm.life -= dtR;
+      if (hm.life <= 0) {
+        healMarks.splice(i, 1);
+        continue;
+      }
+      const k = 1 - hm.life / 0.7;
+      const yy = hm.y + 14 + 18 * k;
+      ctx.strokeStyle = `rgba(140,230,120,${(0.85 * (1 - k)).toFixed(3)})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(hm.x - 4, yy);
+      ctx.lineTo(hm.x + 4, yy);
+      ctx.moveTo(hm.x, yy - 4);
+      ctx.lineTo(hm.x, yy + 4);
       ctx.stroke();
     }
 

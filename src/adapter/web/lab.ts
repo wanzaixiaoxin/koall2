@@ -266,7 +266,7 @@ async function boot(): Promise<void> {
       case 'zigzag': out.push({ text: '蛇形行进：摆动躲避直线弹道' }); break;
       case 'ranged': out.push({ text: `远程：距墙 ${m.rangedDist ?? 260}px 停驻抛射（弹道可被走位规避）` }); break;
       case 'burrow_regen': out.push({ text: `钻地回血：血量 <${Math.round((m.burrowRegen?.threshold ?? 0) * 100)}% 时入地 ${m.burrowRegen?.duration}s，出土回复 ${Math.round((m.burrowRegen?.heal ?? 0) * 100)}%`, warn: true }); break;
-      case 'burrow_siege': out.push({ text: `钻地攻墙：距墙 ${m.burrowSiege?.dist}px 永久入地（打不到！），地下持续刺击城墙`, warn: true }); break;
+      case 'burrow_siege': out.push({ text: `钻地攻墙：距墙 ${m.burrowSiege?.dist}px 入地（打不到），地下刺击城墙；每 ${m.burrowSiege?.surfaceEvery ?? '∞'}s 上浮 ${m.burrowSiege?.surfaceFor ?? 0}s 可击杀`, warn: true }); break;
       case 'burrow_charge': out.push({ text: `钻地冲锋：每 ${m.burrowCharge?.interval}s 入地 ${m.burrowCharge?.duration}s，墙前出土重击 -${m.burrowCharge?.dmg} 城防`, warn: true }); break;
       case 'splitter': out.push({ text: '增殖：定时分裂 + 死后裂双' }); break;
       default: break;
@@ -274,7 +274,8 @@ async function boot(): Promise<void> {
     if (m.hitShield) out.push({ text: `护甲：${m.hitShield} 次免伤（直接命中消耗，DoT/伤害圈不消耗）` });
     if (m.burnImmune) out.push({ text: '灼烧免疫：不可被点燃' });
     if (m.healAura) out.push({ text: `治疗光环：半径 ${m.healAura.radius} 每 ${m.healAura.interval}s 回 ${m.healAura.amount}`, warn: true });
-    if (m.splitTimer) out.push({ text: `定时分裂：每 ${m.splitTimer.interval}s 分出 1 只幼体（同血条/更快/不可再分裂）` });
+    if (m.splitTimer) out.push({ text: `定时分裂：每 ${m.splitTimer.interval}s 分出 1 只${m.splitTimer.baby === 'zerg_larva' ? '幼虫（可变态）' : '幼体（同血条/更快/不可再分裂）'}` });
+    if (m.morph) out.push({ text: `变态：${m.morph.delay}s 后按权重随机变为 ${m.morph.pool.map((p) => `${p.id}(${p.weight})`).join(' / ')}`, warn: true });
     if (m.deathSplit) out.push({ text: `死亡分裂：裂为 ${m.deathSplit.count} 只幼体` });
     if (m.escort) out.push({ text: `出场护卫：${m.escort.count} 只${m.escort.monster === 'bulwark' ? '岩甲兽' : m.escort.monster}环形护卫` });
     if (m.transferAura) out.push({ text: `伤害转嫁：受击转移给 ${m.transferAura.radius}px 内友军代伤`, warn: true });

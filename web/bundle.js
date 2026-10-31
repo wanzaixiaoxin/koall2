@@ -433,6 +433,11 @@
         m.burrowed = false;
         m.y = wallTopY + r;
         onWallHit(m.cfg.burrowCharge.dmg, m);
+      } else if (m.cfg.burrowSiege && m.burrowTimer <= 0) {
+        m.burrowed = false;
+        m.surfaceLeft = m.cfg.burrowSiege.surfaceFor ?? 6;
+        m.state = "march";
+        m.attackTimer = 0;
       }
       if (m.burrowed && m.cfg.burrowSiege) {
         m.attackTimer -= dt;
@@ -443,6 +448,7 @@
       }
       return;
     }
+    if (m.surfaceLeft > 0) m.surfaceLeft = Math.max(0, m.surfaceLeft - dt);
     const holdY = wallTopY + (m.cfg.behavior === "ranged" ? m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE : 0) + r;
     if (m.state === "march") {
       let speed = m.cfg.speed;
@@ -464,11 +470,6 @@
           break;
       }
       m.y -= speed * dt;
-      if (m.cfg.burrowSiege && m.y <= wallTopY + m.cfg.burrowSiege.dist + r) {
-        m.burrowed = true;
-        m.y = wallTopY + m.cfg.burrowSiege.dist + r;
-        return;
-      }
       if (m.cfg.burrowRegen && m.hp < m.maxHp * m.cfg.burrowRegen.threshold) {
         m.burrowed = true;
         m.burrowTimer = m.cfg.burrowRegen.duration;
@@ -499,6 +500,11 @@
           onWallHit(m.cfg.atk, m);
         }
       }
+    }
+    if (m.cfg.burrowSiege && m.surfaceLeft <= 0 && m.y <= wallTopY + m.cfg.burrowSiege.dist + r) {
+      m.burrowed = true;
+      m.burrowTimer = m.cfg.burrowSiege.surfaceEvery ?? Infinity;
+      m.y = Math.min(m.y, wallTopY + m.cfg.burrowSiege.dist + r);
     }
   }
 
@@ -823,7 +829,10 @@
       // 光束/连线伤害场（docs/07 §4）
       /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
       this.creep = /* @__PURE__ */ new Map();
-      /** 虫苔版本号（任一次增删 +1；web 渲染层据此重建离屏缓存） */
+      /** 菌毯灼烧层（docs/08 §2.2）：仅记录受损格 → 剩余层数（缺失 = 满层）；
+       *  火焰每命中烧 1 层，烧到 0 格毁并被火焰清除；蔓延节拍给受损格回层。 */
+      this.creepHp = /* @__PURE__ */ new Map();
+      /** 虫苔版本号（任一次增删/烧伤 +1；web 渲染层据此重建离屏缓存） */
       this.creepVersion = 0;
       /** 最近新生虫苔（渲染层蔓延光环用）：坐标 + 发生时刻，短名单自动裁剪 */
       this.creepGlow = [];
@@ -898,6 +907,11 @@
       this.CREEP_SPREAD_CHANCE = 0.12;
     }
     static {
+      /** 菌毯灼烧层（docs/08 §2.2）：每格 3 层"血量"，火焰每命中一次烧 1 层，烧穿才格毁；
+       *  蔓延节拍会给受损格回 1 层（持续火压制仍能清毯，零星火焰烧不穿）。 */
+      this.CREEP_LAYERS = 3;
+    }
+    static {
       /** 虫巢扩张等级：按历史峰值覆盖格数分档（T1 起始，T2/T3/T4 阈值，docs/08 §2.4） */
       this.CREEP_TIER_CELLS = [60, 120, 190];
     }
@@ -909,7 +923,7 @@
       this.CREEP_HP_MUL = [1, 1.08, 1.16, 1.25];
     }
     static {
-      this.CREEP_REGEN = [6, 10, 14, 18];
+      this.CREEP_REGEN = [10, 16, 24, 36];
     }
     get timeSec() {
       return this.tick * TICK_DT;
@@ -1008,6 +1022,10 @@
         }
         this.tickBurns(m, dt);
         if (m.hp <= 0) continue;
+        if (m.cfg.morph) {
+          m.morphLeft -= dt;
+          if (m.morphLeft <= 0) this.morphMonster(m);
+        }
         if (m.cfg.creepTrail && m.state === "march") {
           m.creepTimerLeft -= dt;
           if (m.creepTimerLeft <= 0) {
@@ -1045,7 +1063,7 @@
         m.splitTimerLeft -= dt;
         if (m.splitTimerLeft > 0) continue;
         m.splitTimerLeft += m.cfg.splitTimer.interval;
-        this.spawnBaby(m, m.cfg.splitTimer.baby, 1);
+        this.spawnBaby(m, m.cfg.splitTimer.baby, 1, m.cfg.splitTimer.inheritHp ?? false);
       }
       for (const m of this.monsters) {
         if (m.hp <= 0) continue;
@@ -1093,11 +1111,11 @@
       }
       for (let i = this.pools.length - 1; i >= 0; i--) {
         const pool = this.pools[i];
-        if (pool.damageType === "fire") this.burnCreep(pool.x, pool.y, pool.radius);
         const tick = now >= pool.nextTick;
         let dmg = 0;
         if (tick) {
           pool.nextTick = now + 0.5;
+          if (pool.damageType === "fire") this.burnCreep(pool.x, pool.y, pool.radius);
           pool.acc += pool.dps * 0.5;
           dmg = Math.floor(pool.acc);
           pool.acc -= dmg;
@@ -1251,6 +1269,8 @@
         splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
         burrowed: false,
         burrowTimer: 0,
+        surfaceLeft: 0,
+        morphLeft: cfg.morph ? cfg.morph.delay : 0,
         dead: false,
         creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
         regenAcc: 0,
@@ -1559,6 +1579,7 @@
       for (const [key, until] of this.creep) {
         if (until <= now) {
           this.creep.delete(key);
+          this.creepHp.delete(key);
           this.creepVersion++;
         }
       }
@@ -1593,13 +1614,24 @@
           this.dropCreep(nx * c + c / 2, ny * c + c / 2);
         }
         this.creep.set(key, this.timeSec + _GameSession.CREEP_LIFE);
+        this.regrowCreepLayer(key);
       }
+    }
+    /** 恢复 1 层灼烧层（上限满层；满层时清掉记录）。 */
+    regrowCreepLayer(key) {
+      const layers = this.creepHp.get(key);
+      if (layers === void 0) return;
+      const next = layers + 1;
+      if (next >= _GameSession.CREEP_LAYERS) this.creepHp.delete(key);
+      else this.creepHp.set(key, next);
+      this.creepVersion++;
     }
     dropCreep(x, y) {
       const c = _GameSession.CREEP_CELL;
       const key = this.creepKey(x, y);
       if (this.creep.has(key)) {
         this.creep.set(key, this.timeSec + _GameSession.CREEP_LIFE);
+        this.regrowCreepLayer(key);
         return;
       }
       this.creepGlow.push({ x: Math.floor(x / c) * c + c / 2, y: Math.floor(y / c) * c + c / 2, t: this.timeSec });
@@ -1608,19 +1640,19 @@
       this.creepVersion++;
     }
     /**
-     * 从菌毯中孵化（docs/08 §2.5）：放行时刻从当前虫苔里随机挑一格钻出（避开城墙近前，给反应窗口）；
-     * 可用虫苔不足 6 格时返回 false，落回顶部出生带（前期没地盘时与普通波次表现一致）。
+     * 从菌毯中孵化（docs/08 §2.5）：放行时刻从当前虫苔里随机挑一格钻出（避开城墙贴脸，留一点反应窗口）；
+     * 可用虫苔不足 3 格时返回 false，落回顶部出生带（前期没地盘时与普通波次表现一致）。
      */
     trySpawnFromCreep(item) {
       const c = _GameSession.CREEP_CELL;
-      const minY = this.level.wall.height + 450;
+      const minY = this.level.wall.height + 300;
       const maxY = this.level.arena.height - 100;
       const candidates = [];
       for (const key2 of this.creep.keys()) {
         const y2 = key2 % 4096 * c + c / 2;
         if (y2 >= minY && y2 <= maxY) candidates.push(key2);
       }
-      if (candidates.length < 6) return false;
+      if (candidates.length < 3) return false;
       const key = candidates[this.rng.int(0, candidates.length - 1)];
       const x = clamp(Math.floor(key / 4096) * c + c / 2 + this.rng.range(-25, 25), 40, this.level.arena.width - 40);
       const y = key % 4096 * c + c / 2 + this.rng.range(-20, 20);
@@ -1628,7 +1660,8 @@
       this.bus.emit("onMonsterEmerge", { x, y });
       return true;
     }
-    /** 火焰清除虫苔：清除以 (x,y) 半径 r 内所有虫苔格。 */
+    /** 火焰灼烧虫苔（docs/08 §2.2）：半径内每格烧掉 1 层灼烧层；烧穿（0 层）才清除该格，
+     *  焦痕随蔓延节拍/虫后铺毯回层——零星火焰烧不穿整片毯，持续火压制才能清出走廊。 */
     burnCreep(x, y, r) {
       const c = _GameSession.CREEP_CELL;
       const minCx = Math.floor((x - r) / c);
@@ -1637,15 +1670,29 @@
       const maxCy = Math.floor((y + r) / c);
       for (let cx = minCx; cx <= maxCx; cx++) {
         for (let cy = minCy; cy <= maxCy; cy++) {
-          this.creep.delete(cx * 4096 + cy);
+          const key = cx * 4096 + cy;
+          if (!this.creep.has(key)) continue;
+          const layers = (this.creepHp.get(key) ?? _GameSession.CREEP_LAYERS) - 1;
+          if (layers <= 0) {
+            this.creep.delete(key);
+            this.creepHp.delete(key);
+          } else {
+            this.creepHp.set(key, layers);
+          }
+          this.creepVersion++;
         }
       }
     }
-    /** 强制出土：钻地怪被爆炸/火焰波及立即出土。 */
+    /** 测试入口：火焰灼烧虫苔（与火焰命中同一条 burnCreep 路径）。 */
+    debugBurnCreep(x, y, r) {
+      this.burnCreep(x, y, r);
+    }
+    /** 强制出土：钻地怪被爆炸/火焰波及立即出土（同样给足上浮窗口，否则一帧后又会缩回地下）。 */
     forceEmerge(m) {
       if (m.burrowed) {
         m.burrowed = false;
         m.burrowTimer = 0;
+        m.surfaceLeft = Math.max(m.surfaceLeft, m.cfg.burrowSiege?.surfaceFor ?? 0);
       }
     }
     /** 弹射：找最近的未命中过的怪物重定向弹道（按运动配置重建，保留追踪）。 */
@@ -1944,8 +1991,8 @@
       this.cardPickLog.push(`${picked.name}(Lv${this.cardStacks.get(picked.id)})`);
       this.bus.emit("onLevelUp", { level: this.hero.level, picked: picked.id });
     }
-    /** 分裂幼体：血条与母体一致（maxHp 覆盖），速度取幼体配置（更快），不可再分裂。 */
-    spawnBaby(parent, babyKey, count) {
+    /** 分裂幼体：inheritHp = 血条与母体一致（分裂菇）；速度取幼体配置（更快），不可再分裂。 */
+    spawnBaby(parent, babyKey, count, inheritHp = true) {
       for (let i = 0; i < count; i++) {
         const ang = this.rng.range(0, Math.PI * 2);
         const bx = clamp(parent.x + Math.cos(ang) * (parent.cfg.radius + 20), 40, this.level.arena.width - 40);
@@ -1953,10 +2000,48 @@
         const before = this.monsters.length;
         this.spawnMonster(babyKey, bx, by);
         const baby = this.monsters[this.monsters.length - 1];
-        if (this.monsters.length > before) {
+        if (this.monsters.length > before && inheritHp) {
           baby.hp = baby.maxHp = parent.maxHp;
         }
       }
+    }
+    /**
+     * 变态（docs/08 §2.6 虫后幼虫）：按权重随机变为池中虫形态（虫后除外），
+     * 新形态血量按波次成长 + 虫巢扩张倍率重算（与 spawnMonster 同式），并播出土烟尘。
+     */
+    morphMonster(m) {
+      const morph = m.cfg.morph;
+      m.morphLeft = 0;
+      if (!morph || morph.pool.length === 0) return;
+      let total = 0;
+      for (const e of morph.pool) total += e.weight;
+      let roll = this.rng.range(0, total);
+      let pick = morph.pool[morph.pool.length - 1].id;
+      for (const e of morph.pool) {
+        roll -= e.weight;
+        if (roll <= 0) {
+          pick = e.id;
+          break;
+        }
+      }
+      const cfg = this.monsterCfgs.get(pick);
+      if (!cfg) return;
+      const scale = 1 + 0.1 * this.director.currentWave;
+      const tier = this.creepTier;
+      const hp = Math.round(cfg.hp * scale * (cfg.creepBenefit ? _GameSession.CREEP_HP_MUL[tier - 1] : 1));
+      m.cfg = cfg;
+      m.hp = hp;
+      m.maxHp = hp;
+      m.state = "march";
+      m.attackTimer = cfg.attackInterval;
+      m.burrowed = false;
+      m.burrowTimer = 0;
+      m.surfaceLeft = 0;
+      m.splitTimerLeft = cfg.splitTimer ? cfg.splitTimer.interval : 0;
+      m.healTimer = cfg.healAura ? cfg.healAura.interval : 0;
+      m.creepTimerLeft = cfg.creepTrail ? cfg.creepTrail.interval : 0;
+      m.regenAcc = 0;
+      this.bus.emit("onMonsterEmerge", { x: m.x, y: m.y });
     }
     killMonster(p, m) {
       if (m.dead) return;
@@ -1966,7 +2051,7 @@
       this.hero.xp += m.cfg.xp;
       this.bus.emit("onKill", { monsterId: m.id, key: m.cfg.id });
       if (m.cfg.deathSplit) {
-        this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
+        this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count, true);
       }
       if (m.cfg.detonate) {
         this.bus.emit("onExplode", { x: m.x, y: m.y, radius: 70 });
@@ -2824,24 +2909,40 @@
       cctx.fill();
     }
     const dirs = [[1, 0, 0], [0, 1, Math.PI / 2], [-1, 0, Math.PI], [0, -1, -Math.PI / 2]];
+    const fullLayers = GameSession.CREEP_LAYERS;
+    for (const key of keys) {
+      const layersLeft = session.creepHp.get(key) ?? fullLayers;
+      if (layersLeft >= fullLayers) continue;
+      const x = Math.floor(key / 4096) * c + 45;
+      const y = key % 4096 * c + 45;
+      const missing = fullLayers - layersLeft;
+      cctx.fillStyle = `rgba(22,24,14,${(0.22 + 0.3 * missing).toFixed(2)})`;
+      cctx.beginPath();
+      cctx.arc(x, y, 36 + creepHash(key + 29) * 6, 0, Math.PI * 2);
+      cctx.fill();
+    }
     for (const key of keys) {
       const cx = Math.floor(key / 4096);
       const cy = key % 4096;
       const x = cx * c + 45;
       const y = cy * c + 45;
-      const a0 = creepHash(key + 13) * Math.PI * 2;
-      cctx.strokeStyle = "rgba(20,32,8,0.4)";
-      cctx.lineWidth = 3;
-      cctx.beginPath();
-      cctx.arc(x - Math.cos(a0) * 14, y - Math.sin(a0) * 14, 26 + creepHash(key + 17) * 14, a0 - 1.2, a0 + 1.2);
-      cctx.stroke();
-      if (creepHash(key + 23) < 0.22) {
+      const layersLeft = session.creepHp.get(key) ?? fullLayers;
+      if (layersLeft >= 2) {
+        const a0 = creepHash(key + 13) * Math.PI * 2;
+        cctx.strokeStyle = "rgba(20,32,8,0.4)";
+        cctx.lineWidth = 3;
+        cctx.beginPath();
+        cctx.arc(x - Math.cos(a0) * 14, y - Math.sin(a0) * 14, 26 + creepHash(key + 17) * 14, a0 - 1.2, a0 + 1.2);
+        cctx.stroke();
+      }
+      if (layersLeft >= fullLayers && creepHash(key + 23) < 0.22) {
         cctx.fillStyle = "rgba(156,204,101,0.4)";
         cctx.beginPath();
         cctx.arc(x, y, 3 + creepHash(key + 29) * 3, 0, Math.PI * 2);
         cctx.fill();
       }
-      if (creepHash(key + 31) < 0.3) creepPulseNodes.push({ x, y, s: creepHash(key + 37) });
+      if (layersLeft >= 2 && creepHash(key + 31) < 0.3) creepPulseNodes.push({ x, y, s: creepHash(key + 37) });
+      if (layersLeft < 2) continue;
       cctx.strokeStyle = "rgba(156,204,101,0.35)";
       cctx.lineWidth = 4;
       for (const [dx, dy, ang] of dirs) {
@@ -3011,6 +3112,8 @@
       if (emerges.length >= 24) emerges.shift();
       emerges.push({ x, y, life: 0.55 });
     });
+    const healMarks = [];
+    const healSeen = /* @__PURE__ */ new WeakMap();
     const floats = [];
     const pushFloat = (x, y, text, color, size) => {
       if (floats.length >= 40) floats.shift();
@@ -3193,10 +3296,18 @@
       for (const m of session.monsters) {
         const r = m.cfg.radius;
         if (m.cfg.creepBenefit && !m.burrowed && session.isCreeped(m.x, m.y)) {
-          ctx.fillStyle = "rgba(156,204,101,0.16)";
+          const pulse = m.hp < m.maxHp ? 0.18 + 0.1 * Math.sin(t * 4 + m.phase) : 0.16;
+          ctx.fillStyle = `rgba(156,204,101,${pulse.toFixed(3)})`;
           ctx.beginPath();
           ctx.ellipse(m.x, m.y + r * 0.55, r * 1.35, r * 0.6, 0, 0, Math.PI * 2);
           ctx.fill();
+          const seen = healSeen.get(m) ?? { hp: m.hp, next: t + 0.8 };
+          if (m.hp > seen.hp && t >= seen.next && healMarks.length < 20) {
+            seen.next = t + 0.8;
+            healMarks.push({ x: m.x + m.phase % 1 * 8 - 4, y: m.y + r * 0.3, life: 0.7 });
+          }
+          seen.hp = m.hp;
+          healSeen.set(m, seen);
         }
         drawMonster(ctx, m, t);
         if (m.hp < m.maxHp) {
@@ -3443,6 +3554,24 @@
         ctx.lineWidth = 2;
         ctx.beginPath();
         strokeBoltPath(ctx, b.pts, frac);
+        ctx.stroke();
+      }
+      for (let i = healMarks.length - 1; i >= 0; i--) {
+        const hm = healMarks[i];
+        hm.life -= dtR;
+        if (hm.life <= 0) {
+          healMarks.splice(i, 1);
+          continue;
+        }
+        const k = 1 - hm.life / 0.7;
+        const yy = hm.y + 14 + 18 * k;
+        ctx.strokeStyle = `rgba(140,230,120,${(0.85 * (1 - k)).toFixed(3)})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(hm.x - 4, yy);
+        ctx.lineTo(hm.x + 4, yy);
+        ctx.moveTo(hm.x, yy - 4);
+        ctx.lineTo(hm.x, yy + 4);
         ctx.stroke();
       }
       if (creepFlash > 0) {
