@@ -16,6 +16,7 @@ import {
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
 import { HumanInputController, TraceRecorder, TraceRecord } from '../../../tools/sim/human';
 import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool } from './render/shapes';
+import { FxRuntime, loadFxConfig } from './render/fx';
 
 const W = 1080;
 const H = 1920;
@@ -201,12 +202,16 @@ function drawCreepField(ctx: CanvasRenderingContext2D, session: GameSession, t: 
 async function boot(): Promise<void> {
   const params = new URLSearchParams(location.search);
   const levelFile = params.get('level') ?? 'level_1_1.json';
-  const [palette, weaponsFile, monstersFile, cardsFile, level] = await Promise.all([
+  const [palette, weaponsFile, monstersFile, cardsFile, level, fxConfig] = await Promise.all([
     fetchJson<Palette>('/configs/art-style/palette.json'),
     fetchJson<{ weapons: WeaponConfig[] }>('/configs/weapons.json'),
     fetchJson<{ monsters: MonsterConfig[] }>('/configs/monsters.json'),
     fetchJson<{ cards: CardConfig[] }>('/configs/cards.json'),
-    fetchJson<LevelConfig>(`/configs/levels/${levelFile}`),  ]);
+    fetchJson<LevelConfig>(`/configs/levels/${levelFile}`),
+    loadFxConfig(),
+  ]);
+  // 动效运行时：唯一读取 fx-config.json 的消费者（美术改配置即生效，无需改代码）
+  const fx = new FxRuntime(fxConfig);
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   canvas.width = W;
@@ -355,9 +360,14 @@ async function boot(): Promise<void> {
     if (floats.length >= 40) floats.shift();
     floats.push({ x, y, text, color, size, life: 0.8, maxLife: 0.8 });
   };
-  session.bus.on<{ dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number }>(
+  session.bus.on<{
+    monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number;
+  }>(
     'onHit',
-    ({ dmg, isCrit, blocked, mitigated, x, y }) => {
+    ({ monsterId, dmg, isCrit, blocked, mitigated, x, y }) => {
+      // 受击闪白登记（最高优先级动效，时长/曲线来自 fx-config.json hitFlash）
+      // 时间基准与 render 内的 now 一致（session.timeSec，秒）
+      if (monsterId !== undefined && !blocked) fx.markHit(monsterId, session.timeSec);
       if (blocked) {
         pushFloat(x, y - 12, '挡', '#8A93B8', 16); // 免伤盾抵消
         return;
@@ -584,7 +594,8 @@ async function boot(): Promise<void> {
         seen.hp = m.hp;
         healSeen.set(m, seen);
       }
-      drawMonster(ctx, m, t);
+      // 受击反馈：闪白强度走 hitFlash，挤压倍率走 squashStretch（均来自 fx-config.json）
+      drawMonster(ctx, m, t, fx.flashAlpha(m.id, now), fx.hitSquash(m.id, now));
       // 血条
       if (m.hp < m.maxHp) {
         ctx.fillStyle = 'rgba(255,255,255,0.25)';

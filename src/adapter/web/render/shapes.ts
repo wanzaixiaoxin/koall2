@@ -3,7 +3,7 @@
  * 主游戏（main.ts）与卡牌实验室（lab.ts）共用，保证两端视觉一致。
  * 坐标系：调用方已做 y 轴翻转，这里直接使用游戏坐标（y 向上）。
  */
-import { MonsterRuntime, MonsterShot, ProjectileRuntime } from '../../gamecore';
+import { MonsterRuntime, MonsterShot, ProjectileRuntime } from '../../../gamecore';
 
 /** 怪物配色：同族珊瑚色系渐变 + 岩甲灰蓝（docs/06 色板纪律内）。 */
 const MONSTER_COLOR: Record<string, string> = {
@@ -39,8 +39,19 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
   ctx.closePath();
 }
 
-/** 按种类绘制怪物（t = 秒，用于行走进缩与扑翼）。状态指示（冰环/火）由调用方叠加。 */
-export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t: number): void {
+/**
+ * 按种类绘制怪物（t = 秒，用于行走进缩与扑翼）。
+ * flash: 0~1 受击闪白强度（FxRuntime.flashAlpha，来源 fx-config.json hitFlash）。
+ * squash: 纵向缩放倍率（FxRuntime.hitSquash，来源 fx-config.json squashStretch），1=不变形。
+ * 状态指示（冰环/火）由调用方叠加。
+ */
+export function drawMonster(
+  ctx: CanvasRenderingContext2D,
+  m: MonsterRuntime,
+  t: number,
+  flash = 0,
+  squash = 1,
+): void {
   const r = m.cfg.radius;
   const color = monsterColor(m);
   const x = m.x;
@@ -62,9 +73,63 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
     return;
   }
 
-  const moving = m.state === 'march';
-  ctx.fillStyle = color;
+  // 挤压回弹（squashStretch）：以脚底为锚点纵向缩放，横向反比补偿保持体积感。
+  // 只在本体上生效，不影响血条/状态环等叠加物。
+  const deform = Math.abs(squash - 1) > 0.001;
+  if (deform) {
+    ctx.save();
+    // 画布已 y 翻转，锚点取怪物底部（y - r）
+    ctx.translate(x, y - r);
+    ctx.scale(1 / squash, squash); // 压缩时横向变宽，符合橡皮体预期
+    ctx.translate(-x, -(y - r));
+  }
 
+  drawMonsterBody(ctx, m, t);
+
+  // 受击闪白：shapes.md 可读性铁律 2「最高优先级动效」。
+  // 做法：用半透明白把「同一套形状」再画一遍（tint），而不是盖一个白圆——
+  // 这样闪白严格贴合各自几何（史莱姆=圆角方块、蝙蝠=双翼、野狼=三角），
+  // 不会出现「本体在发光球里」的伪影。强度由 fx-config.json hitFlash 驱动。
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${0.9 * flash})`;
+    drawMonsterBody(ctx, m, t, true);
+  }
+
+  if (deform) ctx.restore();
+}
+
+/**
+ * 怪物本体形状（按 shape 分派）。
+ * tint=true 时用纯白重描轮廓（受击闪白），此时跳过一切装饰（描边/内核/高光/裂纹）。
+ * 实现：tint 模式下把「形状路径」再填充一次白色即可；装饰绘制由 deco 开关跳过。
+ */
+function drawMonsterBody(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t: number, tint = false): void {
+  const r = m.cfg.radius;
+  const color = tint ? '#FFFFFF' : monsterColor(m);
+  const x = m.x;
+  const y = m.y;
+  const moving = m.state === 'march';
+  // 注意：slime 等分支不自行设置 fillStyle，直接沿用此处的预设色。
+  // 若省略这一行，形状会继承上一次绘制残留的颜色（曾导致怪物整体变深绿）。
+  ctx.fillStyle = color;
+  drawMonsterShape(ctx, m, t, color, x, y, r, moving, !tint);
+}
+
+/**
+ * 各形状的几何绘制。
+ * deco=false（闪白重描）时跳过所有装饰：只画实心主体，不画眼睛/内核/描边/裂纹。
+ */
+function drawMonsterShape(
+  ctx: CanvasRenderingContext2D,
+  m: MonsterRuntime,
+  t: number,
+  color: string,
+  x: number,
+  y: number,
+  r: number,
+  moving: boolean,
+  deco: boolean,
+): void {
   switch (m.cfg.shape) {
     case 'larva': {
       // 幼虫：小三角 + 行军蠕动步足 + 眼点（虫族小型单位读得清）
@@ -142,64 +207,131 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       break;
     }
     case 'zqueen': {
-      // 虫后：大菱形 + 头冠尖刺 + 头顶孵卵（呼吸浮动）+ 两侧触须
-      ctx.beginPath();
-      ctx.moveTo(x, y - r);
-      ctx.lineTo(x + r * 0.8, y);
-      ctx.lineTo(x, y + r);
-      ctx.lineTo(x - r * 0.8, y);
-      ctx.closePath();
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(26,36,16,0.85)';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-      ctx.beginPath();
-      for (const dx of [-0.32, 0, 0.32]) {
-        ctx.moveTo(x + r * dx, y - r * 0.85);
-        ctx.lineTo(x + r * dx * 1.6, y - r * 1.18);
-      }
-      ctx.stroke();
-      ctx.fillStyle = '#F5F5FA';
-      for (let i = 0; i < 3; i++) {
-        const ex = x + (i - 1) * 9;
-        const ey = y - r - 8 - Math.sin(t * 3 + i * 2.1 + m.phase) * 2;
+      // 虫后：全游戏唯一的奶妈单位（healAura）。
+      // 表现身份 = 孵育/生命 → 菱形主体 + 治疗光环（唯一语义：绿色=生命）。
+      // 「好>无>有」：此前头顶是纯白点，与普通白点同义 = 有但没有表达身份，故移除。
+      const aura = m.cfg.healAura;
+      if (aura && deco) {
+        // 光环进度与真实治疗计时同步：环扩张到位的一刻正是治疗落下的时刻（信息型表现）
+        const total = Math.max(0.001, aura.interval);
+        const k = Math.min(1, Math.max(0, 1 - m.healTimer / total));
+        const eased = 1 - Math.pow(1 - k, 3); // easeOut：前期快、后期收束
+        const ringR = r * 1.15 + (aura.radius - r * 1.15) * eased;
+
+        // 领域底光：随进度呼吸，只画一次径向渐变（比逐帧多层描边便宜且更"活"）
+        const glow = ctx.createRadialGradient(x, y, r * 0.6, x, y, aura.radius);
+        const ga = 0.05 + 0.10 * (1 - k);
+        glow.addColorStop(0, `rgba(124,179,66,${ga * 1.6})`);
+        glow.addColorStop(0.72, `rgba(124,179,66,${ga * 0.6})`);
+        glow.addColorStop(1, 'rgba(124,179,66,0)');
+        ctx.fillStyle = glow;
         ctx.beginPath();
-        ctx.arc(ex, ey, 3.6, 0, Math.PI * 2);
+        ctx.arc(x, y, aura.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 扩散环：越接近治疗越亮、越细（蓄势感）
+        ctx.strokeStyle = `rgba(124,179,66,${0.15 + 0.45 * k})`;
+        ctx.lineWidth = 2.5 - 1.5 * k;
+        ctx.beginPath();
+        ctx.arc(x, y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 环绕卵粒：带相位差绕环上升，缓慢循环（数量与半径成比例，封顶 6 个）
+        const n = Math.min(6, Math.max(3, Math.round(aura.radius / 60)));
+        for (let i = 0; i < n; i++) {
+          const a = (Math.PI * 2 * i) / n + t * 0.45 + m.phase;
+          const rise = (t * 0.18 + i * 0.37) % 1; // 0→1 循环上升
+          const rr2 = ringR * (0.35 + 0.62 * rise);
+          const px = x + Math.cos(a) * rr2;
+          const py = y + Math.sin(a) * rr2 * 0.82; // 略压扁：贴合俯视地面
+          const al = (1 - rise) * 0.55 * (0.35 + 0.65 * k);
+          ctx.fillStyle = `rgba(174,234,0,${al})`;
+          ctx.beginPath();
+          ctx.arc(px, py, 2.4 - 1.0 * rise, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // 菱形主体：三层同心做出体积，但内芯保留本体紫色系——
+      // 身份由光环承担（绿=治疗），本体不应抢戏，否则同屏会误读成「发光杂兵」。
+      // 闪白重描（deco=false）时只画最外层实心菱形，避免层层叠加变灰。
+      const layers: Array<[number, string]> = deco
+        ? [
+            [1.0, color],
+            [0.64, '#A46BE0'],
+            [0.30, '#D9A6FF'],
+          ]
+        : [[1.0, color]];
+      for (const [k2, c2] of layers) {
+        ctx.fillStyle = c2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - r * k2);
+        ctx.lineTo(x + r * 0.8 * k2, y);
+        ctx.lineTo(x, y + r * k2);
+        ctx.lineTo(x - r * 0.8 * k2, y);
+        ctx.closePath();
         ctx.fill();
       }
-      ctx.strokeStyle = 'rgba(199,125,255,0.9)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (const s of [-1, 1]) {
-        ctx.moveTo(x + s * r * 0.7, y - r * 0.15);
-        ctx.quadraticCurveTo(
-          x + s * r * 1.35,
-          y - r * 0.5 + Math.sin(t * 4 + m.phase) * 4,
-          x + s * r * 1.5,
-          y - r * 0.95,
-        );
-      }
-      ctx.stroke();
       break;
     }
     case 'baneling': {
-      // 毒爆虫：圆球 + 内核 + 酸液斑点（膨胀感脉动）
-      const pulse = 1 + 0.12 * Math.sin(t * 8 + m.phase);
+      // 毒爆虫：自爆单位（detonate）。表现身份 = 不稳定的炸弹。
+      // 核心：脉动频率随「真实危险度」加快 —— 低血或贴近城墙时闪得更急，玩家可据此预判爆炸时机。
+      // 这是信息型表现：它告诉玩家「什么时候会炸」，而不是单纯装饰。
+      const hpK = Math.min(1, Math.max(0, 1 - m.hp / m.maxHp)); // 0=满血 1=濒死
+      // 已抵达城墙（assault）即为最高威胁
+      const danger = m.state === 'assault' ? 1 : Math.max(hpK, 0);
+      const rate = 4 + 10 * danger;          // 4rad/s(满血慢) → 14rad/s(濒死急促)
+      const amp = 0.10 + 0.16 * danger;      // 濒死时膨胀更夸张
+      const pulse = 1 + amp * Math.sin(t * rate + m.phase);
+
+      // 外圈警示光：危险度越高越亮（红→黄），濒死时明显可见
+      if (danger > 0.35 && deco) {
+        const warnK = (danger - 0.35) / 0.65;
+        ctx.strokeStyle = `rgba(255,90,60,${(0.25 + 0.5 * warnK) * (0.6 + 0.4 * Math.sin(t * rate + m.phase))})`;
+        ctx.lineWidth = 2 + 2 * warnK;
+        ctx.beginPath();
+        ctx.arc(x, y, r * pulse + 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // 本体：外壳
+      ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(26,36,16,0.85)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(11,12,29,0.5)';
-      ctx.beginPath();
-      ctx.arc(x, y, r * 0.4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = `rgba(255,241,118,${(0.5 + 0.4 * Math.sin(t * 8 + m.phase)).toFixed(3)})`;
-      for (let i = 0; i < 3; i++) {
-        const a = i * 2.1 + m.phase;
+
+      // 内核：随危险度变亮变大，像即将失控的反应堆（闪白重描时跳过）
+      if (deco) {
+        const coreK = 0.4 + 0.6 * danger;
+        ctx.fillStyle = `rgba(255,${Math.round(220 - 90 * danger)},${Math.round(120 - 100 * danger)},${0.55 + 0.4 * danger})`;
         ctx.beginPath();
-        ctx.arc(x + Math.cos(a) * r * 0.55, y + Math.sin(a) * r * 0.55, 2.4, 0, Math.PI * 2);
+        ctx.arc(x, y, r * 0.45 * pulse * coreK, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 内裂纹：濒死时向外辐射的酸性亮线（临爆信号）
+      if (danger > 0.5 && deco) {
+        const cr = (danger - 0.5) / 0.5;
+        ctx.strokeStyle = `rgba(216,255,80,${0.5 * cr})`;
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 4; i++) {
+          const a = (Math.PI / 2) * i + t * 1.2 + m.phase;
+          ctx.beginPath();
+          ctx.moveTo(x + Math.cos(a) * r * 0.3, y + Math.sin(a) * r * 0.3);
+          ctx.lineTo(x + Math.cos(a) * r * pulse * 0.92, y + Math.sin(a) * r * pulse * 0.92);
+          ctx.stroke();
+        }
+      }
+
+      // 临爆闪白（danger > 0.75）：最后阶段的紧迫感。
+      // 用高频闪烁区分「接近危险」与「马上要炸」——这一档只属于真正濒死的瞬间。
+      if (danger > 0.75) {
+        const finalK = (danger - 0.75) / 0.25;
+        const flash = Math.max(0, Math.sin(t * 26 + m.phase));
+        ctx.fillStyle = `rgba(255,255,255,${0.55 * finalK * flash * flash})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
         ctx.fill();
       }
       break;
@@ -256,7 +388,26 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       break;
     }
     case 'charger': {
-      // 瘦长尖梭（极速感）
+      // 冲锋鼠：全游戏最快单位（speed 260）。表现身份 = 速度本身。
+      // 用「动能残影」：沿与前进相反方向拖出 3 段越来越淡的三角。
+      // 行军方向恒为 -y（朝底部城墙推进），故残影落在 +y 侧（身后）。
+      // 抵达城墙后（assault）速度已归零，此时不画残影——否则会误导玩家（无 > 有）。
+      if (m.state === 'march' && deco) {
+        const trail = 3;
+        for (let i = trail; i >= 1; i--) {
+          const back = i * 9;                    // 每段向身后偏移
+          const k = 1 - i / (trail + 0.6);       // 越远越淡
+          const shrink = 1 - i * 0.10;
+          ctx.fillStyle = `rgba(255,190,130,${0.5 * k})`;
+          ctx.beginPath();
+          ctx.moveTo(x, y - r * 1.4 * shrink + back);
+          ctx.lineTo(x - r * 0.55 * shrink, y + r * shrink + back);
+          ctx.lineTo(x + r * 0.55 * shrink, y + r * shrink + back);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+      // 本体：瘦长尖梭（极速感）
       ctx.save();
       ctx.translate(x, y);
       ctx.beginPath();
@@ -265,6 +416,16 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       ctx.lineTo(r * 0.55, r);
       ctx.closePath();
       ctx.fill();
+      // 前端高光：尖端一点亮，强化「冲」的方向感（闪白重描时跳过）
+      if (deco) {
+        ctx.fillStyle = 'rgba(255,235,200,0.55)';
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 1.4);
+        ctx.lineTo(-r * 0.16, -r * 0.55);
+        ctx.lineTo(r * 0.16, -r * 0.55);
+        ctx.closePath();
+        ctx.fill();
+      }
       ctx.restore();
       break;
     }
@@ -277,12 +438,14 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       ctx.lineTo(x - r * 0.5, y + r * 0.8);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(x, y + r * 0.3);
-      ctx.lineTo(x, y + r * 1.6);
-      ctx.stroke();
+      if (deco) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y + r * 0.3);
+        ctx.lineTo(x, y + r * 1.6);
+        ctx.stroke();
+      }
       break;
     }
     case 'bulwark': {
@@ -297,18 +460,20 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       }
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = 'rgba(11,12,29,.55)';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = (Math.PI / 3) * i + Math.PI / 6;
-        const px = x + Math.cos(a) * r * 0.55;
-        const py = y + Math.sin(a) * r * 0.55;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+      if (deco) {
+        ctx.strokeStyle = 'rgba(11,12,29,.55)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (Math.PI / 3) * i + Math.PI / 6;
+          const px = x + Math.cos(a) * r * 0.55;
+          const py = y + Math.sin(a) * r * 0.55;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
       }
-      ctx.closePath();
-      ctx.stroke();
       break;
     }
     case 'bat': {
@@ -359,10 +524,12 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       }
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = 'rgba(11,12,29,.5)';
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
-      ctx.fill();
+      if (deco) {
+        ctx.fillStyle = 'rgba(11,12,29,.5)';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
       break;
     }
@@ -376,10 +543,12 @@ export function drawMonster(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t:
       ctx.lineTo(x - r * 0.75, y);
       ctx.closePath();
       ctx.fill();
-      ctx.fillStyle = '#F5F5FA';
-      ctx.beginPath();
-      ctx.arc(x, y - r - 8 + bob, 5, 0, Math.PI * 2);
-      ctx.fill();
+      if (deco) {
+        ctx.fillStyle = '#F5F5FA';
+        ctx.beginPath();
+        ctx.arc(x, y - r - 8 + bob, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
       break;
     }
     case 'slime':
@@ -564,7 +733,7 @@ export function drawTransfer(
 }
 
 /** 弹坑（持续伤害圈）强化绘制：焦黑坑缘 + 熔核脉动 + 上升火星（t = 秒）。 */
-export function drawPool(ctx: CanvasRenderingContext2D, pool: import('../../gamecore').DamagePool, t: number): void {
+export function drawPool(ctx: CanvasRenderingContext2D, pool: import('../../../gamecore').DamagePool, t: number): void {
   const left = Math.max(0, pool.until - t);
   const lifeK = Math.min(1, left * 0.8); // 收尾渐隐
   const r = pool.radius;
