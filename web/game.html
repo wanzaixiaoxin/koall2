@@ -82,7 +82,10 @@
     background: #35E0C3; color: #0B0C1D; font-weight: 700; cursor: pointer;
   }
   #gameover button.ghost { background: transparent; border: 1.5px solid #3D4470; color: #F5F5FA; margin-left: 10px; }
-  #hint { position: absolute; bottom: 1.6%; width: 100%; text-align: center; color: rgba(245,245,250,.4); font-size: 12px; pointer-events: none; }
+  #hint { position: absolute; bottom: 1.6%; width: 100%; text-align: center; color: rgba(245,245,250,.4); font-size: 12px; pointer-events: none;
+          animation: hintFade 9s ease forwards; }
+  /* 操作提示只在开局闪现，随后淡出，避免长期压住底部城墙 */
+  @keyframes hintFade { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
 </style>
 </head>
 <body>
@@ -98,6 +101,6 @@
     <div id="cards"></div>
     <div id="gameover"></div>
   </div>
-  <script src="./bundle.js?v=21"></script>
+  <script src="./bundle.js?v=25"></script>
 </body>
 </html>

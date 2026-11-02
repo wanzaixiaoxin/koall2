@@ -16,5 +16,8 @@
   "dashTelegraph":   { "flashInterval": 120, "note": "dash 前摇预警线闪烁" },
   "skillTelegraph":  { "easing": "linear", "note": "红圈填充进度与技能前摇一致" },
   "gemMagnet":       { "speed": 600,      "acceleration": 2.0, "note": "磁石吸附速度(px/s)与加速度倍率" },
-  "levelUpFlash":    { "duration": 250,  "easing": "easeOut", "note": "升级瞬间英雄光圈" }
+  "levelUpFlash":    { "duration": 250,  "easing": "easeOut", "note": "升级瞬间英雄光圈" },
+  "muzzleFlash":     { "duration": 70, "note": "2D 炮口闪光时长（ms），与开火同帧" },
+  "heroRecoil":      { "distance": 6,  "note": "2D 开火后坐位移（px），渲染层指数衰减" },
+  "hitSpark":        { "count": 3,     "note": "2D 每次直接命中的火花数；暴击 ×2" }
 }

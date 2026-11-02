@@ -10,19 +10,12 @@ import {
   WeaponConfig,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool } from './render/shapes';
 import { FxRuntime, loadFxConfig } from './render/fx';
+import { SceneRenderer, ScenePalette } from './render/scene';
 
 const W = 1080;
 const H = 1920;
 const LAB_LEVEL = '/configs/levels/lab_arena.json';
-
-interface Palette {
-  background: { nightDeep: string; gridLine: string };
-  enemy: { primary: string };
-  friendly: { hero: string; wall: string; wallDamaged: string };
-  damageType: Record<string, string>;
-}
 
 async function fetchJson<T>(url: string): Promise<T> {
   const r = await fetch(url);
@@ -30,36 +23,18 @@ async function fetchJson<T>(url: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-/** 电弧折线路径：每段中点随机抖动（纯渲染表现）。 */
-function strokeBoltPath(ctx: CanvasRenderingContext2D, pts: number[][]): void {
-  let first = true;
-  for (let s = 0; s < pts.length - 1; s++) {
-    const [x1, y1] = pts[s];
-    const [x2, y2] = pts[s + 1];
-    const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * 20;
-    const my = (y1 + y2) / 2 + (Math.random() - 0.5) * 20;
-    if (first) {
-      ctx.moveTo(x1, y1);
-      first = false;
-    }
-    ctx.lineTo(mx, my);
-    ctx.lineTo(x2, y2);
-  }
-}
-
-let prevMs = 0;
-
 async function boot(): Promise<void> {
   const [palette, weaponsFile, monstersFile, cardsFile, level, fxConfig] = await Promise.all([
-    fetchJson<Palette>('/configs/art-style/palette.json'),
+    fetchJson<ScenePalette>('/configs/art-style/palette.json'),
     fetchJson<{ weapons: WeaponConfig[] }>('/configs/weapons.json'),
     fetchJson<{ monsters: MonsterConfig[] }>('/configs/monsters.json'),
     fetchJson<{ cards: CardConfig[] }>('/configs/cards.json'),
     fetchJson<LevelConfig>(LAB_LEVEL),
     loadFxConfig(),
   ]);
-  // 与主游戏共用同一套动效参数，保证两端视觉一致（shapes.ts 的约定）
+  // 与主游戏共用同一套动效参数与场景渲染器，保证两端视觉完全一致
   const fx = new FxRuntime(fxConfig);
+  const scene = new SceneRenderer(W, H, palette, fx);
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   canvas.width = W;
@@ -95,19 +70,6 @@ async function boot(): Promise<void> {
   window.addEventListener('keyup', (e) => input.keys.delete(e.key.toLowerCase()));
   window.addEventListener('blur', () => input.keys.clear());
 
-  // 伤害飘字 + 转嫁连线 + 治疗环（与主游戏同款表现；监听随会话重建见 createSession）
-  interface LabFloat { x: number; y: number; text: string; color: string; size: number; life: number }
-  const floats: LabFloat[] = [];
-  const pushFloat = (x: number, y: number, text: string, color: string, size: number): void => {
-    if (floats.length >= 40) floats.shift();
-    floats.push({ x, y, text, color, size, life: 0.8 });
-  };
-  const transfers: { fx: number; fy: number; tx: number; ty: number; life: number }[] = [];
-  const heals: { x: number; y: number; radius: number; life: number }[] = [];
-
-  // 连锁闪电折线（跨会话共享渲染缓冲；监听随会话重建）
-  const bolts: { pts: number[][]; life: number }[] = [];
-
   let session: GameSession;
   /** 按武器构筑创建沙盒会话（切换英雄/武器时重建，卡池门控随之刷新）。 */
   function createSession(weaponId: string): void {
@@ -142,47 +104,8 @@ async function boot(): Promise<void> {
       cardPolicy: greedyDpsPolicy,
     });
     session.sandboxMode = true; // 实验室：空波次会触发"胜利"，跳过胜负结算
-    session.bus.on<{ points: number[][] }>('onChain', ({ points }) => {
-      if (bolts.length > 12) bolts.shift();
-      bolts.push({ pts: points, life: 0.22 });
-    });
-    // 与主游戏同款飘字表现
-    session.bus.on<{
-      monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number;
-    }>(
-      'onHit',
-      ({ monsterId, dmg, isCrit, blocked, mitigated, x, y }) => {
-        // 受击闪白登记：与主游戏一致（实验室里也能看到打击反馈）
-        if (monsterId !== undefined && !blocked) fx.markHit(monsterId, session.timeSec);
-        if (blocked) {
-          pushFloat(x, y - 12, '挡', '#8A93B8', 16);
-          return;
-        }
-        if (mitigated && mitigated > 0) pushFloat(x + 20, y + 34, `抵${mitigated}`, '#8A93B8', 13);
-        pushFloat(x, y + 20, String(Math.round(dmg)), isCrit ? '#FFD54F' : '#F5F5FA', isCrit ? 28 : 18);
-      },
-    );
-    session.bus.on<{ dmg: number; x: number; y: number }>('onBurnTick', ({ dmg, x, y }) => {
-      pushFloat(x, y, String(dmg), '#FF9A3C', 13);
-    });
-    session.bus.on<{ dmg: number; x: number; y: number }>('onPoolTick', ({ dmg, x, y }) => {
-      pushFloat(x, y, String(dmg), '#FF6B57', 13);
-    });
-    session.bus.on<{ x: number; y: number; amount: number }>('onHealed', (p) => {
-      pushFloat(p.x, p.y, `+${p.amount}`, '#7CB342', 15);
-    });
-    session.bus.on<{ x: number; y: number; radius: number }>('onHeal', (p) => {
-      if (heals.length > 10) heals.shift();
-      heals.push({ x: p.x, y: p.y, radius: p.radius, life: 0.5 });
-    });
-    session.bus.on<{ dmg: number; x: number; y: number }>('onWallHit', (p) => {
-      pushFloat(p.x, p.y, `-${p.dmg}`, '#FF6B57', 17); // 怪物攻墙伤害飘字
-    });
-    session.bus.on<{ fx: number; fy: number; tx: number; ty: number; dmg: number }>('onDamageTransfer', (p) => {
-      if (transfers.length > 14) transfers.shift();
-      transfers.push({ fx: p.fx, fy: p.fy, tx: p.tx, ty: p.ty, life: 0.3 });
-      pushFloat(p.tx, p.ty + 24, `转${Math.round(p.dmg)}`, '#B388FF', 15);
-    });
+    // 场景渲染器接管全部战斗表现（背景/城墙/单位/弹幕/粒子/飘字），与主游戏同款
+    scene.attach(session);
   }
 
   // ---------- 卡牌按钮 ----------
@@ -465,7 +388,7 @@ async function boot(): Promise<void> {
       <table>
         <tr><td>场上怪物</td><td>${session.monsters.length}</td><td>投射物</td><td>${session.projectiles.length}</td></tr>
         <tr><td>伤害圈</td><td>${session.pools.length}</td><td>总伤害</td><td>${Math.round(session.totalDamage)}</td></tr>
-        <tr><td>飘字缓冲</td><td>${floats.length}</td><td>虫苔格</td><td>${session.creep.size}</td></tr>
+        <tr><td>飘字缓冲</td><td>${scene.floatCount}</td><td>虫苔格</td><td>${session.creep.size}</td></tr>
       </table>`;
   };
   createSession(currentWeapon);
@@ -474,198 +397,33 @@ async function boot(): Promise<void> {
   renderCards();
   log('实验室就绪：上方切换武器构筑，下方卡牌随之切换；左侧战场拖动/WASD 移动');
 
-  // ---------- 渲染（精简版，与主游戏同规范） ----------
+  // ---------- 渲染：全部交给共享的 SceneRenderer（与主游戏一致） ----------
+  let renderMs = 0;
   function render(): void {
-    ctx.setTransform(1, 0, 0, -1, 0, H);
-    ctx.fillStyle = palette.background.nightDeep;
-    ctx.fillRect(0, 0, W, H);
-    ctx.strokeStyle = palette.background.gridLine;
-    ctx.lineWidth = 1;
-    for (let x = 0; x <= W; x += 90) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y <= H; y += 90) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-
-    // 防守区域指示
-    ctx.fillStyle = 'rgba(53,224,195,0.05)';
-    ctx.fillRect(0, session.level.defenseRect.yMin, W, session.level.defenseRect.yMax - session.level.defenseRect.yMin);
-
-    const wallTop = session.level.wall.height;
-    const segs = 12;
-    const segW = W / segs;
-    const wr = session.wallHp / session.wallMaxHp;
-    for (let i = 0; i < segs; i++) {
-      ctx.fillStyle = wr < 0.3 ? palette.friendly.wallDamaged : palette.friendly.wall;
-      ctx.beginPath();
-      ctx.roundRect(i * segW + 3, 6, segW - 6, wallTop - 12, 8);
-      ctx.fill();
-    }
-
-    for (const pool of session.pools) {
-      drawPool(ctx, pool, session.timeSec);
-    }
-
-    // 虫苔地块（酸性绿半透明网格）
-    ctx.fillStyle = 'rgba(124,179,66,0.13)';
-    const CELL = 90;
-    for (const key of session.creep.keys()) {
-      const cx = Math.floor(key / 4096);
-      const cy = key % 4096;
-      ctx.fillRect(cx * CELL + 1, cy * CELL + 1, CELL - 2, CELL - 2);
-    }
-
-    // 光束/连线（段场）：外发光 + 高亮芯线
-    for (const seg of session.segments) {
-      const left = Math.max(0, seg.until - session.timeSec);
-      const alpha = Math.min(1, 0.25 + left * 0.6);
-      ctx.strokeStyle = `rgba(179,136,255,${alpha})`;
-      ctx.lineWidth = seg.width / 2;
-      ctx.beginPath(); ctx.moveTo(seg.ax, seg.ay); ctx.lineTo(seg.bx, seg.by); ctx.stroke();
-      ctx.strokeStyle = `rgba(245,245,250,${Math.min(1, alpha + 0.3)})`;
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(seg.ax, seg.ay); ctx.lineTo(seg.bx, seg.by); ctx.stroke();
-    }
-
-    // 连锁闪电折线（紫色光带 + 白色芯线，中点抖动电弧）
     const nowMs = performance.now();
-    const dtR = Math.min(0.05, (nowMs - prevMs) / 1000 || 0.016);
-    prevMs = nowMs;
-    for (let i = bolts.length - 1; i >= 0; i--) {
-      const b = bolts[i];
-      b.life -= dtR;
-      if (b.life <= 0) {
-        bolts.splice(i, 1);
-        continue;
-      }
-      const alpha = Math.min(1, b.life / 0.14);
-      ctx.strokeStyle = `rgba(179,136,255,${alpha})`;
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      strokeBoltPath(ctx, b.pts);
-      ctx.stroke();
-      ctx.strokeStyle = `rgba(245,245,250,${alpha})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      strokeBoltPath(ctx, b.pts);
-      ctx.stroke();
-    }
+    renderMs = nowMs;
+    scene.render(ctx, session, nowMs);
 
-    // 转嫁连线 + 治疗环 + 飘字（与主游戏同款表现）
-    for (let i = transfers.length - 1; i >= 0; i--) {
-      const tr = transfers[i];
-      tr.life -= dtR;
-      if (tr.life <= 0) {
-        transfers.splice(i, 1);
-        continue;
-      }
-      drawTransfer(ctx, tr.fx, tr.fy, tr.tx, tr.ty, Math.min(1, tr.life / 0.18));
-    }
-    for (let i = heals.length - 1; i >= 0; i--) {
-      const h = heals[i];
-      h.life -= dtR;
-      if (h.life <= 0) {
-        heals.splice(i, 1);
-        continue;
-      }
-      drawHealPulse(ctx, h.x, h.y, h.radius, 1 - h.life / 0.5);
-    }
+    // 实验室附加：城墙血条放在战场之上（标准屏幕坐标，避免文字被翻转）
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.textAlign = 'center';
-    // 城墙血条（标准变换绘制，避免翻转；实验室实时可见怪物磨血）
     const wallRatio = session.wallHp / session.wallMaxHp;
     const barW = 420;
     const barX = (W - barW) / 2;
-    const barSY = H - session.level.wall.height - 36; // 屏幕坐标：城墙段上方
-    ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    ctx.fillRect(barX, barSY, barW, 10);
-    ctx.fillStyle = wallRatio < 0.3 ? '#FF3D71' : '#3D4470';
-    ctx.fillRect(barX, barSY, barW * wallRatio, 10);
-    ctx.fillStyle = '#F5F5FA';
-    ctx.font = '700 13px "PingFang SC", sans-serif';
-    ctx.fillText(`城防 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`, W / 2, barSY - 6);
-    ctx.restore();
-
-    // 转嫁连线 + 治疗环 + 飘字（与主游戏同款）
-    for (let i = transfers.length - 1; i >= 0; i--) {
-      const tr = transfers[i];
-      tr.life -= dtR;
-      if (tr.life <= 0) {
-        transfers.splice(i, 1);
-        continue;
-      }
-      drawTransfer(ctx, tr.fx, tr.fy, tr.tx, tr.ty, Math.min(1, tr.life / 0.18));
-    }
-    for (let i = heals.length - 1; i >= 0; i--) {
-      const h = heals[i];
-      h.life -= dtR;
-      if (h.life <= 0) {
-        heals.splice(i, 1);
-        continue;
-      }
-      drawHealPulse(ctx, h.x, h.y, h.radius, 1 - h.life / 0.5);
-    }
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.textAlign = 'center';
-    for (let i = floats.length - 1; i >= 0; i--) {
-      const f = floats[i];
-      f.life -= dtR;
-      if (f.life <= 0) {
-        floats.splice(i, 1);
-        continue;
-      }
-      const k = f.life / 0.8;
-      ctx.globalAlpha = Math.min(1, k * 2);
-      ctx.font = `700 ${f.size}px "PingFang SC", sans-serif`;
-      ctx.fillStyle = f.color;
-      ctx.fillText(f.text, f.x, H - (f.y + (1 - k) * 50));
-    }
-    ctx.globalAlpha = 1;
-    ctx.restore();
-
-    const now = session.timeSec;
-    const tNow = now; // 渲染动效时钟与逻辑时钟一致（实验室确定性优先）
-    for (const m of session.monsters) {
-      // 与主游戏一致：闪白 + 挤压回弹都走 fx-config.json
-      drawMonster(ctx, m, tNow, fx.flashAlpha(m.id, now), fx.hitSquash(m.id, now));
-      if (now < m.slowUntil) {
-        ctx.strokeStyle = 'rgba(79,195,247,0.9)';
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(m.x, m.y, m.cfg.radius + 4, 0, Math.PI * 2); ctx.stroke();
-      }
-      if (m.burn && m.burn.until > now) {
-        const flick = 8 + Math.sin(now * 14 + m.phase) * 3;
-        ctx.fillStyle = '#FF5A3C';
-        ctx.beginPath();
-        ctx.moveTo(m.x, m.y + m.cfg.radius + 4 + flick);
-        ctx.quadraticCurveTo(m.x - 7, m.y + m.cfg.radius + 5, m.x, m.y + m.cfg.radius);
-        ctx.quadraticCurveTo(m.x + 7, m.y + m.cfg.radius + 5, m.x, m.y + m.cfg.radius + 4 + flick);
-        ctx.fill();
-        ctx.fillStyle = '#FFD54F';
-        ctx.beginPath(); ctx.arc(m.x, m.y + m.cfg.radius + 5, 2.4, 0, Math.PI * 2); ctx.fill();
-      }
-      if (m.hp < m.maxHp) {
-        ctx.fillStyle = 'rgba(255,255,255,0.25)';
-        ctx.fillRect(m.x - m.cfg.radius, m.y + m.cfg.radius + 6, m.cfg.radius * 2, 4);
-        ctx.fillStyle = '#FF3D71';
-        ctx.fillRect(m.x - m.cfg.radius, m.y + m.cfg.radius + 6, (m.cfg.radius * 2 * m.hp) / m.maxHp, 4);
-      }
-    }
-
-    const projColor = (t: string): string => palette.damageType[t] ?? '#BFFFF2';
-    for (const p of session.projectiles) {
-      drawProjectile(ctx, p, now, projColor(p.damageType));
-    }
-    for (const s of session.monsterShots) {
-      drawMonsterShot(ctx, s);
-    }
-
-    ctx.fillStyle = palette.friendly.hero;
+    const barSY = H - session.level.wall.height - 38;
+    ctx.fillStyle = 'rgba(7,8,15,0.65)';
     ctx.beginPath();
-    ctx.moveTo(session.hero.x, session.hero.y + 26);
-    ctx.lineTo(session.hero.x - 20, session.hero.y - 16);
-    ctx.lineTo(session.hero.x + 20, session.hero.y - 16);
-    ctx.closePath();
+    ctx.roundRect(barX - 2, barSY - 2, barW + 4, 12, 6);
     ctx.fill();
+    ctx.fillStyle = wallRatio < 0.3 ? '#FF3D71' : '#3D4470';
+    ctx.beginPath();
+    ctx.roundRect(barX, barSY, barW * wallRatio, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = '#F5F5FA';
+    ctx.font = '700 13px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(`城防 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`, W / 2, barSY - 8);
+    ctx.restore();
   }
 
   let acc = 0;

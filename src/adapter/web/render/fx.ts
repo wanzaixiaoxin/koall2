@@ -29,6 +29,12 @@ export interface FxConfig {
   skillTelegraph?: { easing?: string; note?: string };
   gemMagnet?: { speed?: number; acceleration?: number; note?: string };
   levelUpFlash?: { duration?: number; easing?: string; note?: string };
+  /** 炮口闪光时长（ms）——2D 表现用 */
+  muzzleFlash?: { duration?: number; note?: string };
+  /** 开火后坐位移（px） */
+  heroRecoil?: { distance?: number; note?: string };
+  /** 命中火花数量（每次直接命中） */
+  hitSpark?: { count?: number; note?: string };
 }
 
 /** 缓动函数库：统一签名，输入 t∈[0,1]（线性进度），输出缓动后的进度。 */
