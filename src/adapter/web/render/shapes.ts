@@ -12,7 +12,7 @@
  *
  * 坐标系：调用方已做 y 轴翻转，这里直接使用游戏坐标（y 向上，敌人从上方压下来）。
  */
-import { HeroRuntime, MonsterRuntime, MonsterShot, ProjectileRuntime } from '../../../gamecore';
+import { HeroRuntime, LaserBeam, MonsterRuntime, MonsterShot, ProjectileRuntime } from '../../../gamecore';
 import { drawGlow, drawGroundShadow, rgba, lighten, darken, mix, hash01 } from './style';
 
 /** 怪物配色：同族珊瑚色系渐变 + 岩甲灰蓝（docs/06 色板纪律内）。 */
@@ -2037,6 +2037,108 @@ export function drawMonsterShot(ctx: CanvasRenderingContext2D, s: MonsterShot, t
     ctx.fill();
     drawGlow(ctx, s.x, by, 18, color, 0.28);
   }
+}
+
+
+/**
+ * 激光能量束（docs/07 §4）：一条穿射的能量柱。
+ * 表现要点：
+ *  - 能量沿束衰减：枪口最亮最粗 → 束尾渐细渐暗（一眼看出"能量被打光了"）；
+ *  - 命中爆点：每个被击中怪物处一枚能量花（大小按该处剩余能量），配合 onHit 的火花/闪白；
+ *  - 高频抖动 + 白芯 + 外辉光，符合"光束系"身份。
+ */
+export function drawLaser(ctx: CanvasRenderingContext2D, beam: LaserBeam, t: number, color: string): void {
+  const dx = beam.bx - beam.ax;
+  const dy = beam.by - beam.ay;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const px = -uy;
+  const py = ux;
+  // 剩余视觉寿命 → 整体闪烁淡出（能量束"消散"）
+  const lifeK = 0.9 + 0.1 * Math.sin(t * 60);
+  const baseW = beam.width;
+  const light = lighten(color, 0.65);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  // 外层辉光：用预渲染光晕沿束多段铺开（比 shadowBlur 便宜）
+  const segs = 10;
+  for (let i = 0; i <= segs; i++) {
+    const k = i / segs;
+    const x = beam.ax + ux * len * k;
+    const y = beam.ay + uy * len * k;
+    drawGlow(ctx, x, y, baseW * (2.4 - k * 1.2), color, (0.34 * (1 - k * 0.8)) * lifeK);
+  }
+
+  // 能量主体：从枪口到束尾宽度与亮度衰减
+  const steps = 22;
+  let prevX = beam.ax;
+  let prevY = beam.ay;
+  for (let i = 1; i <= steps; i++) {
+    const k = i / steps; // 0→1 沿束
+    const x = beam.ax + ux * len * k;
+    const y = beam.ay + uy * len * k;
+    const en = 1 - k; // 能量比例（枪口=1）
+    // 抖动：沿垂直方向轻微高频摆动，让束体"带电"
+    const jitter = Math.sin(t * 42 + i * 1.7) * baseW * 0.12 * en;
+    const w = baseW * (0.35 + 0.9 * en);
+    // 宽光带
+    ctx.strokeStyle = rgba(color, 0.20 * (0.4 + en) * lifeK);
+    ctx.lineWidth = w * 2.1;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(prevX + px * jitter, prevY + py * jitter);
+    ctx.lineTo(x + px * jitter, y + py * jitter);
+    ctx.stroke();
+    // 内光带
+    ctx.strokeStyle = rgba(light, 0.55 * (0.5 + en) * lifeK);
+    ctx.lineWidth = w * 0.85;
+    ctx.beginPath();
+    ctx.moveTo(prevX + px * jitter, prevY + py * jitter);
+    ctx.lineTo(x + px * jitter, y + py * jitter);
+    ctx.stroke();
+    prevX = x;
+    prevY = y;
+  }
+  // 白芯：细而亮，贯穿全束（保留元素色轮廓，避免"整条糊成纯白"）
+  ctx.strokeStyle = rgba('#FFFFFF', 0.68 * lifeK);
+  ctx.lineWidth = Math.max(1.4, baseW * 0.22);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(beam.ax, beam.ay);
+  ctx.lineTo(beam.bx, beam.by);
+  ctx.stroke();
+
+  // 枪口爆闪
+  drawGlow(ctx, beam.ax, beam.ay, baseW * 3.2, light, 0.75 * lifeK);
+
+  // 命中爆点：每个被击中的怪物处一枚能量花（大小随该处剩余能量）
+  for (const h of beam.hits) {
+    const ek = beam.energy > 0 ? Math.max(0.15, h.energy / beam.energy) : 0.2;
+    const r = 10 + 22 * ek;
+    drawGlow(ctx, h.x, h.y, r, color, 0.5 * ek * lifeK);
+    drawGlow(ctx, h.x, h.y, r * 0.5, '#FFFFFF', 0.55 * ek * lifeK);
+    // 十字能量线
+    ctx.strokeStyle = rgba('#FFFFFF', 0.6 * ek * lifeK);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(h.x - r * 0.7, h.y);
+    ctx.lineTo(h.x + r * 0.7, h.y);
+    ctx.moveTo(h.x, h.y - r * 0.7);
+    ctx.lineTo(h.x, h.y + r * 0.7);
+    ctx.stroke();
+    ctx.strokeStyle = rgba(color, 0.5 * ek * lifeK);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(h.x, h.y, r * 0.75, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // 端点光（被最后一只怪吸收处 / 满射程末端）
+  drawGlow(ctx, beam.bx, beam.by, baseW * 1.8, '#FFFFFF', 0.5 * lifeK);
+  ctx.restore();
 }
 
 // ---------------- 地面特效 ----------------

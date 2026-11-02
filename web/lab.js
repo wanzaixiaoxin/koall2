@@ -778,6 +778,8 @@
       this.pools = [];
       this.segments = [];
       // 光束/连线伤害场（docs/07 §4）
+      this.lasers = [];
+      // 激光能量束（瞬时结算，仅渲染快照，见 doLaser）
       /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
       this.creep = /* @__PURE__ */ new Map();
       // 可被 B 类卡（加固城墙）提升
@@ -867,7 +869,9 @@
       }
       updateWeapons(this.hero, this.targetableScratch, this.hash, this.rng, this.fireCommands);
       for (const cmd of this.fireCommands) {
-        if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
+        if (cmd.weapon.cfg.laser) {
+          this.doLaser(cmd);
+        } else if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
           this.doLightning(cmd);
         } else {
           this.spawnProjectile(cmd);
@@ -880,7 +884,8 @@
         const b = this.burstQueue[i];
         b.timer -= dt;
         if (b.timer <= 0) {
-          if ((b.cmd.weapon.cfg.chainBase ?? 0) > 0 || b.cmd.weapon.affixes.chain > 0) this.doLightning(b.cmd);
+          if (b.cmd.weapon.cfg.laser) this.doLaser(b.cmd);
+          else if ((b.cmd.weapon.cfg.chainBase ?? 0) > 0 || b.cmd.weapon.affixes.chain > 0) this.doLightning(b.cmd);
           else this.spawnProjectile(b.cmd);
           this.burstQueue.splice(i, 1);
         }
@@ -1037,6 +1042,9 @@
           this.bus.emit("onPoolTick", { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
           if (m.hp <= 0) this.killMonster(null, m);
         }
+      }
+      for (let i = this.lasers.length - 1; i >= 0; i--) {
+        if (now >= this.lasers[i].until) this.lasers.splice(i, 1);
       }
       for (let i = this.segments.length - 1; i >= 0; i--) {
         const seg = this.segments[i];
@@ -1322,6 +1330,131 @@
         }
         this.killProjectile(p);
       }
+    }
+    /**
+     * 激光（docs/07 §4 特殊形态）：直线能量束，瞬时结算。
+     *
+     * 语义（策划口径）：
+     *  - 直射：从英雄炮口沿瞄准方向射出；
+     *  - 束内所有怪物都受伤害（一条线穿过去，不是单体）；
+     *  - 能量守恒衰减：起始能量 = 本次单发伤害（cmd.dmg）。按离英雄由近到远依次结算，
+     *    每只怪吸收「当前能量 × transfer」作为本次伤害；实际造成的伤害从能量池扣除，
+     *    能量归零即停止 —— 所以"越近的怪吃到的能量（伤害）越大"，且后面的怪会被前面的挡弱。
+     *  - 装甲/免伤盾会减少实际扣血，从而少消耗能量（肉盾"扛住"了光束，激光能继续往后穿）。
+     */
+    doLaser(cmd) {
+      const lz = cmd.weapon.cfg.laser;
+      const now = this.timeSec;
+      const transfer = Math.max(0.05, Math.min(1, lz.transfer ?? 0.85));
+      const width = lz.width ?? 16;
+      const length = (lz.length ?? 1400) * cmd.weapon.mods.rangeMul;
+      const maxHits = 16;
+      let dx = cmd.dirX;
+      let dy = cmd.dirY;
+      const dl = Math.hypot(dx, dy);
+      if (dl < 1e-6) {
+        dx = 0;
+        dy = 1;
+      } else {
+        dx /= dl;
+        dy /= dl;
+      }
+      if (cmd.index > 0) {
+        const side = cmd.index % 2 === 1 ? -1 : 1;
+        const step = Math.ceil(cmd.index / 2);
+        const fan = side * step * (cmd.weapon.cfg.spread ?? 0.12);
+        const cos = Math.cos(fan);
+        const sin = Math.sin(fan);
+        const ndx = dx * cos - dy * sin;
+        const ndy = dx * sin + dy * cos;
+        dx = ndx;
+        dy = ndy;
+      }
+      const ax = cmd.fromX;
+      const ay = cmd.fromY;
+      const half = width / 2;
+      const cands = [];
+      this.hash.rebuild(this.monsters);
+      for (const m of this.monsters) {
+        if (m.hp <= 0) continue;
+        const rx = m.x - ax;
+        const ry = m.y - ay;
+        const t = rx * dx + ry * dy;
+        if (t < -m.cfg.radius || t > length + m.cfg.radius) continue;
+        const perp = Math.abs(rx * -dy + ry * dx);
+        if (perp > half + m.cfg.radius) continue;
+        cands.push({ m, t: Math.max(0, t) });
+      }
+      cands.sort((a, b) => a.t - b.t);
+      const hits = [];
+      let energy = Math.max(1, cmd.dmg);
+      const energyStart = energy;
+      for (const { m, t } of cands) {
+        if (energy <= 0.5 || hits.length >= maxHits) break;
+        if (m.burrowed) {
+          this.forceEmerge(m);
+          continue;
+        }
+        const current = energy;
+        const want = Math.max(1, current * transfer);
+        const def = Math.max(0, m.cfg.def - (now < m.shredUntil ? m.shredAmount : 0));
+        const res = calcDamage(
+          heroAttackerSnapshot(this.hero),
+          { def, level: this.director.currentWave + 1 },
+          {
+            skillMul: want / BASE_ATK,
+            damageType: cmd.weapon.element,
+            typeMul: m.cfg.weak?.includes(cmd.weapon.element) ? 1.25 : m.cfg.resist?.includes(cmd.weapon.element) ? 0.75 : 1
+          },
+          this.rng
+        );
+        const dealt0 = this.applyDirectHit(m, res.amount);
+        const dealt = this.resolveTransfer(m, dealt0);
+        m.hp -= dealt;
+        this.totalDamage += dealt;
+        if (res.isCrit && dealt > 0) this.totalCrits++;
+        this.bus.emit("onHit", {
+          monsterId: m.id,
+          dmg: dealt,
+          isCrit: res.isCrit,
+          blocked: dealt === 0,
+          mitigated: dealt === 0 ? 0 : res.mitigated,
+          x: m.x,
+          y: m.y
+        });
+        if (cmd.weapon.element === "fire") this.burnCreep(m.x, m.y, 60);
+        if (cmd.weapon.element === "fire" && cmd.weapon.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
+          const dps = want * cmd.weapon.riders.burnDpsMul;
+          if (m.burn && m.burn.dps >= dps) m.burn.until = now + cmd.weapon.riders.burnSec;
+          else m.burn = { dps, until: now + cmd.weapon.riders.burnSec, nextTick: now + 0.5 };
+        }
+        if (cmd.weapon.element === "frost" && cmd.weapon.riders.slowPct > 0) {
+          m.slowFactor = Math.max(0.35, 1 - cmd.weapon.riders.slowPct);
+          m.slowUntil = now + cmd.weapon.riders.slowSec;
+        }
+        if (cmd.weapon.affixes.shred > 0) {
+          m.shredAmount = 3 * cmd.weapon.affixes.shred;
+          m.shredUntil = now + 4;
+        }
+        hits.push({ x: m.x, y: m.y, dmg: dealt, energy: current });
+        energy -= Math.max(dealt0, 0);
+        if (m.hp <= 0) this.killMonster(null, m);
+      }
+      const lastHit = hits.length > 0 ? hits[hits.length - 1] : null;
+      const bx = lastHit ? lastHit.x : ax + dx * length;
+      const by = lastHit ? lastHit.y : ay + dy * length;
+      this.lasers.push({
+        ax,
+        ay,
+        bx,
+        by,
+        width,
+        energy: energyStart,
+        hits,
+        until: now + (lz.life ?? 0.18),
+        damageType: cmd.weapon.element
+      });
+      this.bus.emit("onLaser", { hits: hits.length, energy: Math.max(0, energy) });
     }
     /**
      * 连锁闪电（docs/07 §3）：不是子弹——索敌后从炮口直接劈向目标，
@@ -4388,6 +4521,82 @@
       drawGlow(ctx, s.x, by, 18, color, 0.28);
     }
   }
+  function drawLaser(ctx, beam, t, color) {
+    const dx = beam.bx - beam.ax;
+    const dy = beam.by - beam.ay;
+    const len2 = Math.hypot(dx, dy) || 1;
+    const ux = dx / len2;
+    const uy = dy / len2;
+    const px = -uy;
+    const py = ux;
+    const lifeK = 0.9 + 0.1 * Math.sin(t * 60);
+    const baseW = beam.width;
+    const light = lighten(color, 0.65);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const segs = 10;
+    for (let i = 0; i <= segs; i++) {
+      const k = i / segs;
+      const x = beam.ax + ux * len2 * k;
+      const y = beam.ay + uy * len2 * k;
+      drawGlow(ctx, x, y, baseW * (2.4 - k * 1.2), color, 0.34 * (1 - k * 0.8) * lifeK);
+    }
+    const steps = 22;
+    let prevX = beam.ax;
+    let prevY = beam.ay;
+    for (let i = 1; i <= steps; i++) {
+      const k = i / steps;
+      const x = beam.ax + ux * len2 * k;
+      const y = beam.ay + uy * len2 * k;
+      const en = 1 - k;
+      const jitter = Math.sin(t * 42 + i * 1.7) * baseW * 0.12 * en;
+      const w = baseW * (0.35 + 0.9 * en);
+      ctx.strokeStyle = rgba(color, 0.2 * (0.4 + en) * lifeK);
+      ctx.lineWidth = w * 2.1;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(prevX + px * jitter, prevY + py * jitter);
+      ctx.lineTo(x + px * jitter, y + py * jitter);
+      ctx.stroke();
+      ctx.strokeStyle = rgba(light, 0.55 * (0.5 + en) * lifeK);
+      ctx.lineWidth = w * 0.85;
+      ctx.beginPath();
+      ctx.moveTo(prevX + px * jitter, prevY + py * jitter);
+      ctx.lineTo(x + px * jitter, y + py * jitter);
+      ctx.stroke();
+      prevX = x;
+      prevY = y;
+    }
+    ctx.strokeStyle = rgba("#FFFFFF", 0.68 * lifeK);
+    ctx.lineWidth = Math.max(1.4, baseW * 0.22);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(beam.ax, beam.ay);
+    ctx.lineTo(beam.bx, beam.by);
+    ctx.stroke();
+    drawGlow(ctx, beam.ax, beam.ay, baseW * 3.2, light, 0.75 * lifeK);
+    for (const h of beam.hits) {
+      const ek = beam.energy > 0 ? Math.max(0.15, h.energy / beam.energy) : 0.2;
+      const r = 10 + 22 * ek;
+      drawGlow(ctx, h.x, h.y, r, color, 0.5 * ek * lifeK);
+      drawGlow(ctx, h.x, h.y, r * 0.5, "#FFFFFF", 0.55 * ek * lifeK);
+      ctx.strokeStyle = rgba("#FFFFFF", 0.6 * ek * lifeK);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(h.x - r * 0.7, h.y);
+      ctx.lineTo(h.x + r * 0.7, h.y);
+      ctx.moveTo(h.x, h.y - r * 0.7);
+      ctx.lineTo(h.x, h.y + r * 0.7);
+      ctx.stroke();
+      ctx.strokeStyle = rgba(color, 0.5 * ek * lifeK);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, r * 0.75, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    drawGlow(ctx, beam.bx, beam.by, baseW * 1.8, "#FFFFFF", 0.5 * lifeK);
+    ctx.restore();
+  }
   function drawPool(ctx, pool, t) {
     const left = Math.max(0, pool.until - t);
     const lifeK = Math.min(1, left * 0.8);
@@ -4564,6 +4773,11 @@
         this.recoil = this.fx.cfg.heroRecoil?.distance ?? 5.5;
       });
       bus.on("onChain", ({ points }) => eff.chain(points));
+      bus.on("onLaser", ({ hits }) => {
+        eff.shake(hits > 0 ? 2.4 : 1.2, 0.1);
+        const h = session.hero;
+        eff.muzzle(h.x + Math.cos(this.aim) * 30, h.y + Math.sin(this.aim) * 30, this.aim, "#FFFFFF", 22, 0.08);
+      });
       bus.on("onHeal", ({ x, y, radius }) => eff.healPulse(x, y, radius));
       bus.on(
         "onHealed",
@@ -4620,6 +4834,10 @@
         this.drawHpBar(ctx, m);
       }
       drawSegments(ctx, session.segments, now, "#B388FF");
+      const laserColor = (type) => this.palette.damageType[type] ?? "#B388FF";
+      for (const beam of session.lasers) {
+        drawLaser(ctx, beam, t, laserColor(beam.damageType));
+      }
       const h = session.hero;
       drawHero(ctx, h, t, { aim: this.aim, recoil: this.recoil, lean: this.lean });
       const projColor = (type) => this.palette.damageType[type] ?? "#BFFFF2";

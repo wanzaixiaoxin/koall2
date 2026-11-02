@@ -13,6 +13,7 @@ import { FxRuntime, sampleKeyframes } from './fx';
 import {
   drawHero,
   drawMonster,
+  drawLaser,
   drawMonsterShot,
   drawMonsterStatus,
   drawPool,
@@ -148,6 +149,13 @@ export class SceneRenderer {
 
     bus.on<{ points: number[][] }>('onChain', ({ points }) => eff.chain(points));
 
+    // 激光开火：轻微震屏 + 枪口冲击尘（光束的"重量感"）
+    bus.on<{ hits: number; energy: number }>('onLaser', ({ hits }) => {
+      eff.shake(hits > 0 ? 2.4 : 1.2, 0.1);
+      const h = session.hero;
+      eff.muzzle(h.x + Math.cos(this.aim) * 30, h.y + Math.sin(this.aim) * 30, this.aim, '#FFFFFF', 22, 0.08);
+    });
+
     bus.on<{ x: number; y: number; radius: number }>('onHeal', ({ x, y, radius }) => eff.healPulse(x, y, radius));
     bus.on<{ x: number; y: number; amount: number }>('onHealed', ({ x, y, amount }) =>
       eff.pushFloat(x, y, `+${amount}`, '#7CB342', 15),
@@ -214,6 +222,12 @@ export class SceneRenderer {
     }
 
     drawSegments(ctx, session.segments, now, '#B388FF');
+
+    // 激光能量束（瞬时结算的视觉快照）
+    const laserColor = (type: string): string => this.palette.damageType[type] ?? '#B388FF';
+    for (const beam of session.lasers) {
+      drawLaser(ctx, beam, t, laserColor(beam.damageType));
+    }
 
     // 英雄
     const h = session.hero;

@@ -22,6 +22,7 @@ import {
   BlastSpec,
   CardConfig,
   DamagePool,
+  LaserBeam,
   HeroRuntime,
   LevelConfig,
   MonsterConfig,
@@ -213,6 +214,7 @@ export class GameSession {
   monsterShots: MonsterShot[] = []; // 怪物远程弹（可见弹道，落点结算对墙伤害）
   pools: DamagePool[] = [];
   segments: SegmentField[] = []; // 光束/连线伤害场（docs/07 §4）
+  lasers: LaserBeam[] = []; // 激光能量束（瞬时结算，仅渲染快照，见 doLaser）
   /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
   creep = new Map<number, number>();
   private static readonly CREEP_CELL = 90;
@@ -314,7 +316,9 @@ export class GameSession {
     }
     updateWeapons(this.hero, this.targetableScratch, this.hash, this.rng, this.fireCommands);
     for (const cmd of this.fireCommands) {
-      if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
+      if (cmd.weapon.cfg.laser) {
+        this.doLaser(cmd);
+      } else if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
         this.doLightning(cmd);
       } else {
         this.spawnProjectile(cmd);
@@ -328,7 +332,8 @@ export class GameSession {
       const b = this.burstQueue[i];
       b.timer -= dt;
       if (b.timer <= 0) {
-        if ((b.cmd.weapon.cfg.chainBase ?? 0) > 0 || b.cmd.weapon.affixes.chain > 0) this.doLightning(b.cmd);
+        if (b.cmd.weapon.cfg.laser) this.doLaser(b.cmd);
+        else if ((b.cmd.weapon.cfg.chainBase ?? 0) > 0 || b.cmd.weapon.affixes.chain > 0) this.doLightning(b.cmd);
         else this.spawnProjectile(b.cmd);
         this.burstQueue.splice(i, 1);
       }
@@ -507,6 +512,11 @@ export class GameSession {
         this.bus.emit('onPoolTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg }); // 弹坑跳字
         if (m.hp <= 0) this.killMonster(null, m);
       }
+    }
+
+    // 6a) 激光：仅清理过期视觉快照（伤害在开火瞬间已结算）
+    for (let i = this.lasers.length - 1; i >= 0; i--) {
+      if (now >= this.lasers[i].until) this.lasers.splice(i, 1);
     }
 
     // 6b) 光束/连线伤害场（线段胶囊体持续 dps；followOwner 的光束锚定英雄朝向）
@@ -829,6 +839,140 @@ export class GameSession {
       }
       this.killProjectile(p);
     }
+  }
+
+  /**
+   * 激光（docs/07 §4 特殊形态）：直线能量束，瞬时结算。
+   *
+   * 语义（策划口径）：
+   *  - 直射：从英雄炮口沿瞄准方向射出；
+   *  - 束内所有怪物都受伤害（一条线穿过去，不是单体）；
+   *  - 能量守恒衰减：起始能量 = 本次单发伤害（cmd.dmg）。按离英雄由近到远依次结算，
+   *    每只怪吸收「当前能量 × transfer」作为本次伤害；实际造成的伤害从能量池扣除，
+   *    能量归零即停止 —— 所以"越近的怪吃到的能量（伤害）越大"，且后面的怪会被前面的挡弱。
+   *  - 装甲/免伤盾会减少实际扣血，从而少消耗能量（肉盾"扛住"了光束，激光能继续往后穿）。
+   */
+  private doLaser(cmd: FireCommand): void {
+    const lz = cmd.weapon.cfg.laser!;
+    const now = this.timeSec;
+    const transfer = Math.max(0.05, Math.min(1, lz.transfer ?? 0.85));
+    const width = lz.width ?? 16;
+    const length = (lz.length ?? 1400) * cmd.weapon.mods.rangeMul;
+    const maxHits = 16;
+
+    // 方向：优先瞄准锁定目标；英雄与目标重合时兜底朝上
+    let dx = cmd.dirX;
+    let dy = cmd.dirY;
+    const dl = Math.hypot(dx, dy);
+    if (dl < 1e-6) {
+      dx = 0;
+      dy = 1;
+    } else {
+      dx /= dl;
+      dy /= dl;
+    }
+    // 齐射扇形（"扩束棱镜"副束）：与子弹一致的左右交替展开，主束严格对准目标
+    if (cmd.index > 0) {
+      const side = cmd.index % 2 === 1 ? -1 : 1;
+      const step = Math.ceil(cmd.index / 2);
+      const fan = side * step * (cmd.weapon.cfg.spread ?? 0.12);
+      const cos = Math.cos(fan);
+      const sin = Math.sin(fan);
+      const ndx = dx * cos - dy * sin;
+      const ndy = dx * sin + dy * cos;
+      dx = ndx;
+      dy = ndy;
+    }
+    const ax = cmd.fromX;
+    const ay = cmd.fromY;
+
+    // 束内候选：投影落在 [0, length]、垂直距离在 (width/2 + 半径) 内
+    const half = width / 2;
+    type Cand = { m: MonsterRuntime; t: number };
+    const cands: Cand[] = [];
+    this.hash.rebuild(this.monsters);
+    for (const m of this.monsters) {
+      if (m.hp <= 0) continue;
+      const rx = m.x - ax;
+      const ry = m.y - ay;
+      const t = rx * dx + ry * dy; // 沿束方向的投影距离
+      if (t < -m.cfg.radius || t > length + m.cfg.radius) continue;
+      const perp = Math.abs(rx * -dy + ry * dx); // 垂直距离
+      if (perp > half + m.cfg.radius) continue;
+      cands.push({ m, t: Math.max(0, t) });
+    }
+    cands.sort((a, b) => a.t - b.t); // 由近到远：先命中的吸收最多能量
+
+    const hits: LaserBeam['hits'] = [];
+    let energy = Math.max(1, cmd.dmg);
+    const energyStart = energy;
+
+    for (const { m, t } of cands) {
+      if (energy <= 0.5 || hits.length >= maxHits) break;
+      if (m.burrowed) {
+        // 激光灼烧地皮：把钻地怪轰出来（与光束/电网一致），但不消耗能量
+        this.forceEmerge(m);
+        continue;
+      }
+      const current = energy;
+      const want = Math.max(1, current * transfer); // 本目标最多吸收当前能量的比例
+      const def = Math.max(0, m.cfg.def - (now < m.shredUntil ? m.shredAmount : 0));
+      const res = calcDamage(
+        heroAttackerSnapshot(this.hero),
+        { def, level: this.director.currentWave + 1 },
+        {
+          skillMul: want / BASE_ATK,
+          damageType: cmd.weapon.element,
+          typeMul: m.cfg.weak?.includes(cmd.weapon.element) ? 1.25 : m.cfg.resist?.includes(cmd.weapon.element) ? 0.75 : 1,
+        },
+        this.rng,
+      );
+      const dealt0 = this.applyDirectHit(m, res.amount); // 免伤盾结算
+      const dealt = this.resolveTransfer(m, dealt0); // 巫师变阵：伤害转嫁
+      m.hp -= dealt;
+      this.totalDamage += dealt;
+      if (res.isCrit && dealt > 0) this.totalCrits++;
+      this.bus.emit('onHit', {
+        monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0,
+        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y,
+      });
+
+      // 元素骑士：激光同样能点燃/冰冻/破甲（与子弹一致）
+      if (cmd.weapon.element === 'fire') this.burnCreep(m.x, m.y, 60);
+      if (cmd.weapon.element === 'fire' && cmd.weapon.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
+        const dps = want * cmd.weapon.riders.burnDpsMul;
+        if (m.burn && m.burn.dps >= dps) m.burn.until = now + cmd.weapon.riders.burnSec;
+        else m.burn = { dps, until: now + cmd.weapon.riders.burnSec, nextTick: now + 0.5 };
+      }
+      if (cmd.weapon.element === 'frost' && cmd.weapon.riders.slowPct > 0) {
+        m.slowFactor = Math.max(0.35, 1 - cmd.weapon.riders.slowPct);
+        m.slowUntil = now + cmd.weapon.riders.slowSec;
+      }
+      if (cmd.weapon.affixes.shred > 0) {
+        m.shredAmount = 3 * cmd.weapon.affixes.shred;
+        m.shredUntil = now + 4;
+      }
+
+      hits.push({ x: m.x, y: m.y, dmg: dealt, energy: current });
+      // 消耗能量 = 实际造成的伤害（被装甲/护盾抵消的部分不消耗，光束可继续穿）
+      energy -= Math.max(dealt0, 0);
+
+      if (m.hp <= 0) this.killMonster(null, m); // 激光无弹体：不触发击杀分裂
+    }
+
+    // 视觉快照：束长到最后一个命中点（没有命中则打到满射程末端）
+    const lastHit = hits.length > 0 ? hits[hits.length - 1] : null;
+    const bx = lastHit ? lastHit.x : ax + dx * length;
+    const by = lastHit ? lastHit.y : ay + dy * length;
+    this.lasers.push({
+      ax, ay, bx, by,
+      width,
+      energy: energyStart,
+      hits,
+      until: now + (lz.life ?? 0.18),
+      damageType: cmd.weapon.element,
+    });
+    this.bus.emit('onLaser', { hits: hits.length, energy: Math.max(0, energy) });
   }
 
   /**

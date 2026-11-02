@@ -813,6 +813,77 @@ const tests: TestCase[] = [
       ? true : `线上 ${onSeg.hp.toFixed(0)}/${onSeg.maxHp} 线外 ${offSeg.hp.toFixed(0)}/${offSeg.maxHp}`;
   } },
 
+  // ===== 激光（能量束） =====
+  { name: 'L-激光：直线穿射，束内怪物全受击且由近到远能量衰减（近处伤害更大）', run: () => {
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const laserIdx = weapons.findIndex((w) => !!w.laser);
+    if (laserIdx < 0) return '未找到激光武器';
+    const s = freshSession(11, laserIdx);
+    // 三只高血量靶，同 x（正上方一条线），离英雄由近到远
+    const ys = [700, 820, 940];
+    for (const y of ys) {
+      s.debugSpawn('bulwark', 540, y);
+      const m = s.monsters[s.monsters.length - 1];
+      m.hp = m.maxHp = 5000;
+      m.shieldLeft = 0;
+    }
+    const dmg = [0, 0, 0];
+    s.bus.on<{ monsterId: number; dmg: number }>('onHit', (p) => {
+      const idx = ys.indexOf(Math.round(s.monsters[p.monsterId]?.y ?? -1));
+      // 用当前 y 找最近的目标位（怪物会缓慢移动，取最近的正上方靶）
+      let best = -1; let bd = 1e9;
+      for (let i = 0; i < ys.length; i++) {
+        const d = Math.abs((s.monsters[p.monsterId]?.y ?? 0) - ys[i]);
+        if (d < bd) { bd = d; best = i; }
+      }
+      if (best >= 0) dmg[best] += p.dmg;
+      void idx;
+    });
+    runFor(s, 6, () => false);
+    if (!(dmg[0] > 0 && dmg[1] > 0 && dmg[2] > 0)) return `存在未受击目标: ${dmg.map((d) => d.toFixed(0)).join('/')}`;
+    return dmg[0] > dmg[1] && dmg[1] > dmg[2]
+      ? true : `能量未按距离衰减: ${dmg.map((d) => d.toFixed(0)).join(' / ')}`;
+  } },
+  { name: 'L-激光：线外怪物无伤（严格直射）', run: () => {
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const laserIdx = weapons.findIndex((w) => !!w.laser);
+    const s = freshSession(12, laserIdx);
+    s.debugSpawn('bulwark', 540, 900); // 线上目标（保证有索敌，激光会朝正上方发射）
+    const onLine = s.monsters[s.monsters.length - 1];
+    onLine.hp = onLine.maxHp = 5000; onLine.shieldLeft = 0;
+    s.debugSpawn('bulwark', 220, 900); // 线外（横向偏 320px，远超束宽）
+    const offLine = s.monsters[s.monsters.length - 1];
+    offLine.hp = offLine.maxHp = 5000; offLine.shieldLeft = 0;
+    runFor(s, 4, () => false);
+    return onLine.hp < 5000 && offLine.hp === 5000
+      ? true : `线上 ${(5000 - onLine.hp).toFixed(0)} 伤害 / 线外 ${(5000 - offLine.hp).toFixed(0)} 伤害`;
+  } },
+  { name: 'L-激光：起始能量越大，首段伤害越高（聚焦卡加成生效）', run: () => {
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const laserIdx = weapons.findIndex((w) => !!w.laser);
+    const meanFirstHit = (focus: number): number | null => {
+      const s = freshSession(21, laserIdx);
+      for (let i = 0; i < focus; i++) s.grantCard('laser_focus');
+      s.debugSpawn('bulwark', 540, 700);
+      const m = s.monsters[s.monsters.length - 1];
+      m.hp = m.maxHp = 5000; m.shieldLeft = 0;
+      const ds: number[] = [];
+      // 取每轮首个命中（非暴击）的伤害样本
+      let lastT = -1;
+      s.bus.on<{ monsterId: number; dmg: number; isCrit: boolean }>('onHit', (p) => {
+        if (p.monsterId !== m.id || p.isCrit) return;
+        if (s.timeSec - lastT > 0.3) { ds.push(p.dmg); lastT = s.timeSec; }
+      });
+      runFor(s, 6, () => false);
+      if (ds.length < 4) return null;
+      return ds.reduce((a, b) => a + b, 0) / ds.length;
+    };
+    const base = meanFirstHit(0);
+    const up = meanFirstHit(3);
+    if (base === null || up === null) return '样本不足';
+    return up > base * 1.25 ? true : `无加成 ${base.toFixed(1)} → 聚焦×3 ${up.toFixed(1)}（期望显著提升）`;
+  } },
+
   // ===== 属性卡 =====
   { name: 'P-力量/急速/鹰眼/狂暴/专注：属性递增', run: () => {
     const s = freshSession();

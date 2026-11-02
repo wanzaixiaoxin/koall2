@@ -38,11 +38,22 @@ function validateWeapons(weapons: WeaponConfig[]): void {
     ids.add(w.id);
     need(isNum(w.baseDamage) && w.baseDamage > 0, where, 'baseDamage 必须为正数');
     need(isNum(w.interval) && w.interval > 0, where, 'interval 必须为正数');
-    // 落雷武器（chainBase≥1）无弹体，弹速可为 0
+    // 落雷/激光武器无弹体，弹速可为 0
     need(
-      isNum(w.projectileSpeed) && (w.projectileSpeed > 0 || (w.chainBase ?? 0) > 0),
-      where, 'projectileSpeed 必须为正数（落雷武器除外）',
+      isNum(w.projectileSpeed) && (w.projectileSpeed > 0 || (w.chainBase ?? 0) > 0 || !!w.laser),
+      where, 'projectileSpeed 必须为正数（落雷/激光武器除外）',
     );
+    if (w.laser !== undefined) {
+      need(!!w.laser && typeof w.laser === 'object', where, 'laser 配置必须为对象');
+      if (w.laser) {
+        if (w.laser.transfer !== undefined) {
+          need(isNum(w.laser.transfer) && w.laser.transfer > 0 && w.laser.transfer <= 1, where, 'laser.transfer 必须在 (0,1] 内');
+        }
+        if (w.laser.width !== undefined) need(isNum(w.laser.width) && w.laser.width > 0, where, 'laser.width 必须为正数');
+        if (w.laser.length !== undefined) need(isNum(w.laser.length) && w.laser.length > 0, where, 'laser.length 必须为正数');
+        if (w.laser.life !== undefined) need(isNum(w.laser.life) && w.laser.life > 0, where, 'laser.life 必须为正数');
+      }
+    }
     if ((w.chainBase ?? 0) > 0) {
       need(isNum(w.chainBase) && (w.chainBase as number) >= 1, where, 'chainBase 必须 ≥ 1');
     }

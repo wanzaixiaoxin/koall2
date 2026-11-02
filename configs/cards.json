@@ -608,6 +608,57 @@
       },
       "maxStack": 5,
       "desc": "全伤害 +5%"
+    },
+    {
+      "id": "laser_focus",
+      "name": "棱镜聚焦",
+      "rarity": "rare",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "arc_laser"
+      },
+      "effect": {
+        "bullet": "damage",
+        "op": "add",
+        "value": 0.18
+      },
+      "maxStack": 3,
+      "desc": "棱镜激光起始能量 +18%（首段伤害与穿射深度同步提升）"
+    },
+    {
+      "id": "laser_beam",
+      "name": "光束延伸",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "arc_laser"
+      },
+      "effect": {
+        "bullet": "range",
+        "op": "add",
+        "value": 0.25
+      },
+      "maxStack": 3,
+      "desc": "棱镜激光射程（束长）+25%"
+    },
+    {
+      "id": "laser_wide",
+      "name": "扩束棱镜",
+      "rarity": "epic",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "arc_laser"
+      },
+      "effect": {
+        "bullet": "count",
+        "op": "add",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "棱镜激光额外并列一道光束（副束略偏，覆盖更宽）"
     }
   ]
 }

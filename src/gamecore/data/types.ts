@@ -32,6 +32,16 @@ export interface WeaponConfig {
   heat?: { shots: number; cooldown: number };
   /** ≥1 = 落雷武器：开火不产生子弹，直接以"1+连锁等级"次打击落雷（连锁闪电武器本体） */
   chainBase?: number;
+  /**
+   * 激光武器本体（直线能量束）：开火不产生子弹，沿瞄准方向发射一束"能量"。
+   * 束内怪物按离英雄由近到远依次受击，每命中一只按当前能量结算伤害并消耗能量，
+   * 能量衰减到 0 即止 —— 越近的怪吃到的能量（伤害）越大。起始能量 = 开火时的单发伤害（cmd.dmg）。
+   *   transfer：每个目标最多吸收当前能量的比例（0~1，默认 0.85）
+   *   width：束宽（px，默认 16）
+   *   length：束长（px，默认 1400；受射程卡 rangeMul 缩放）
+   *   life：视觉停留时长（秒，默认 0.18；纯表现，伤害在开火瞬间结算）
+   */
+  laser?: { transfer?: number; width?: number; length?: number; life?: number };
     /** 子弹视觉形态（docs/06）：dot 光点 / arrow 箭矢 / bomb 抛物弹 / gear 齿轮圆盘 */
   shape?: string;
   /** 齐射扇形间距（rad/档，默认 0.1）；大型弹体（齿轮盘）建议加大以拉开间距 */
@@ -357,4 +367,24 @@ export interface SegmentField {
   followOwner?: boolean;
   angle?: number;
   length?: number;
+}
+
+/**
+ * 激光能量束（visual snapshot，docs/07 §4 特殊形态）：
+ * 伤害在开火瞬间一次性结算，本结构只承载渲染所需的几何与能量信息（纯表现，不参与逻辑）。
+ * hits 记录每个被击中怪物在束上的位置与结算伤害，供渲染层做衰减亮度/命中爆点。
+ */
+export interface LaserBeam {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  width: number;
+  /** 起始能量（= 单发伤害），用于渲染能量衰减渐变 */
+  energy: number;
+  /** 命中点（按离英雄由近到远） */
+  hits: { x: number; y: number; dmg: number; energy: number }[];
+  /** 视觉存活到的时刻（秒，session.timeSec 基准） */
+  until: number;
+  damageType: DamageType;
 }

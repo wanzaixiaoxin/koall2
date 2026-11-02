@@ -159,6 +159,32 @@
         "shots": 14,
         "cooldown": 2.5
       }
+    },
+    {
+      "id": "arc_laser",
+      "name": "棱镜激光",
+      "role": "光束系 · 穿射衰减",
+      "damageType": "lightning",
+      "baseDamage": 34,
+      "interval": 0.9,
+      "count": 1,
+      "projectileSpeed": 0,
+      "projectileRange": 1000,
+      "projectileRadius": 0,
+      "pierce": 0,
+      "targeting": "nearest",
+      "trajectory": "straight",
+      "shape": "dot",
+      "laser": {
+        "transfer": 0.85,
+        "width": 16,
+        "length": 1400,
+        "life": 0.18
+      },
+      "heat": {
+        "shots": 10,
+        "cooldown": 2.2
+      }
     }
   ]
 }
