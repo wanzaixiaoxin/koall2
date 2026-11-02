@@ -377,7 +377,7 @@ export class GameSession {
           this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
         }, (src) => {
           this.spawnMonsterShot(src);
-        }, (x, y) => this.isCreeped(x, y));
+        }, (x, y) => this.isCreeped(x, y), this.maxSafeHoldY());
         continue;
       }
       this.tickBurns(m, dt);
@@ -404,7 +404,7 @@ export class GameSession {
         this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
       }, (src) => {
         this.spawnMonsterShot(src);
-      }, (x, y) => this.isCreeped(x, y));
+      }, (x, y) => this.isCreeped(x, y), this.maxSafeHoldY());
     }
 
     // 5b) 毒爆虫：接触城墙即自爆（城防大额伤害）
@@ -549,6 +549,9 @@ export class GameSession {
     while (this.hero.xp >= xpNeed(this.hero.level)) {
       this.hero.xp -= xpNeed(this.hero.level);
       this.hero.level++;
+      // 等级自身成长（docs/01 §3）：每级 ATK +8% —— 让"升级"本身即可感知地变强，
+      // 而不是只靠三选一；与波次 HP 曲线（+7%/波）对齐，避免后期数值崩坏。
+      this.hero.stats.atk *= 1.08;
       this.pendingLevels++;
     }
     if (this.sandboxMode) {
@@ -617,13 +620,15 @@ export class GameSession {
   /** 远程怪发射可见弹道（投矛/投石），落点结算对墙伤害。 */
   private spawnMonsterShot(src: MonsterRuntime): void {
     const isRock = (src.cfg.rangedDist ?? 0) > 400; // 投石车类远距抛石
-    const dist = Math.hypot(src.x - src.x, src.y - this.level.wall.height);
+    const wallH = this.level.wall.height;
+    // 落点固定锁在城墙（投石车"扔炸弹远击城墙"）：不会越过城墙推进，也不会打到墙外
+    const dist = Math.hypot(src.x - src.x, src.y - wallH); // 纯竖直距离
     const speed = isRock ? 420 : 620;
     this.monsterShots.push({
       sx: src.x,
       sy: src.y,
       tx: src.x + this.rng.range(-24, 24),
-      ty: this.level.wall.height,
+      ty: wallH,
       x: src.x,
       y: src.y,
       height: 0,
@@ -639,8 +644,8 @@ export class GameSession {
     if (!cfg) throw new Error(`未知怪物配置: ${key}`);
     const x = clamp(spawnX, 40, this.level.arena.width - 40);
     const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
-    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 10%×n)，血量随波次显著增强
-    const scale = 1 + 0.1 * this.director.currentWave;
+    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 7%×n)，与玩家构筑成长曲线对齐（过陡会导致后期数值崩坏）
+    const scale = 1 + 0.07 * this.director.currentWave;
     const hp = Math.round(cfg.hp * scale);
     this.monsters.push({
       id: this.monsters.length, // tick 内密度数组约定
@@ -658,6 +663,7 @@ export class GameSession {
       splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
       burrowed: false,
       burrowTimer: 0,
+      sieged: false,
       creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
       regenAcc: 0,
       groupId: -1,
@@ -1053,6 +1059,35 @@ export class GameSession {
   }
 
   // ---------- 虫苔（docs/08） ----------
+  /**
+   * 远程怪停驻点的安全上限：保证任何怪物都不会停在我方所有武器都够不到的"死角"里。
+   * 取所有武器「索敌距离」与「实际飞行/作用距离」的较小者的最小值；英雄最远可站到 defenseRect.yMax，
+   * 故 maxHoldY = yMax + minReach - 余量。
+   */
+  private maxSafeHoldY(): number {
+    const margin = 40;
+    const yMax = this.level.defenseRect.yMax;
+    let minReach = Infinity;
+    for (const w of this.hero.weapons) {
+      const target = w.cfg.projectileRange * w.mods.rangeMul;
+      const rMul = w.mods.rangeMul;
+      let flight = target;
+      if (w.cfg.laser) {
+        flight = (w.cfg.laser.length ?? 1400) * rMul;
+      } else if (w.cfg.motion?.type === 'phased') {
+        const first = w.cfg.motion.phases.find((ph) => ph.until.kind === 'distance');
+        flight = first && first.until.kind === 'distance' ? first.until.value * rMul : target;
+      } else if (w.cfg.motion?.type === 'parabola') {
+        flight = w.cfg.motion.range * rMul;
+      } else {
+        flight = (w.cfg.projectileSpeed * w.mods.projSpeedMul) * (w.cfg.bulletLife ?? 2.5);
+      }
+      minReach = Math.min(minReach, target, flight);
+    }
+    if (!Number.isFinite(minReach)) minReach = 600;
+    return yMax + Math.max(120, minReach - margin);
+  }
+
   private creepKey(x: number, y: number): number {
     const c = GameSession.CREEP_CELL;
     return Math.floor(x / c) * 4096 + Math.floor(y / c);

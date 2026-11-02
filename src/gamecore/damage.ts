@@ -49,7 +49,7 @@ export function calcDamage(
 
   const raw = attacker.atk * ctx.skillMul * (1 + attacker.dmgMul) * critMul * floatMul * typeMul;
 
-  const defTerm = target.def + 100 + 10 * target.level;
+  const defTerm = target.def + 100 + 8 * target.level;
   const reduction = target.def / defTerm;
 
   const rawFinal = raw * (1 - reduction);

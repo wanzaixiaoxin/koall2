@@ -113,7 +113,7 @@
     const floatMul = rng.range(0.95, 1.05);
     const typeMul = ctx.typeMul ?? 1;
     const raw = attacker.atk * ctx.skillMul * (1 + attacker.dmgMul) * critMul * floatMul * typeMul;
-    const defTerm = target.def + 100 + 10 * target.level;
+    const defTerm = target.def + 100 + 8 * target.level;
     const reduction = target.def / defTerm;
     const rawFinal = raw * (1 - reduction);
     const amount = Math.max(1, Math.round(rawFinal));
@@ -421,7 +421,7 @@
   // src/gamecore/monster.ts
   var RANGED_HOLD_DISTANCE = 260;
   var DASH_PERIOD = 2.2;
-  function updateMonster(m, dt, now, wallTopY, onWallHit, onRangedShot, isCreeped) {
+  function updateMonster(m, dt, now, wallTopY, onWallHit, onRangedShot, isCreeped, maxHoldY) {
     const r = m.cfg.radius;
     if (m.burrowed) {
       m.burrowTimer -= dt;
@@ -433,16 +433,24 @@
         m.y = wallTopY + r;
         onWallHit(m.cfg.burrowCharge.dmg, m);
       }
-      if (m.burrowed && m.cfg.burrowSiege) {
+      if (m.cfg.burrowSiege) {
         m.attackTimer -= dt;
         if (m.attackTimer <= 0) {
           m.attackTimer += m.cfg.attackInterval;
           onWallHit(m.cfg.atk, m);
         }
+        if (m.burrowed) {
+          m.burrowTimer -= dt;
+          if (m.burrowTimer <= 0) {
+            m.burrowed = false;
+            m.burrowTimer = m.cfg.burrowSiege.surfaceSec ?? 2.2;
+          }
+        }
       }
       return;
     }
-    const holdY = wallTopY + (m.cfg.behavior === "ranged" ? m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE : 0) + r;
+    let holdY = wallTopY + (m.cfg.behavior === "ranged" ? m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE : 0) + r;
+    if (m.cfg.behavior === "ranged" && maxHoldY !== void 0) holdY = Math.min(holdY, maxHoldY);
     if (m.state === "march") {
       let speed = m.cfg.speed;
       if (now < m.slowUntil) speed *= m.slowFactor;
@@ -464,8 +472,12 @@
       }
       m.y -= speed * dt;
       if (m.cfg.burrowSiege && m.y <= wallTopY + m.cfg.burrowSiege.dist + r) {
-        m.burrowed = true;
         m.y = wallTopY + m.cfg.burrowSiege.dist + r;
+        m.state = "assault";
+        m.sieged = true;
+        m.burrowed = true;
+        m.burrowTimer = m.cfg.burrowSiege.buriedSec ?? 2.5;
+        m.attackTimer = m.cfg.attackInterval;
         return;
       }
       if (m.cfg.burrowRegen && m.hp < m.maxHp * m.cfg.burrowRegen.threshold) {
@@ -496,6 +508,13 @@
           onRangedShot(m);
         } else {
           onWallHit(m.cfg.atk, m);
+        }
+      }
+      if (m.cfg.burrowSiege && m.sieged && m.burrowTimer > 0) {
+        m.burrowTimer -= dt;
+        if (m.burrowTimer <= 0) {
+          m.burrowed = true;
+          m.burrowTimer = m.cfg.burrowSiege.buriedSec ?? 2.5;
         }
       }
     }
@@ -922,7 +941,7 @@
             this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
           }, (src) => {
             this.spawnMonsterShot(src);
-          }, (x, y) => this.isCreeped(x, y));
+          }, (x, y) => this.isCreeped(x, y), this.maxSafeHoldY());
           continue;
         }
         this.tickBurns(m, dt);
@@ -949,7 +968,7 @@
           this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
         }, (src) => {
           this.spawnMonsterShot(src);
-        }, (x, y) => this.isCreeped(x, y));
+        }, (x, y) => this.isCreeped(x, y), this.maxSafeHoldY());
       }
       for (const m of this.monsters) {
         if (m.cfg.detonate && m.state === "assault" && m.hp > 0) {
@@ -1073,6 +1092,7 @@
       while (this.hero.xp >= xpNeed(this.hero.level)) {
         this.hero.xp -= xpNeed(this.hero.level);
         this.hero.level++;
+        this.hero.stats.atk *= 1.08;
         this.pendingLevels++;
       }
       if (this.sandboxMode) {
@@ -1130,13 +1150,14 @@
     /** 远程怪发射可见弹道（投矛/投石），落点结算对墙伤害。 */
     spawnMonsterShot(src) {
       const isRock = (src.cfg.rangedDist ?? 0) > 400;
-      const dist = Math.hypot(src.x - src.x, src.y - this.level.wall.height);
+      const wallH = this.level.wall.height;
+      const dist = Math.hypot(src.x - src.x, src.y - wallH);
       const speed = isRock ? 420 : 620;
       this.monsterShots.push({
         sx: src.x,
         sy: src.y,
         tx: src.x + this.rng.range(-24, 24),
-        ty: this.level.wall.height,
+        ty: wallH,
         x: src.x,
         y: src.y,
         height: 0,
@@ -1151,7 +1172,7 @@
       if (!cfg) throw new Error(`\u672A\u77E5\u602A\u7269\u914D\u7F6E: ${key}`);
       const x = clamp(spawnX, 40, this.level.arena.width - 40);
       const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
-      const scale = 1 + 0.1 * this.director.currentWave;
+      const scale = 1 + 0.07 * this.director.currentWave;
       const hp = Math.round(cfg.hp * scale);
       this.monsters.push({
         id: this.monsters.length,
@@ -1170,6 +1191,7 @@
         splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
         burrowed: false,
         burrowTimer: 0,
+        sieged: false,
         creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
         regenAcc: 0,
         groupId: -1,
@@ -1523,6 +1545,34 @@
       return this.nearestMonsterRuntime(x, y, radius, exclude);
     }
     // ---------- 虫苔（docs/08） ----------
+    /**
+     * 远程怪停驻点的安全上限：保证任何怪物都不会停在我方所有武器都够不到的"死角"里。
+     * 取所有武器「索敌距离」与「实际飞行/作用距离」的较小者的最小值；英雄最远可站到 defenseRect.yMax，
+     * 故 maxHoldY = yMax + minReach - 余量。
+     */
+    maxSafeHoldY() {
+      const margin = 40;
+      const yMax = this.level.defenseRect.yMax;
+      let minReach = Infinity;
+      for (const w of this.hero.weapons) {
+        const target = w.cfg.projectileRange * w.mods.rangeMul;
+        const rMul = w.mods.rangeMul;
+        let flight = target;
+        if (w.cfg.laser) {
+          flight = (w.cfg.laser.length ?? 1400) * rMul;
+        } else if (w.cfg.motion?.type === "phased") {
+          const first = w.cfg.motion.phases.find((ph) => ph.until.kind === "distance");
+          flight = first && first.until.kind === "distance" ? first.until.value * rMul : target;
+        } else if (w.cfg.motion?.type === "parabola") {
+          flight = w.cfg.motion.range * rMul;
+        } else {
+          flight = w.cfg.projectileSpeed * w.mods.projSpeedMul * (w.cfg.bulletLife ?? 2.5);
+        }
+        minReach = Math.min(minReach, target, flight);
+      }
+      if (!Number.isFinite(minReach)) minReach = 600;
+      return yMax + Math.max(120, minReach - margin);
+    }
     creepKey(x, y) {
       const c = _GameSession.CREEP_CELL;
       return Math.floor(x / c) * 4096 + Math.floor(y / c);
@@ -5225,11 +5275,13 @@
         return { x: 0, y: 0 };
       }
     };
+    const qs = new URLSearchParams(location.search);
+    const weaponIds = (qs.get("weapons") ?? qs.get("weapon") ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+    const chosenWeapons = weaponIds.map((id) => weaponsFile.weapons.find((w) => w.id === id)).filter((w) => !!w).slice(0, 3);
+    if (chosenWeapons.length === 0) chosenWeapons.push(weaponsFile.weapons[0]);
     const session = new GameSession({
       level,
-      weaponConfigs: [
-        weaponsFile.weapons.find((w) => w.id === new URLSearchParams(location.search).get("weapon")) ?? weaponsFile.weapons[0]
-      ],
+      weaponConfigs: chosenWeapons,
       monsterConfigs: new Map(monstersFile.monsters.map((m) => [m.id, m])),
       cardConfigs: cardsFile.cards,
       seed: Date.now() % 1e5 | 0,
@@ -5299,7 +5351,8 @@
       hudWallText.textContent = `\u57CE\u9632 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`;
       const need = xpNeed(h.level);
       hudXp.style.width = `${Math.min(100, h.xp / need * 100)}%`;
-      hudText.textContent = `\u7B2C ${Math.min(session.waveStats.length + 1, level.waves.length)}/${level.waves.length} \u6CE2 \xB7 Lv.${h.level} \xB7 \u51FB\u6740 ${session.totalKills} \xB7 ${session.timeSec.toFixed(0)}s`;
+      const weaponTag = session.hero.weapons.length > 1 ? ` \xB7 ${session.hero.weapons.map((w) => w.cfg.name).join("+")}` : "";
+      hudText.textContent = `\u7B2C ${Math.min(session.waveStats.length + 1, level.waves.length)}/${level.waves.length} \u6CE2 \xB7 Lv.${h.level} \xB7 \u51FB\u6740 ${session.totalKills} \xB7 ${session.timeSec.toFixed(0)}s${weaponTag}`;
       if (bannerTimer > 0) {
         bannerTimer -= 1 / 60;
         if (bannerTimer <= 0) banner.classList.remove("show");

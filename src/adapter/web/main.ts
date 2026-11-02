@@ -102,12 +102,21 @@ async function boot(): Promise<void> {
   };
 
   // ---------- 会话 ----------
+  // 多武器：URL 支持 weapons=id1,id2,id3（同时上阵，最多 3 把）；兼容旧的 weapon=id 单选
+  const qs = new URLSearchParams(location.search);
+  const weaponIds = (qs.get('weapons') ?? qs.get('weapon') ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const chosenWeapons = weaponIds
+    .map((id) => weaponsFile.weapons.find((w) => w.id === id))
+    .filter((w): w is WeaponConfig => !!w)
+    .slice(0, 3);
+  if (chosenWeapons.length === 0) chosenWeapons.push(weaponsFile.weapons[0]);
+
   const session = new GameSession({
     level,
-    weaponConfigs: [
-      weaponsFile.weapons.find((w) => w.id === new URLSearchParams(location.search).get('weapon'))
-        ?? weaponsFile.weapons[0],
-    ],
+    weaponConfigs: chosenWeapons,
     monsterConfigs: new Map(monstersFile.monsters.map((m) => [m.id, m])),
     cardConfigs: cardsFile.cards,
     seed: (Date.now() % 100000) | 0,
@@ -196,9 +205,12 @@ async function boot(): Promise<void> {
     hudWallText.textContent = `城防 ${Math.ceil(session.wallHp)} / ${session.wallMaxHp}`;
     const need = xpNeed(h.level);
     hudXp.style.width = `${Math.min(100, (h.xp / need) * 100)}%`;
+    const weaponTag = session.hero.weapons.length > 1
+      ? ` · ${session.hero.weapons.map((w) => w.cfg.name).join('+')}`
+      : '';
     hudText.textContent =
       `第 ${Math.min(session.waveStats.length + 1, level.waves.length)}/${level.waves.length} 波` +
-      ` · Lv.${h.level} · 击杀 ${session.totalKills} · ${session.timeSec.toFixed(0)}s`;
+      ` · Lv.${h.level} · 击杀 ${session.totalKills} · ${session.timeSec.toFixed(0)}s${weaponTag}`;
 
     if (bannerTimer > 0) {
       bannerTimer -= 1 / 60;

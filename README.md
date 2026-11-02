@@ -29,6 +29,7 @@ src/adapter/       （M1 第 2 步）Cocos Creator 适配层，唯一允许 impo
 npm install
 npm run sim -- --level configs/levels/level_1_1.json --seed 42 --runs 5   # 无头模拟
 npm run sim -- --level ... --weapon crossbow_pierce --policy random       # 换武器/策略
+npm run sim -- --level ... --weapon gun_rifle,arc_laser                    # 多武器同屏（逗号分隔）
 npm run validate                                                          # 配置表校验
 npm test                                                                  # 卡牌效果全量断言（21 项）
 npm run lab -- --card blast --times 2                                     # 单卡前后对比观察

@@ -74,8 +74,9 @@
   <div id="deco"><div class="line"></div><div class="tri"></div><div class="line"></div></div>
 
   <div id="panel">
-    <div class="sec">武 器 库 · 选 择 上 阵 武 器</div>
+    <div class="sec">武 器 库 · 选择上阵武器（最多 3 把同时开火）</div>
     <div id="weapons"></div>
+    <div id="wp-hint" style="font-size:12px;color:rgba(245,245,250,.5);margin:-6px 0 18px;letter-spacing:.02em;"></div>
     <div id="chapters"></div>
     <div class="sec">工 具</div>
     <div id="lab">🧪 卡牌实验室 · 验证每张卡的效果</div>
@@ -85,26 +86,47 @@
 
 <script>
 (async function () {
-  // ---------- 武器库：选择上阵武器（带到关卡） ----------
-  let selectedWeapon = localStorage.getItem('koall_weapon') || 'gun_rifle';
+  // ---------- 武器库：多武器上阵（最多 3 把，同时开火） ----------
+  const MAX_SLOTS = 3;
+  let selectedWeapons = (function () {
+    try {
+      const arr = JSON.parse(localStorage.getItem('koall_weapons') || '[]');
+      if (Array.isArray(arr) && arr.length) return arr.slice(0, MAX_SLOTS);
+    } catch (e) { /* 兼容旧存储 */ }
+    return [localStorage.getItem('koall_weapon') || 'gun_rifle'];
+  })();
   const wpRoot = document.getElementById('weapons');
+  const hintEl = document.getElementById('wp-hint');
   const renderWeapons = (list) => {
     wpRoot.innerHTML = '';
     for (const w of list) {
+      const idx = selectedWeapons.indexOf(w.id);
       const el = document.createElement('div');
-      el.className = 'wp' + (w.id === selectedWeapon ? ' sel' : '');
-      el.innerHTML = `<div class="wn">${w.name}</div><div class="wr">${w.role || ''}</div><div class="tag-sel">✓ 上阵</div>`;
+      el.className = 'wp' + (idx >= 0 ? ' sel' : '');
+      el.innerHTML = `<div class="wn">${w.name}</div><div class="wr">${w.role || ''}</div>`
+        + `<div class="tag-sel">${idx >= 0 ? '✓ 上阵' + (selectedWeapons.length > 1 ? ` #${idx + 1}` : '') : '＋ 加入'}</div>`;
       el.onclick = () => {
-        selectedWeapon = w.id;
-        localStorage.setItem('koall_weapon', w.id);
+        const at = selectedWeapons.indexOf(w.id);
+        if (at >= 0) {
+          // 至少保留一把武器
+          if (selectedWeapons.length > 1) selectedWeapons.splice(at, 1);
+        } else {
+          if (selectedWeapons.length >= MAX_SLOTS) selectedWeapons.shift();
+          selectedWeapons.push(w.id);
+        }
+        localStorage.setItem('koall_weapons', JSON.stringify(selectedWeapons));
+        localStorage.setItem('koall_weapon', selectedWeapons[0]);
         renderWeapons(list);
       };
       wpRoot.appendChild(el);
     }
+    if (hintEl) hintEl.textContent = `已选 ${selectedWeapons.length}/${MAX_SLOTS} 把：同时开火，升级卡按武器分别生效`;
   };
   let weaponList = [];
   try {
     weaponList = (await (await fetch('/configs/weapons.json')).json()).weapons;
+    selectedWeapons = selectedWeapons.filter((id) => weaponList.some((w) => w.id === id));
+    if (selectedWeapons.length === 0) selectedWeapons = [weaponList[0].id];
     renderWeapons(weaponList);
   } catch (e) {
     wpRoot.innerHTML = '<div style="color:#FF6B57;font-size:12px;">武器库加载失败</div>';
@@ -141,7 +163,7 @@
           '<div class="meta">' + lv.waves + ' 波 · ' + (lv.desc || '') + '</div></div>' +
           '<div class="go">▶</div>';
         el.onclick = () => {
-          location.href = './game.html?level=' + encodeURIComponent(lv.file) + '&weapon=' + encodeURIComponent(selectedWeapon);
+          location.href = './game.html?level=' + encodeURIComponent(lv.file) + '&weapons=' + encodeURIComponent(selectedWeapons.join(','));
         };
         grid.appendChild(el);
       });
@@ -150,7 +172,7 @@
   } catch (e) {
     root.innerHTML = '<div style="color:#FF6B57;font-size:13px;">关卡清单加载失败：' + e.message + '</div>';
   }
-  document.getElementById('lab').onclick = () => { location.href = './lab.html?weapon=' + encodeURIComponent(selectedWeapon); };
+  document.getElementById('lab').onclick = () => { location.href = './lab.html?weapon=' + encodeURIComponent(selectedWeapons[0]); };
 })();
 </script>
 </body>

@@ -25,6 +25,8 @@ export function updateMonster(
   onWallHit: (dmg: number, m: MonsterRuntime) => void,
   onRangedShot: (m: MonsterRuntime) => void,
   isCreeped?: (x: number, y: number) => boolean,
+  /** 远程怪最大停驻高度（由 session 依据我方武器射程给出，保证永远可被击杀） */
+  maxHoldY?: number,
 ): void {
   const r = m.cfg.radius;
 
@@ -40,18 +42,28 @@ export function updateMonster(
       m.y = wallTopY + r;
       onWallHit(m.cfg.burrowCharge!.dmg, m);
     }
-    // burrow_siege：地下持续刺击城墙（无计时，只能被爆炸/火焰轰出）
-    if (m.burrowed && m.cfg.burrowSiege) {
+    // burrow_siege：潜入阶段刺击城墙，计时结束浮出（浮出后走本函数下方 assault 分支，可被任意武器命中）
+    if (m.cfg.burrowSiege) {
       m.attackTimer -= dt;
       if (m.attackTimer <= 0) {
         m.attackTimer += m.cfg.attackInterval;
         onWallHit(m.cfg.atk, m);
       }
+      if (m.burrowed) {
+        m.burrowTimer -= dt;
+        if (m.burrowTimer <= 0) {
+          // 浮出：变为可击杀状态，停留 surfaceSec 后再潜入
+          m.burrowed = false;
+          m.burrowTimer = m.cfg.burrowSiege.surfaceSec ?? 2.2;
+        }
+      }
     }
     return;
   }
 
-  const holdY = wallTopY + (m.cfg.behavior === 'ranged' ? (m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE) : 0) + r;
+  let holdY = wallTopY + (m.cfg.behavior === 'ranged' ? (m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE) : 0) + r;
+  // 安全闸：远程怪停驻点不得高于「我方最大可及高度」，否则玩家永远打不到它（避免不可击杀 bug）
+  if (m.cfg.behavior === 'ranged' && maxHoldY !== undefined) holdY = Math.min(holdY, maxHoldY);
 
   if (m.state === 'march') {
     let speed = m.cfg.speed;
@@ -78,10 +90,14 @@ export function updateMonster(
 
     m.y -= speed * dt;
 
-    // 钻地触发：潜伏者到阵位永久入地；爬虫低血入地回血；雷兽周期冲锋入地
+    // 钻地触发：潜伏者到阵位进入「潜入/浮出」循环（不再永久潜地）
     if (m.cfg.burrowSiege && m.y <= wallTopY + m.cfg.burrowSiege.dist + r) {
-      m.burrowed = true;
       m.y = wallTopY + m.cfg.burrowSiege.dist + r;
+      m.state = 'assault';
+      m.sieged = true;
+      m.burrowed = true;
+      m.burrowTimer = m.cfg.burrowSiege.buriedSec ?? 2.5;
+      m.attackTimer = m.cfg.attackInterval;
       return;
     }
     if (m.cfg.burrowRegen && m.hp < m.maxHp * m.cfg.burrowRegen.threshold) {
@@ -113,6 +129,14 @@ export function updateMonster(
         onRangedShot(m); // 远程怪：发射可见弹道（落点结算对墙伤害）
       } else {
         onWallHit(m.cfg.atk, m);
+      }
+    }
+    // 潜伏者浮出阶段：倒计时结束后重新潜入（浮出期间可被任意武器击杀）
+    if (m.cfg.burrowSiege && m.sieged && m.burrowTimer > 0) {
+      m.burrowTimer -= dt;
+      if (m.burrowTimer <= 0) {
+        m.burrowed = true;
+        m.burrowTimer = m.cfg.burrowSiege.buriedSec ?? 2.5;
       }
     }
   }

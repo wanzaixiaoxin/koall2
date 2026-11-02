@@ -60,14 +60,14 @@ function runOnce(
   runIndex: number,
   seed: number,
   level: LevelConfig,
-  weaponCfg: WeaponConfig,
+  weaponCfgs: WeaponConfig[],
   monsterCfgs: ReadonlyMap<string, MonsterConfig>,
   cardConfigs: CardConfig[],
   policy: PolicyName,
 ): Record<string, unknown> {
   const session = new GameSession({
     level,
-    weaponConfigs: [weaponCfg],
+    weaponConfigs: weaponCfgs,
     monsterConfigs: monsterCfgs,
     cardConfigs,
     seed,
@@ -118,8 +118,10 @@ function main(): void {
   const monsters = loadJson<{ monsters: MonsterConfig[] }>(path.resolve(root, 'configs/monsters.json')).monsters;
   const cards = loadJson<{ cards: CardConfig[] }>(path.resolve(root, 'configs/cards.json')).cards;
 
-  const weaponCfg = weapons.find((w) => w.id === args.weapon);
-  if (!weaponCfg) {
+  // 多武器：--weapon id1,id2,id3（同时上阵）
+  const weaponIds = args.weapon.split(',').map((v) => v.trim()).filter(Boolean);
+  const weaponCfgs = weaponIds.map((id) => weapons.find((w) => w.id === id)).filter((w): w is WeaponConfig => !!w);
+  if (weaponCfgs.length === 0) {
     console.error(`未知武器: ${args.weapon}（可选: ${weapons.map((w) => w.id).join(', ')}）`);
     process.exit(1);
   }
@@ -127,7 +129,7 @@ function main(): void {
 
   if (args.watch) {
     // 终端实时播放（异步，Ctrl+C 退出）
-    runWatch(args, level, weaponCfg, monsterMap, cards).catch((e) => {
+    runWatch(args, level, weaponCfgs[0], monsterMap, cards).catch((e) => {
       console.error(e);
       process.exit(1);
     });
@@ -136,7 +138,7 @@ function main(): void {
 
   const reports: Record<string, unknown>[] = [];
   for (let i = 0; i < args.runs; i++) {
-    reports.push(runOnce(i, args.seed + i, level, weaponCfg, monsterMap, cards, args.policy));
+    reports.push(runOnce(i, args.seed + i, level, weaponCfgs, monsterMap, cards, args.policy));
   }
 
   // 汇总
@@ -163,7 +165,7 @@ function main(): void {
     console.log(JSON.stringify({ summary, reports }, null, 2));
   } else {
     console.log('================ 无头模拟报告 ================');
-    console.log(`关卡: ${level.name}  武器: ${weaponCfg.name}  策略: ${args.policy}  种子: ${args.seed}  局数: ${args.runs}`);
+    console.log(`关卡: ${level.name}  武器: ${weaponCfgs.map((w) => w.name).join('+')}  策略: ${args.policy}  种子: ${args.seed}  局数: ${args.runs}`);
     console.log('----------------------------------------------');
     for (const r of reports) {
       console.log(

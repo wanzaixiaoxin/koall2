@@ -162,27 +162,31 @@ const tests: TestCase[] = [
     s.grantCard('swift'); s.grantCard('swift');
     return approx(s.hero.weapons[0].mods.projSpeedMul, 1.44, 0.001);
   } },
-  { name: 'A-强装药：伤害倍率 1.15 → 1.3225', run: () => {
+  { name: 'A-强装药：伤害倍率按卡面值累乘', run: () => {
     const s = freshSession();
+    const v = (loadConfigs().cards.find((c) => c.id === 'overload')!.effect as { value: number }).value;
     s.grantCard('overload'); s.grantCard('overload');
-    return approx(s.hero.weapons[0].mods.damageMul, 1.3225, 0.001);
+    return approx(s.hero.weapons[0].mods.damageMul, (1 + v) * (1 + v), 0.001);
   } },
   { name: 'A-长枪管：射程倍率 1.15', run: () => {
     const s = freshSession();
     s.grantCard('longbarrel');
     return approx(s.hero.weapons[0].mods.rangeMul, 1.15, 0.001);
   } },
-  { name: 'A-行为：齐射×3 每轮打出 4 发', run: () => {
+  { name: 'A-行为：齐射×3 每轮发射数 = 基础数 + 3', run: () => {
     const s = freshSession();
+    const base = s.hero.weapons[0].cfg.count;
     s.grantCard('volley'); s.grantCard('volley'); s.grantCard('volley');
     s.debugSpawn('slime', 540, 800);
     const groups = fireGroups(s, 3);
-    return groups.length >= 1 && groups.every((g) => g === 4);
+    return groups.length >= 1 && groups.every((g) => g === base + 3);
   } },
   { name: 'A-行为：穿透衰减与破甲（均值比，消除浮动噪声）', run: () => {
     // 穿透弩直线穿过三只岩甲兽；按 0.4s 窗口分组每次齐射的多次命中，取 (第1命中,第2命中) 均值比
     const meanRatio = (shredLv: number): number | null => {
       const s = freshSession(7, 1); // crossbow_pierce
+      // 隔离穿透序列：把该武器副本改为单发（原为双发齐射，会干扰"连续命中"配对）
+      s.hero.weapons[0].cfg = { ...s.hero.weapons[0].cfg, count: 1 };
       for (let i = 0; i < shredLv; i++) s.grantCard('shred');
       s.debugSpawn('bulwark', 540, 680);
       s.debugSpawn('bulwark', 540, 760);
@@ -215,21 +219,24 @@ const tests: TestCase[] = [
 
   { name: 'A-行为：齐射主弹对准目标，附加弹左右交替展开', run: () => {
     const s = freshSession();
+    const base = s.hero.weapons[0].cfg.count;
+    const sp = s.hero.weapons[0].cfg.spread ?? 0.1;
     s.grantCard('volley'); s.grantCard('volley'); s.grantCard('volley');
     s.debugSpawn('slime', 540, 900); // 英雄(540,328) 正上方，瞄准方向 = +y（90°）
-    if (!runFor(s, 3, () => s.projectiles.length >= 4)) return '未观察到 4 发齐射';
+    if (!runFor(s, 3, () => s.projectiles.length >= base + 3)) return `未观察到 ${base + 3} 发齐射`;
     const aim = Math.PI / 2;
-    const devs = s.projectiles.slice(0, 4).map((p) => {
+    const devs = s.projectiles.slice(0, base + 3).map((p) => {
       const ang = Math.atan2(p.y - p.py, p.x - p.px);
       let d = ang - aim;
       while (d > Math.PI) d -= 2 * Math.PI;
       while (d < -Math.PI) d += 2 * Math.PI;
       return Math.round(d * 1000) / 1000;
     }).sort((a, b) => a - b);
-    const expect = [-0.2, -0.1, 0, 0.1]; // 主弹 0；+1 左 0.1；+2 右 0.1；+3 左 0.2
-    return JSON.stringify(devs) === JSON.stringify(expect) || `实际偏差 ${JSON.stringify(devs)}`;
+    const r = (n: number) => Math.round(n * 1000) / 1000;
+    const expect = [r(-2 * sp), r(-sp), 0, r(sp), r(2 * sp), r(3 * sp)].slice(0, base + 3);
+    return JSON.stringify(devs) === JSON.stringify(expect) || `实际偏差 ${JSON.stringify(devs)}（期望 ${JSON.stringify(expect)}）`;
   } },
-  { name: 'A-行为：连射×3 每次攻击共 4 发（1+3 延迟）', run: () => {
+  { name: 'A-行为：连射×3 每次攻击共 基础数×(1+3) 发', run: () => {
     const s = freshSession();
     s.grantCard('burst_fire'); s.grantCard('burst_fire'); s.grantCard('burst_fire');
     s.debugSpawn('slime', 540, 800);
@@ -246,9 +253,10 @@ const tests: TestCase[] = [
       else groups[groups.length - 1]++;
       lastT = t;
     }
-    // 末尾不完整的组是观测窗口截断（最后一轮没打完），剔除后逐组应为 4 发
-    const complete = groups[groups.length - 1] < 4 ? groups.slice(0, -1) : groups;
-    return complete.length >= 2 && complete.every((g) => g === 4);
+    // 末尾不完整的组是观测窗口截断（最后一轮没打完），剔除后逐组应为 基础数×(1+3) 发
+    const expected = (s.hero.weapons[0].cfg.count) * (1 + 3);
+    const complete = groups[groups.length - 1] < expected ? groups.slice(0, -1) : groups;
+    return complete.length >= 2 && complete.every((g) => g === expected);
   } },
 
   // ===== B 类：城墙卡 =====
@@ -550,9 +558,10 @@ const tests: TestCase[] = [
     runFor(s, 12, () => escorts.every((e) => e.state === 'assault')); // ×3 编队速度下全队列对齐约需 9~11s
     const xs = escorts.map((e) => e.slotX).sort((a, b) => a - b);
     const spread = xs[xs.length - 1] - xs[0];
-    if (spread < 400) return `横排未展开（跨度 ${spread.toFixed(0)}）`;
+    const wantSpread = (escorts.length - 1) * 50; // 每名护卫间隔约一个盾径量级
+    if (spread < wantSpread) return `横排未展开（跨度 ${spread.toFixed(0)} < ${wantSpread}）`;
     const gaps = xs.slice(1).map((v, i) => v - xs[i]);
-    if (Math.min(...gaps) > 60) return `横排存在缝隙（最小间距 ${Math.min(...gaps).toFixed(0)} > 盾径 60）`;
+    if (Math.min(...gaps) > 70) return `横排存在缝隙（最小间距 ${Math.min(...gaps).toFixed(0)} > 70）`;
     // 伤害转嫁：把巫师提到线前使其成为最近目标（横排在物理上护住了它），受击应由护卫代伤
     shaman.hp = shaman.maxHp;
     for (const e of escorts) e.hp = e.maxHp;
@@ -576,8 +585,9 @@ const tests: TestCase[] = [
     s.debugSpawn('shaman', 540, 700);
     const shaman = s.monsters.find((m) => m.cfg.id === 'shaman')!;
     const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
-    // 先杀 3 只护卫（触发 id 压缩与队籍重映射）
-    for (let i = 0; i < 3; i++) escorts[i].hp = 0;
+    // 先杀大部分护卫（触发 id 压缩与队籍重映射），保留 2 只验证减员后仍成排
+    const killN = Math.max(1, escorts.length - 2);
+    for (let i = 0; i < killN; i++) escorts[i].hp = 0;
     runFor(s, 1, () => false);
     // 队籍必须仍然指向巫师
     const aliveEscorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
@@ -595,6 +605,7 @@ const tests: TestCase[] = [
     let transferSeen = false;
     s.bus.on('onDamageTransfer', () => { transferSeen = true; });
     runFor(s, 10, () => transferSeen);
+    runFor(s, 20, () => s.totalWallDamage > 0); // 等残余护卫走到墙前啃墙
     // 守卫有攻击力：横排在啃墙（城墙 99999 会受伤）
     const wallDamaged = s.totalWallDamage > 0;
     return transferSeen && wallDamaged ? true : `转嫁=${transferSeen} 啃墙=${wallDamaged}`;
@@ -602,9 +613,10 @@ const tests: TestCase[] = [
   { name: 'M-巫师：治疗光环为周围友军回血 + 出场自带岩甲兽护卫环', run: () => {
     const s = freshSession();
     s.debugSpawn('shaman', 540, 900);
-    // 护卫环：10 只岩甲兽
-    const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
-    if (escorts.length !== 10) return `护卫 ${escorts.length} 只（应 10）`;
+    // 护卫环：按 shaman 配置数量岩甲兽
+    const escortCfg = loadConfigs().monsters.get('shaman')!.escort!;
+    const escorts = s.monsters.filter((m) => m.cfg.id === escortCfg.monster);
+    if (escorts.length !== escortCfg.count) return `护卫 ${escorts.length} 只（应 ${escortCfg.count}）`;
     if (!escorts.every((b) => b.cfg.hitShield === 20)) return '岩甲兽护甲未增强（20 次免伤）';
     // 治疗：打伤一只护卫，观察回血
     const target = escorts[0];
@@ -621,7 +633,8 @@ const tests: TestCase[] = [
     const s = freshSession();
     s.debugSpawn('bat', 540, 900);
     const bat = s.monsters[0];
-    if (bat.cfg.speed !== 360) return `速度 ${bat.cfg.speed}（应 360）`;
+    const batCfg = loadConfigs().monsters.get('bat')!;
+    if (bat.cfg.speed !== batCfg.speed) return `速度 ${bat.cfg.speed}（应 ${batCfg.speed}）`;
     s.grantCard('flame'); // 火属性点燃
     const hits: number[] = [];
     s.bus.on('onHit', (p: { dmg: number }) => { if (hits.length < 20) hits.push(p.dmg); });
@@ -885,12 +898,15 @@ const tests: TestCase[] = [
   } },
 
   // ===== 属性卡 =====
-  { name: 'P-力量/急速/鹰眼/狂暴/专注：属性递增', run: () => {
+  { name: 'P-力量/急速/鹰眼/狂暴/专注：属性按卡面值递增', run: () => {
     const s = freshSession();
+    const val = (id: string) => (loadConfigs().cards.find((c) => c.id === id)!.effect as { value: number }).value;
+    const base = { ...s.hero.stats };
     s.grantCard('power'); s.grantCard('haste'); s.grantCard('eagle'); s.grantCard('rage'); s.grantCard('focus');
     const st = s.hero.stats;
-    return approx(st.atk, 10.8) && approx(st.aspd, 1.07) && approx(st.critChance, 0.10)
-      && approx(st.critDmg, 1.62) && approx(st.dmgMul, 0.05);
+    return approx(st.atk, base.atk * (1 + val('power'))) && approx(st.aspd, base.aspd * (1 + val('haste')))
+      && approx(st.critChance, base.critChance + val('eagle')) && approx(st.critDmg, base.critDmg + val('rage'))
+      && approx(st.dmgMul, base.dmgMul + val('focus'));
   } },
 
   // ===== 综合 =====

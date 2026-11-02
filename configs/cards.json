@@ -99,7 +99,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.18
+        "value": 0.25
       },
       "maxStack": 3,
       "desc": "弩箭伤害 +18%"
@@ -167,7 +167,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.2
+        "value": 0.25
       },
       "maxStack": 3,
       "desc": "炸弹伤害 +20%"
@@ -218,7 +218,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.12
+        "value": 0.25
       },
       "maxStack": 5,
       "desc": "回旋镖伤害 +12%"
@@ -285,7 +285,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.15
+        "value": 0.25
       },
       "maxStack": 5,
       "desc": "所有武器子弹伤害 +15%"
@@ -414,7 +414,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.18
+        "value": 0.25
       },
       "maxStack": 3,
       "desc": "闪电伤害 +18%"
@@ -540,7 +540,7 @@
       "effect": {
         "stat": "atk",
         "op": "mul",
-        "value": 0.08
+        "value": 0.12
       },
       "maxStack": 5,
       "desc": "攻击 +8%（全局，含所有武器）"
@@ -556,7 +556,7 @@
       "effect": {
         "stat": "aspd",
         "op": "mul",
-        "value": 0.07
+        "value": 0.1
       },
       "maxStack": 5,
       "desc": "攻速 +7%（所有武器）"
@@ -572,7 +572,7 @@
       "effect": {
         "stat": "critChance",
         "op": "add",
-        "value": 0.05
+        "value": 0.06
       },
       "maxStack": 5,
       "desc": "暴击率 +5%"
@@ -588,7 +588,7 @@
       "effect": {
         "stat": "critDmg",
         "op": "add",
-        "value": 0.12
+        "value": 0.2
       },
       "maxStack": 5,
       "desc": "暴击伤害 +12%"
@@ -604,7 +604,7 @@
       "effect": {
         "stat": "dmgMul",
         "op": "add",
-        "value": 0.05
+        "value": 0.08
       },
       "maxStack": 5,
       "desc": "全伤害 +5%"
@@ -621,7 +621,7 @@
       "effect": {
         "bullet": "damage",
         "op": "add",
-        "value": 0.18
+        "value": 0.3
       },
       "maxStack": 3,
       "desc": "棱镜激光起始能量 +18%（首段伤害与穿射深度同步提升）"

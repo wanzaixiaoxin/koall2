@@ -35,7 +35,7 @@
     {
       "banner": "第 1 波 · 史莱姆先锋（横排）",
       "formation": "line",
-      "durationSec": 85,
+      "durationSec": 46,
       "spawns": [
         {
           "monster": "slime",
@@ -48,23 +48,23 @@
     {
       "banner": "第 2 波 · 多路渗透",
       "formation": "stream",
-      "durationSec": 100,
+      "durationSec": 48,
       "spawns": [
         {
           "monster": "slime",
-          "count": 24,
+          "count": 17,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "charger",
-          "count": 10,
+          "count": 7,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "split_shroom",
-          "count": 3,
+          "count": 2,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -73,11 +73,11 @@
     {
       "banner": "第 3 波 · 野狼侧翼",
       "formation": "stream",
-      "durationSec": 105,
+      "durationSec": 50,
       "spawns": [
         {
           "monster": "slime",
-          "count": 39,
+          "count": 29,
           "spawnPoints": [
             2,
             3,
@@ -89,7 +89,7 @@
         },
         {
           "monster": "wolf",
-          "count": 14,
+          "count": 10,
           "spawnPoints": [
             0,
             1,
@@ -100,7 +100,7 @@
         },
         {
           "monster": "charger",
-          "count": 10,
+          "count": 8,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -109,17 +109,17 @@
     {
       "banner": "第 4 波 · 投矛手中军",
       "formation": "line",
-      "durationSec": 90,
+      "durationSec": 52,
       "spawns": [
         {
           "monster": "slime",
-          "count": 82,
+          "count": 62,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "thrower",
-          "count": 30,
+          "count": 22,
           "spawnPoints": "all",
           "releasePerTick": 2
         }
@@ -128,44 +128,36 @@
     {
       "banner": "第 5 波 · 重甲压境（岩甲魔王登场）",
       "formation": "stream",
-      "durationSec": 95,
+      "durationSec": 54,
       "spawns": [
         {
           "monster": "slime",
-          "count": 76,
+          "count": 38,
           "spawnPoints": "all",
-          "releasePerTick": 4
+          "releasePerTick": 1
         },
         {
           "monster": "bulwark",
-          "count": 3,
-          "spawnPoints": [
-            2,
-            4,
-            6
-          ],
+          "count": 1,
+          "spawnPoints": "all",
           "releasePerTick": 1
         },
         {
           "monster": "bat",
-          "count": 18,
+          "count": 8,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
         {
           "monster": "bulwark_king",
           "count": 1,
-          "spawnPoints": [
-            4
-          ],
+          "spawnPoints": "all",
           "releasePerTick": 1
         },
         {
           "monster": "shaman",
           "count": 1,
-          "spawnPoints": [
-            4
-          ],
+          "spawnPoints": "all",
           "releasePerTick": 1
         }
       ]
@@ -173,35 +165,35 @@
     {
       "banner": "第 6 波 · 狼群奔袭",
       "formation": "line",
-      "durationSec": 80,
+      "durationSec": 56,
       "spawns": [
         {
           "monster": "wolf",
-          "count": 69,
+          "count": 44,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "charger",
-          "count": 25,
+          "count": 16,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "thrower",
-          "count": 25,
+          "count": 16,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "catapult",
-          "count": 25,
+          "count": 16,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "split_shroom",
-          "count": 6,
+          "count": 3,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -210,11 +202,11 @@
     {
       "banner": "第 7 波 · 钳形攻势",
       "formation": "line",
-      "durationSec": 95,
+      "durationSec": 58,
       "spawns": [
         {
           "monster": "slime",
-          "count": 153,
+          "count": 78,
           "spawnPoints": [
             1,
             2,
@@ -237,13 +229,13 @@
         },
         {
           "monster": "thrower",
-          "count": 50,
+          "count": 26,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "bat",
-          "count": 24,
+          "count": 12,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -260,29 +252,29 @@
     {
       "banner": "第 8 波 · 混合横压（岩甲魔王再临）",
       "formation": "stream",
-      "durationSec": 105,
+      "durationSec": 60,
       "spawns": [
         {
           "monster": "slime",
-          "count": 76,
+          "count": 27,
           "spawnPoints": "all",
           "releasePerTick": 4
         },
         {
           "monster": "wolf",
-          "count": 32,
+          "count": 11,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "charger",
-          "count": 28,
+          "count": 10,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "bat",
-          "count": 24,
+          "count": 9,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -299,23 +291,23 @@
     {
       "banner": "第 9 波 · 狼群总攻",
       "formation": "line",
-      "durationSec": 95,
+      "durationSec": 60,
       "spawns": [
         {
           "monster": "slime",
-          "count": 90,
+          "count": 33,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "wolf",
-          "count": 61,
+          "count": 22,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "bulwark",
-          "count": 3,
+          "count": 1,
           "spawnPoints": [
             4
           ],
@@ -323,19 +315,19 @@
         },
         {
           "monster": "bat",
-          "count": 24,
+          "count": 9,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
         {
           "monster": "catapult",
-          "count": 25,
+          "count": 9,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
         {
           "monster": "thrower",
-          "count": 25,
+          "count": 9,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
@@ -349,7 +341,7 @@
         },
         {
           "monster": "split_shroom",
-          "count": 6,
+          "count": 2,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -358,23 +350,23 @@
     {
       "banner": "第 10 波 · 森林之怒（腐化树人）",
       "formation": "line",
-      "durationSec": 125,
+      "durationSec": 60,
       "spawns": [
         {
           "monster": "slime",
-          "count": 76,
+          "count": 27,
           "spawnPoints": "all",
           "releasePerTick": 5
         },
         {
           "monster": "wolf",
-          "count": 65,
+          "count": 23,
           "spawnPoints": "all",
           "releasePerTick": 3
         },
         {
           "monster": "thrower",
-          "count": 50,
+          "count": 18,
           "spawnPoints": [
             1,
             2,
@@ -388,7 +380,7 @@
         },
         {
           "monster": "bulwark",
-          "count": 5,
+          "count": 2,
           "spawnPoints": [
             4
           ],
@@ -396,19 +388,19 @@
         },
         {
           "monster": "charger",
-          "count": 20,
+          "count": 6,
           "spawnPoints": "all",
           "releasePerTick": 2
         },
         {
           "monster": "bat",
-          "count": 18,
+          "count": 6,
           "spawnPoints": "all",
           "releasePerTick": 1
         },
         {
           "monster": "catapult",
-          "count": 25,
+          "count": 9,
           "spawnPoints": "all",
           "releasePerTick": 1
         },

@@ -87,8 +87,13 @@ export interface MonsterConfig {
   formationDist?: number;
   /** 钻地回血（爬虫）：血量低于 maxHp×threshold 时钻地 duration 秒，出土回复 maxHp×heal */
   burrowRegen?: { threshold: number; duration: number; heal: number };
-  /** 钻地攻墙（潜伏者）：行进到距墙 dist 时永久钻地，以 attackInterval/atk 刺击城墙，只能被爆炸/火焰轰出 */
-  burrowSiege?: { dist: number };
+  /**
+   * 钻地攻墙（潜伏者）：行进到距墙 dist 后循环「潜入（持续刺击城墙）↔ 浮出（可被任何武器击杀）」。
+   * 浮出窗口保证任何构筑都打得到它（避免"物理武器永远杀不掉潜伏者"的恶性 bug）。
+   *   buriedSec：每次潜入持续秒数（默认 2.5）
+   *   surfaceSec：每次浮出可被攻击的秒数（默认 2.2）
+   */
+  burrowSiege?: { dist: number; buriedSec?: number; surfaceSec?: number };
   /** 钻地冲锋（雷兽）：每 interval 秒钻地 duration 秒，出现在墙前并重击城墙 dmg */
   burrowCharge?: { interval: number; duration: number; dmg: number };
   /** 自爆（毒爆虫）：接触城墙或死亡时爆炸，造成 wallDamage 城防伤害 */
@@ -280,9 +285,11 @@ export interface MonsterRuntime {
   shieldLeft: number;      // 剩余免伤层数（hitShield）
   healTimer: number;       // 治疗光环计时（healAura）
   splitTimerLeft: number;  // 定时分裂计时（splitTimer）
-  /** 钻地状态（docs/08）：不可索敌/不可命中/免疫DoT；burrowTimer 为地下倒计时 */
+  /** 钻地状态（docs/08）：不可索敌/不可命中/免疫DoT；burrowTimer 为当前阶段倒计时 */
   burrowed: boolean;
   burrowTimer: number;
+  /** 潜伏者是否已抵达阵位进入「潜入/浮出」循环（true 后不再前进） */
+  sieged: boolean;
   creepTimerLeft: number;  // 虫苔铺设计时（creepTrail）
   regenAcc: number;        // 虫苔回血整数累计
   /** 队籍：护卫=领队巫师运行时 id；无编队为 -1（变阵系统用） */
