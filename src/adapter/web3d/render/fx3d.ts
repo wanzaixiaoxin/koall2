@@ -37,10 +37,14 @@ export class Fx3D {
   private pool: P[] = [];
   private cursor = 0;
   private meshFx: MeshFx[] = [];
-  private ringGeo = new THREE.RingGeometry(0.86, 1, 28);
-  private flameGeo = new THREE.SphereGeometry(1, 12, 8);
+  private ringGeo = new THREE.TorusGeometry(1, 0.05, 8, 40); // 立体冲击环（环面体，有厚度）
+  private flameGeo = new THREE.SphereGeometry(1, 16, 12);
+  private blastLight: THREE.PointLight; // 爆炸闪光（复用一盏，随最近一次爆炸衰减）
 
   constructor(private scene: THREE.Scene) {
+    this.blastLight = new THREE.PointLight('#FF9A3C', 0, 10, 1.8);
+    this.blastLight.position.set(0, 1.2, 0);
+    scene.add(this.blastLight);
     const geo = new THREE.BufferGeometry();
     this.posAttr = new Float32Array(MAX_P * 3);
     this.colAttr = new Float32Array(MAX_P * 3);
@@ -110,7 +114,7 @@ export class Fx3D {
     }
   }
 
-  /** 爆炸：火球粒子 + 冲击环 */
+  /** 爆炸：3D 火球膨胀 + 立体冲击环 + 火花 + 闪光 */
   explode(lx: number, ly: number, radiusPx: number): void {
     const x = toX(lx), z = toZ(ly);
     const R = Math.max(0.5, radiusPx * S);
@@ -120,7 +124,10 @@ export class Fx3D {
       this.spawn(x, 0.35, z, Math.cos(a) * sp, 1.8 + Math.random() * 3.6, Math.sin(a) * sp,
         0.4 + Math.random() * 0.3, 2.4 + Math.random() * 2, Math.random() < 0.6 ? '#FF5A3C' : '#FFD54F');
     }
+    this.addMeshFx('flame', x, z, R * 0.25, R * 1.05, 0.38, '#FF6B3C'); // 体积火球
     this.addMeshFx('ring', x, z, R * 0.4, R * 1.15, 0.32, '#FF9A3C');
+    this.blastLight.position.set(x, 1.2, z);
+    this.blastLight.intensity = 26;
   }
 
   /** 落雷：天空光柱 + 落点火花 */
@@ -190,8 +197,10 @@ export class Fx3D {
       mesh.position.set(x, 11, z);
       scale0 = 1; scale1 = 0.1;
     } else {
-      mesh = new THREE.Mesh(this.flameGeo, new THREE.MeshBasicMaterial({
-        color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+      // 体积火球：受光球体 + 自发光，近大远小随透视呈现真实体积
+      mesh = new THREE.Mesh(this.flameGeo, new THREE.MeshStandardMaterial({
+        color, emissive: color, emissiveIntensity: 0.65, roughness: 0.4,
+        transparent: true, depthWrite: false,
       }));
       mesh.position.set(x, 0.6, z);
     }
@@ -201,6 +210,7 @@ export class Fx3D {
 
   /** 每渲染帧推进 */
   update(dt: number): void {
+    this.blastLight.intensity = Math.max(0, this.blastLight.intensity - dt * 120);
     for (let i = this.pool.length - 1; i >= 0; i--) {
       const p = this.pool[i];
       p.life -= dt;

@@ -5,7 +5,7 @@
       "name": "符文步枪",
       "role": "速射系 · 弹幕雨",
       "damageType": "physical",
-      "baseDamage": 7,
+      "baseDamage": 9,
       "interval": 0.55,
       "count": 1,
       "projectileSpeed": 950,
@@ -19,7 +19,7 @@
         "shots": 16,
         "cooldown": 2.2
       },
-      "bulletLife": 3.0
+      "bulletLife": 3
     },
     {
       "id": "crossbow_pierce",
@@ -111,7 +111,7 @@
             },
             "until": {
               "kind": "duration",
-              "value": 2.0
+              "value": 2
             }
           },
           {

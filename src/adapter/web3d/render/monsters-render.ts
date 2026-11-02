@@ -19,24 +19,39 @@ interface Pool {
 
 const DUMMY = new THREE.Object3D();
 const COLOR_HIT = new THREE.Color('#FFFFFF');
+const SHADOW_CAP = 400;
 
-/** 形态 → 几何构建器（半径 r 米） */
+/** 径向渐变软阴影贴图（接触阴影：让怪物"踩"在地面上，体积感的主要来源） */
+function makeShadowTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(0,0,0,0.5)');
+  grad.addColorStop(0.6, 'rgba(0,0,0,0.28)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+
+/** 形态 → 几何构建器（半径 r 米）；细分档提升，保证近景曲面圆滑 */
 const GEO_BUILDERS: Record<string, (r: number) => THREE.BufferGeometry> = {
-  slime: (r) => { const g = new THREE.IcosahedronGeometry(r, 1); g.scale(1.25, 0.7, 1.25); return g; },
-  larva: (r) => { const g = new THREE.IcosahedronGeometry(r * 0.7, 1); g.scale(1.2, 0.7, 1.2); return g; },
-  wolf: (r) => { const g = new THREE.ConeGeometry(r * 0.8, r * 2.6, 5); g.rotateX(Math.PI / 2); return g; },
-  charger: (r) => { const g = new THREE.ConeGeometry(r * 0.9, r * 2.4, 6); g.rotateX(Math.PI / 2); return g; },
+  slime: (r) => { const g = new THREE.IcosahedronGeometry(r, 2); g.scale(1.25, 0.7, 1.25); return g; },
+  larva: (r) => { const g = new THREE.IcosahedronGeometry(r * 0.7, 2); g.scale(1.2, 0.7, 1.2); return g; },
+  wolf: (r) => { const g = new THREE.ConeGeometry(r * 0.8, r * 2.6, 8); g.rotateX(Math.PI / 2); return g; },
+  charger: (r) => { const g = new THREE.ConeGeometry(r * 0.9, r * 2.4, 8); g.rotateX(Math.PI / 2); return g; },
   thrower: (r) => new THREE.BoxGeometry(r * 1.4, r * 1.8, r * 1.2),
-  shaman: (r) => { const g = new THREE.OctahedronGeometry(r * 1.2, 0); g.scale(0.8, 1.3, 0.8); return g; },
+  shaman: (r) => { const g = new THREE.OctahedronGeometry(r * 1.2, 1); g.scale(0.8, 1.3, 0.8); return g; },
   bulwark: (r) => new THREE.BoxGeometry(r * 2.0, r * 1.8, r * 1.4),
-  ultra: (r) => new THREE.DodecahedronGeometry(r * 1.4, 0),
-  bat: (r) => { const g = new THREE.OctahedronGeometry(r, 0); g.scale(1.5, 0.55, 1.1); return g; },
-  shroom: (r) => { const g = new THREE.SphereGeometry(r, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2); return g; },
-  roach: (r) => { const g = new THREE.CapsuleGeometry(r * 0.6, r * 1.2, 3, 8); g.rotateX(Math.PI / 2); return g; },
-  lurker: (r) => { const g = new THREE.ConeGeometry(r * 0.8, r * 1.8, 6); g.rotateX(-Math.PI / 2); return g; },
-  baneling: (r) => { const g = new THREE.IcosahedronGeometry(r, 1); g.scale(1.1, 0.9, 1.1); return g; },
-  zqueen: (r) => { const g = new THREE.OctahedronGeometry(r * 1.5, 0); g.scale(0.85, 1.4, 0.85); return g; },
-  boss: (r) => new THREE.OctahedronGeometry(r * 1.6, 1),
+  ultra: (r) => new THREE.DodecahedronGeometry(r * 1.4, 1),
+  bat: (r) => { const g = new THREE.OctahedronGeometry(r, 1); g.scale(1.5, 0.55, 1.1); return g; },
+  shroom: (r) => { const g = new THREE.SphereGeometry(r, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2); return g; },
+  roach: (r) => { const g = new THREE.CapsuleGeometry(r * 0.6, r * 1.2, 4, 12); g.rotateX(Math.PI / 2); return g; },
+  lurker: (r) => { const g = new THREE.ConeGeometry(r * 0.8, r * 1.8, 8); g.rotateX(-Math.PI / 2); return g; },
+  baneling: (r) => { const g = new THREE.IcosahedronGeometry(r, 2); g.scale(1.1, 0.9, 1.1); return g; },
+  zqueen: (r) => { const g = new THREE.OctahedronGeometry(r * 1.5, 1); g.scale(0.85, 1.4, 0.85); return g; },
+  boss: (r) => new THREE.OctahedronGeometry(r * 1.6, 2),
 };
 
 const SHAPE_COLOR: Record<string, string> = {
@@ -55,9 +70,21 @@ const POOL_CAPS: Record<string, number> = {
 export class MonstersRender {
   private pools = new Map<string, Pool>();
   private group = new THREE.Group();
+  private shadowMesh: THREE.InstancedMesh;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.group);
+    // 接触阴影池：每怪一个软圆盘，贴在地面（y≈0.012）
+    const shadowGeo = new THREE.PlaneGeometry(1, 1);
+    shadowGeo.rotateX(-Math.PI / 2);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      map: makeShadowTexture(), transparent: true, depthWrite: false,
+    });
+    this.shadowMesh = new THREE.InstancedMesh(shadowGeo, shadowMat, SHADOW_CAP);
+    this.shadowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.shadowMesh.frustumCulled = false;
+    this.shadowMesh.count = 0;
+    scene.add(this.shadowMesh);
   }
 
   private ensurePool(key: string, radiusPx: number): Pool {
@@ -107,6 +134,7 @@ export class MonstersRender {
   sync(monsters: MonsterRuntime[], nowSec: number, dt: number): void {
     const aliveIds = new Set<number>();
     for (const m of monsters) aliveIds.add(m.id);
+    let sn = 0; // 接触阴影实例计数
     for (const m of monsters) {
       const shape = m.cfg.shape ?? 'slime';
       const p = this.ensurePool(shape, m.cfg.radius);
@@ -127,6 +155,15 @@ export class MonstersRender {
       DUMMY.updateMatrix();
       p.mesh.setMatrixAt(idx, DUMMY.matrix);
 
+      // 接触阴影：贴地软圆盘（钻地时隐藏）
+      if (sn < SHADOW_CAP) {
+        DUMMY.position.set(toX(m.x), 0.012, toZ(m.y));
+        DUMMY.rotation.set(0, 0, 0);
+        DUMMY.scale.setScalar(m.burrowed ? 0.001 : p.radius * 2.6);
+        DUMMY.updateMatrix();
+        this.shadowMesh.setMatrixAt(sn++, DUMMY.matrix);
+      }
+
       // 颜色：受击闪白 > 血量染色（低血偏暗红）
       const base = new THREE.Color(SHAPE_COLOR[shape] ?? '#FF6B57');
       const flash = p.flash[idx];
@@ -142,6 +179,8 @@ export class MonstersRender {
     }
 
     // 回收消失实例 + 提交
+    this.shadowMesh.count = sn;
+    this.shadowMesh.instanceMatrix.needsUpdate = true;
     for (const p of this.pools.values()) {
       for (const [id, idx] of p.items) {
         if (!aliveIds.has(id)) {

@@ -22,9 +22,9 @@ export class ProjectilesRender {
   private beams: THREE.Mesh[] = [];
 
   constructor(scene: THREE.Scene) {
-    // 玩家光弹
-    const geo = new THREE.SphereGeometry(0.09, 8, 6);
-    const mat = new THREE.MeshBasicMaterial({ toneMapped: false });
+    // 玩家光弹：受光球体（椭球拉伸沿飞行方向），体积感由标准材质光照承担
+    const geo = new THREE.SphereGeometry(0.09, 12, 10);
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.28, metalness: 0.15 });
     this.mesh = new THREE.InstancedMesh(geo, mat, CAP);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(CAP * 3), 3);
@@ -59,9 +59,9 @@ export class ProjectilesRender {
     this.trails.frustumCulled = false;
     scene.add(this.trails);
 
-    // 怪物远程弹（矛/石）
-    const shotGeo = new THREE.SphereGeometry(0.14, 6, 5);
-    const shotMat = new THREE.MeshBasicMaterial({ color: '#FFD54F', toneMapped: false });
+    // 怪物远程弹（矛/石）：受光材质，矛沿飞行方向拉长、石块自旋
+    const shotGeo = new THREE.SphereGeometry(0.14, 10, 8);
+    const shotMat = new THREE.MeshStandardMaterial({ color: '#FFD54F', roughness: 0.35, metalness: 0.1 });
     this.shotsMesh = new THREE.InstancedMesh(shotGeo, shotMat, 60);
     this.shotsMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.shotsMesh.frustumCulled = false;
@@ -109,7 +109,18 @@ export class ProjectilesRender {
       const h = 0.35 + (p.height ?? 0) * S;
       DUMMY.position.set(x, h, z);
       const isBomb = p.weapon.cfg.shape === 'bomb' || p.weapon.cfg.ghost === true;
-      DUMMY.scale.setScalar(isBomb ? 2.2 : 1.6);
+      // 速度朝向：椭球长轴对准飞行方向（炸弹保持球形 + 自旋）
+      const dx = x - toX(p.px);
+      const dz = z - toZ(p.py);
+      if (Math.abs(dx) + Math.abs(dz) > 1e-6) {
+        DUMMY.lookAt(x + dx, h, z + dz);
+      }
+      if (isBomb) {
+        DUMMY.rotation.y += performance.now() * 0.004;
+        DUMMY.scale.setScalar(2.2);
+      } else {
+        DUMMY.scale.set(1.5, 1.5, 2.6);
+      }
       DUMMY.updateMatrix();
       this.mesh.setMatrixAt(n, DUMMY.matrix);
       const c = new THREE.Color(p.damageType === 'physical' ? '#F5F5FA'
@@ -142,13 +153,23 @@ export class ProjectilesRender {
     (this.trails.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.trails.geometry.getAttribute('aAlpha') as THREE.BufferAttribute).needsUpdate = true;
 
-    // ---- 怪物远程弹（抛物线由逻辑层 height 字段给出） ----
+    // ---- 怪物远程弹（抛物线由逻辑层 height 字段给出；矛沿弹道拉长、石块翻滚） ----
     let sn = 0;
     for (const s of shots) {
       if (sn >= 60) break;
-      DUMMY.position.set(toX(s.x), 0.4 + s.height * S, toZ(s.y));
-      DUMMY.scale.setScalar(s.kind === 'rock' ? 1.6 : 1);
-      DUMMY.rotation.set(0, 0, 0);
+      const sx = toX(s.x);
+      const sz = toZ(s.y);
+      const sh = 0.4 + s.height * S;
+      DUMMY.position.set(sx, sh, sz);
+      const svx = toX(s.tx) - sx;
+      const svz = toZ(s.ty) - sz;
+      if (Math.abs(svx) + Math.abs(svz) > 1e-6) DUMMY.lookAt(sx + svx, sh, sz + svz);
+      if (s.kind === 'rock') {
+        DUMMY.rotation.x += performance.now() * 0.003;
+        DUMMY.scale.setScalar(1.6);
+      } else {
+        DUMMY.scale.set(0.55, 0.55, 2.8);
+      }
       DUMMY.updateMatrix();
       this.shotsMesh.setMatrixAt(sn++, DUMMY.matrix);
     }

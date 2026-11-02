@@ -33,7 +33,7 @@ export interface WorldRefs {
 }
 
 /** 程序网格纹理：暗夜底 + 青灰网格线（对应 2D 版背景网格） */
-function makeGridTexture(): THREE.CanvasTexture {
+function makeGridTexture(maxAnisotropy: number): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 256;
   const g = c.getContext('2d')!;
@@ -48,7 +48,7 @@ function makeGridTexture(): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(320, 400);
-  tex.anisotropy = 4;
+  tex.anisotropy = maxAnisotropy; // 斜视角下远处网格不发虚（跟随渲染器上限）
   return tex;
 }
 
@@ -146,7 +146,7 @@ export function buildWorld(level: {
   // ---------- 地面（放大到地平线级，边界自然消失于雾中） ----------
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(400, 500),
-    new THREE.MeshStandardMaterial({ map: makeGridTexture(), roughness: 0.95, metalness: 0 }),
+    new THREE.MeshStandardMaterial({ map: makeGridTexture(renderer.capabilities.getMaxAnisotropy()), roughness: 0.95, metalness: 0 }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, 0, -160);

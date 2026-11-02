@@ -7,7 +7,7 @@
   },
   "wall": {
     "height": 64,
-    "hp": 2200
+    "hp": 2600
   },
   "defenseRect": {
     "yMin": 96,
@@ -64,7 +64,7 @@
         },
         {
           "monster": "split_shroom",
-          "count": 5,
+          "count": 3,
           "spawnPoints": "all",
           "releasePerTick": 1
         }
@@ -89,7 +89,7 @@
         },
         {
           "monster": "wolf",
-          "count": 20,
+          "count": 14,
           "spawnPoints": [
             0,
             1,

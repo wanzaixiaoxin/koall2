@@ -22638,6 +22638,66 @@ void main() {
       return new _SphereGeometry(data.radius, data.widthSegments, data.heightSegments, data.phiStart, data.phiLength, data.thetaStart, data.thetaLength);
     }
   };
+  var TorusGeometry = class _TorusGeometry extends BufferGeometry {
+    constructor(radius = 1, tube = 0.4, radialSegments = 12, tubularSegments = 48, arc = Math.PI * 2) {
+      super();
+      this.type = "TorusGeometry";
+      this.parameters = {
+        radius,
+        tube,
+        radialSegments,
+        tubularSegments,
+        arc
+      };
+      radialSegments = Math.floor(radialSegments);
+      tubularSegments = Math.floor(tubularSegments);
+      const indices = [];
+      const vertices = [];
+      const normals = [];
+      const uvs = [];
+      const center = new Vector3();
+      const vertex2 = new Vector3();
+      const normal = new Vector3();
+      for (let j = 0; j <= radialSegments; j++) {
+        for (let i = 0; i <= tubularSegments; i++) {
+          const u = i / tubularSegments * arc;
+          const v = j / radialSegments * Math.PI * 2;
+          vertex2.x = (radius + tube * Math.cos(v)) * Math.cos(u);
+          vertex2.y = (radius + tube * Math.cos(v)) * Math.sin(u);
+          vertex2.z = tube * Math.sin(v);
+          vertices.push(vertex2.x, vertex2.y, vertex2.z);
+          center.x = radius * Math.cos(u);
+          center.y = radius * Math.sin(u);
+          normal.subVectors(vertex2, center).normalize();
+          normals.push(normal.x, normal.y, normal.z);
+          uvs.push(i / tubularSegments);
+          uvs.push(j / radialSegments);
+        }
+      }
+      for (let j = 1; j <= radialSegments; j++) {
+        for (let i = 1; i <= tubularSegments; i++) {
+          const a = (tubularSegments + 1) * j + i - 1;
+          const b = (tubularSegments + 1) * (j - 1) + i - 1;
+          const c = (tubularSegments + 1) * (j - 1) + i;
+          const d = (tubularSegments + 1) * j + i;
+          indices.push(a, b, d);
+          indices.push(b, c, d);
+        }
+      }
+      this.setIndex(indices);
+      this.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+      this.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+      this.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+    }
+    copy(source) {
+      super.copy(source);
+      this.parameters = Object.assign({}, source.parameters);
+      return this;
+    }
+    static fromJSON(data) {
+      return new _TorusGeometry(data.radius, data.tube, data.radialSegments, data.tubularSegments, data.arc);
+    }
+  };
   var MeshStandardMaterial = class extends Material {
     static get type() {
       return "MeshStandardMaterial";
@@ -23959,7 +24019,7 @@ void main() {
   var toX = (x) => (x - ARENA_W / 2) * S;
   var toZ = (y) => (WALL_Y - y) * S;
   var bandZ = (yMin, yMax) => [toZ(yMax), toZ(yMin)];
-  function makeGridTexture() {
+  function makeGridTexture(maxAnisotropy) {
     const c = document.createElement("canvas");
     c.width = 256;
     c.height = 256;
@@ -23981,7 +24041,7 @@ void main() {
     const tex = new CanvasTexture(c);
     tex.wrapS = tex.wrapT = RepeatWrapping;
     tex.repeat.set(320, 400);
-    tex.anisotropy = 4;
+    tex.anisotropy = maxAnisotropy;
     return tex;
   }
   function makeSky() {
@@ -24072,7 +24132,7 @@ void main() {
     scene.add(muzzle);
     const ground = new Mesh(
       new PlaneGeometry(400, 500),
-      new MeshStandardMaterial({ map: makeGridTexture(), roughness: 0.95, metalness: 0 })
+      new MeshStandardMaterial({ map: makeGridTexture(renderer.capabilities.getMaxAnisotropy()), roughness: 0.95, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.set(0, 0, -160);
@@ -24300,65 +24360,78 @@ void main() {
   // src/adapter/web3d/render/monsters-render.ts
   var DUMMY = new Object3D();
   var COLOR_HIT = new Color("#FFFFFF");
+  var SHADOW_CAP = 400;
+  function makeShadowTexture() {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const g = c.getContext("2d");
+    const grad = g.createRadialGradient(32, 32, 2, 32, 32, 32);
+    grad.addColorStop(0, "rgba(0,0,0,0.5)");
+    grad.addColorStop(0.6, "rgba(0,0,0,0.28)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    return new CanvasTexture(c);
+  }
   var GEO_BUILDERS = {
     slime: (r) => {
-      const g = new IcosahedronGeometry(r, 1);
+      const g = new IcosahedronGeometry(r, 2);
       g.scale(1.25, 0.7, 1.25);
       return g;
     },
     larva: (r) => {
-      const g = new IcosahedronGeometry(r * 0.7, 1);
+      const g = new IcosahedronGeometry(r * 0.7, 2);
       g.scale(1.2, 0.7, 1.2);
       return g;
     },
     wolf: (r) => {
-      const g = new ConeGeometry(r * 0.8, r * 2.6, 5);
+      const g = new ConeGeometry(r * 0.8, r * 2.6, 8);
       g.rotateX(Math.PI / 2);
       return g;
     },
     charger: (r) => {
-      const g = new ConeGeometry(r * 0.9, r * 2.4, 6);
+      const g = new ConeGeometry(r * 0.9, r * 2.4, 8);
       g.rotateX(Math.PI / 2);
       return g;
     },
     thrower: (r) => new BoxGeometry(r * 1.4, r * 1.8, r * 1.2),
     shaman: (r) => {
-      const g = new OctahedronGeometry(r * 1.2, 0);
+      const g = new OctahedronGeometry(r * 1.2, 1);
       g.scale(0.8, 1.3, 0.8);
       return g;
     },
     bulwark: (r) => new BoxGeometry(r * 2, r * 1.8, r * 1.4),
-    ultra: (r) => new DodecahedronGeometry(r * 1.4, 0),
+    ultra: (r) => new DodecahedronGeometry(r * 1.4, 1),
     bat: (r) => {
-      const g = new OctahedronGeometry(r, 0);
+      const g = new OctahedronGeometry(r, 1);
       g.scale(1.5, 0.55, 1.1);
       return g;
     },
     shroom: (r) => {
-      const g = new SphereGeometry(r, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      const g = new SphereGeometry(r, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
       return g;
     },
     roach: (r) => {
-      const g = new CapsuleGeometry(r * 0.6, r * 1.2, 3, 8);
+      const g = new CapsuleGeometry(r * 0.6, r * 1.2, 4, 12);
       g.rotateX(Math.PI / 2);
       return g;
     },
     lurker: (r) => {
-      const g = new ConeGeometry(r * 0.8, r * 1.8, 6);
+      const g = new ConeGeometry(r * 0.8, r * 1.8, 8);
       g.rotateX(-Math.PI / 2);
       return g;
     },
     baneling: (r) => {
-      const g = new IcosahedronGeometry(r, 1);
+      const g = new IcosahedronGeometry(r, 2);
       g.scale(1.1, 0.9, 1.1);
       return g;
     },
     zqueen: (r) => {
-      const g = new OctahedronGeometry(r * 1.5, 0);
+      const g = new OctahedronGeometry(r * 1.5, 1);
       g.scale(0.85, 1.4, 0.85);
       return g;
     },
-    boss: (r) => new OctahedronGeometry(r * 1.6, 1)
+    boss: (r) => new OctahedronGeometry(r * 1.6, 2)
   };
   var SHAPE_COLOR = {
     slime: "#7CB342",
@@ -24399,6 +24472,18 @@ void main() {
       this.pools = /* @__PURE__ */ new Map();
       this.group = new Group();
       scene.add(this.group);
+      const shadowGeo = new PlaneGeometry(1, 1);
+      shadowGeo.rotateX(-Math.PI / 2);
+      const shadowMat = new MeshBasicMaterial({
+        map: makeShadowTexture(),
+        transparent: true,
+        depthWrite: false
+      });
+      this.shadowMesh = new InstancedMesh(shadowGeo, shadowMat, SHADOW_CAP);
+      this.shadowMesh.instanceMatrix.setUsage(DynamicDrawUsage);
+      this.shadowMesh.frustumCulled = false;
+      this.shadowMesh.count = 0;
+      scene.add(this.shadowMesh);
     }
     ensurePool(key, radiusPx) {
       let p = this.pools.get(key);
@@ -24447,6 +24532,7 @@ void main() {
     sync(monsters, nowSec, dt) {
       const aliveIds = /* @__PURE__ */ new Set();
       for (const m of monsters) aliveIds.add(m.id);
+      let sn = 0;
       for (const m of monsters) {
         const shape = m.cfg.shape ?? "slime";
         const p = this.ensurePool(shape, m.cfg.radius);
@@ -24465,6 +24551,13 @@ void main() {
         DUMMY.scale.set(1 * sq * buried, (2 - sq) * buried, 1 * sq * buried);
         DUMMY.updateMatrix();
         p.mesh.setMatrixAt(idx, DUMMY.matrix);
+        if (sn < SHADOW_CAP) {
+          DUMMY.position.set(toX(m.x), 0.012, toZ(m.y));
+          DUMMY.rotation.set(0, 0, 0);
+          DUMMY.scale.setScalar(m.burrowed ? 1e-3 : p.radius * 2.6);
+          DUMMY.updateMatrix();
+          this.shadowMesh.setMatrixAt(sn++, DUMMY.matrix);
+        }
         const base = new Color(SHAPE_COLOR[shape] ?? "#FF6B57");
         const flash = p.flash[idx];
         if (flash > 0) {
@@ -24477,6 +24570,8 @@ void main() {
         base.multiplyScalar(glowPulse);
         p.mesh.setColorAt(idx, base);
       }
+      this.shadowMesh.count = sn;
+      this.shadowMesh.instanceMatrix.needsUpdate = true;
       for (const p of this.pools.values()) {
         for (const [id, idx] of p.items) {
           if (!aliveIds.has(id)) {
@@ -24503,8 +24598,8 @@ void main() {
       this.beams = [];
       this.trailCursor = 0;
       this.pendingScene = null;
-      const geo = new SphereGeometry(0.09, 8, 6);
-      const mat = new MeshBasicMaterial({ toneMapped: false });
+      const geo = new SphereGeometry(0.09, 12, 10);
+      const mat = new MeshStandardMaterial({ roughness: 0.28, metalness: 0.15 });
       this.mesh = new InstancedMesh(geo, mat, CAP);
       this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
       this.mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(CAP * 3), 3);
@@ -24544,8 +24639,8 @@ void main() {
       this.trails = new LineSegments(trailGeo, trailMat);
       this.trails.frustumCulled = false;
       scene.add(this.trails);
-      const shotGeo = new SphereGeometry(0.14, 6, 5);
-      const shotMat = new MeshBasicMaterial({ color: "#FFD54F", toneMapped: false });
+      const shotGeo = new SphereGeometry(0.14, 10, 8);
+      const shotMat = new MeshStandardMaterial({ color: "#FFD54F", roughness: 0.35, metalness: 0.1 });
       this.shotsMesh = new InstancedMesh(shotGeo, shotMat, 60);
       this.shotsMesh.instanceMatrix.setUsage(DynamicDrawUsage);
       this.shotsMesh.frustumCulled = false;
@@ -24584,7 +24679,17 @@ void main() {
         const h = 0.35 + (p.height ?? 0) * S;
         DUMMY2.position.set(x, h, z);
         const isBomb = p.weapon.cfg.shape === "bomb" || p.weapon.cfg.ghost === true;
-        DUMMY2.scale.setScalar(isBomb ? 2.2 : 1.6);
+        const dx = x - toX(p.px);
+        const dz = z - toZ(p.py);
+        if (Math.abs(dx) + Math.abs(dz) > 1e-6) {
+          DUMMY2.lookAt(x + dx, h, z + dz);
+        }
+        if (isBomb) {
+          DUMMY2.rotation.y += performance.now() * 4e-3;
+          DUMMY2.scale.setScalar(2.2);
+        } else {
+          DUMMY2.scale.set(1.5, 1.5, 2.6);
+        }
         DUMMY2.updateMatrix();
         this.mesh.setMatrixAt(n, DUMMY2.matrix);
         const c = new Color(p.damageType === "physical" ? "#F5F5FA" : p.damageType === "fire" ? "#FF5A3C" : p.damageType === "frost" ? "#4FC3F7" : p.damageType === "lightning" ? "#B388FF" : "#7CB342");
@@ -24618,9 +24723,19 @@ void main() {
       let sn = 0;
       for (const s of shots) {
         if (sn >= 60) break;
-        DUMMY2.position.set(toX(s.x), 0.4 + s.height * S, toZ(s.y));
-        DUMMY2.scale.setScalar(s.kind === "rock" ? 1.6 : 1);
-        DUMMY2.rotation.set(0, 0, 0);
+        const sx = toX(s.x);
+        const sz = toZ(s.y);
+        const sh = 0.4 + s.height * S;
+        DUMMY2.position.set(sx, sh, sz);
+        const svx = toX(s.tx) - sx;
+        const svz = toZ(s.ty) - sz;
+        if (Math.abs(svx) + Math.abs(svz) > 1e-6) DUMMY2.lookAt(sx + svx, sh, sz + svz);
+        if (s.kind === "rock") {
+          DUMMY2.rotation.x += performance.now() * 3e-3;
+          DUMMY2.scale.setScalar(1.6);
+        } else {
+          DUMMY2.scale.set(0.55, 0.55, 2.8);
+        }
         DUMMY2.updateMatrix();
         this.shotsMesh.setMatrixAt(sn++, DUMMY2.matrix);
       }
@@ -24690,14 +24805,19 @@ void main() {
   var MAX_P = 900;
   var MAX_MESH_FX = 24;
   var Fx3D = class {
+    // 爆炸闪光（复用一盏，随最近一次爆炸衰减）
     constructor(scene) {
       this.scene = scene;
       this.pool = [];
       this.cursor = 0;
       this.meshFx = [];
-      this.ringGeo = new RingGeometry(0.86, 1, 28);
-      this.flameGeo = new SphereGeometry(1, 12, 8);
+      this.ringGeo = new TorusGeometry(1, 0.05, 8, 40);
+      // 立体冲击环（环面体，有厚度）
+      this.flameGeo = new SphereGeometry(1, 16, 12);
       this.tmpColor = new Color();
+      this.blastLight = new PointLight("#FF9A3C", 0, 10, 1.8);
+      this.blastLight.position.set(0, 1.2, 0);
+      scene.add(this.blastLight);
       const geo = new BufferGeometry();
       this.posAttr = new Float32Array(MAX_P * 3);
       this.colAttr = new Float32Array(MAX_P * 3);
@@ -24773,7 +24893,7 @@ void main() {
         );
       }
     }
-    /** 爆炸：火球粒子 + 冲击环 */
+    /** 爆炸：3D 火球膨胀 + 立体冲击环 + 火花 + 闪光 */
     explode(lx, ly, radiusPx) {
       const x = toX(lx), z = toZ(ly);
       const R = Math.max(0.5, radiusPx * S);
@@ -24792,7 +24912,10 @@ void main() {
           Math.random() < 0.6 ? "#FF5A3C" : "#FFD54F"
         );
       }
+      this.addMeshFx("flame", x, z, R * 0.25, R * 1.05, 0.38, "#FF6B3C");
       this.addMeshFx("ring", x, z, R * 0.4, R * 1.15, 0.32, "#FF9A3C");
+      this.blastLight.position.set(x, 1.2, z);
+      this.blastLight.intensity = 26;
     }
     /** 落雷：天空光柱 + 落点火花 */
     bolt(lx, ly) {
@@ -24898,12 +25021,13 @@ void main() {
         scale0 = 1;
         scale1 = 0.1;
       } else {
-        mesh = new Mesh(this.flameGeo, new MeshBasicMaterial({
+        mesh = new Mesh(this.flameGeo, new MeshStandardMaterial({
           color,
+          emissive: color,
+          emissiveIntensity: 0.65,
+          roughness: 0.4,
           transparent: true,
-          blending: AdditiveBlending,
-          depthWrite: false,
-          toneMapped: false
+          depthWrite: false
         }));
         mesh.position.set(x, 0.6, z);
       }
@@ -24912,6 +25036,7 @@ void main() {
     }
     /** 每渲染帧推进 */
     update(dt) {
+      this.blastLight.intensity = Math.max(0, this.blastLight.intensity - dt * 120);
       for (let i = this.pool.length - 1; i >= 0; i--) {
         const p = this.pool[i];
         p.life -= dt;
@@ -25464,6 +25589,13 @@ void main() {
     canvas.style.cssText = "display:block;width:100vw;height:100vh;touch-action:none;";
     document.body.appendChild(canvas);
     document.body.style.cssText = "margin:0;overflow:hidden;background:#07080F;";
+    const resize = () => {
+      world.renderer.setSize(window.innerWidth, window.innerHeight, false);
+      world.camera.aspect = window.innerWidth / window.innerHeight;
+      world.camera.updateProjectionMatrix();
+    };
+    resize();
+    window.addEventListener("resize", resize);
     const hud = document.createElement("div");
     hud.style.cssText = `
     position:fixed;top:12px;left:50%;transform:translateX(-50%);width:min(680px,92vw);

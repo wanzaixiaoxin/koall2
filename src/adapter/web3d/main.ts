@@ -47,6 +47,15 @@ async function boot(): Promise<void> {
   document.body.appendChild(canvas);
   document.body.style.cssText = 'margin:0;overflow:hidden;background:#07080F;';
 
+  // 高分屏渲染尺寸：drawingBuffer 跟随窗口 × pixelRatio（不设 setSize 会停在 300×150 默认缓冲被 CSS 拉伸）
+  const resize = (): void => {
+    world.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    world.camera.aspect = window.innerWidth / window.innerHeight;
+    world.camera.updateProjectionMatrix();
+  };
+  resize();
+  window.addEventListener('resize', resize);
+
   // ---------- HUD ----------
   const hud = document.createElement('div');
   hud.style.cssText = `

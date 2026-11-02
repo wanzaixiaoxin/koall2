@@ -233,6 +233,7 @@ const tests: TestCase[] = [
     const s = freshSession();
     s.grantCard('burst_fire'); s.grantCard('burst_fire'); s.grantCard('burst_fire');
     s.debugSpawn('slime', 540, 800);
+    s.monsters[0].hp = s.monsters[0].maxHp = 1e6; // 测试靶不死，隔离伤害数值对射击节奏断言的影响
     const times: number[] = [];
     s.bus.on('onShoot', () => { if (times.length < 40) times.push(s.timeSec); });
     const ticks = Math.round(2.2 * 30); // 4 轮攻击窗口
@@ -245,7 +246,9 @@ const tests: TestCase[] = [
       else groups[groups.length - 1]++;
       lastT = t;
     }
-    return groups.length >= 2 && groups.every((g) => g === 4);
+    // 末尾不完整的组是观测窗口截断（最后一轮没打完），剔除后逐组应为 4 发
+    const complete = groups[groups.length - 1] < 4 ? groups.slice(0, -1) : groups;
+    return complete.length >= 2 && complete.every((g) => g === 4);
   } },
 
   // ===== B 类：城墙卡 =====
