@@ -245,11 +245,12 @@ export class EffectsLayer {
    * 全部按「怪物 id」取配方，所以 19 只怪死法各不相同；未知 id 回落通用碎裂。
    * 只做观感，不读逻辑，不影响确定性。
    */
-  deathFor(key: string | undefined, shape: string | undefined, x: number, y: number, radius: number, fallbackColor: string): void {
+  deathFor(key: string | undefined, shape: string | undefined, x: number, y: number, radius: number, fallbackColor: string, damageType?: string | null): void {
     const look = lookOf(key, shape);
     // 未登记 id/shape → 沿用通用碎裂（"好 > 无 > 有"）
     if (!key && !shape) {
       this.deathBurst(x, y, fallbackColor, radius);
+      this.elementalFlavor(x, y, radius, damageType);
       return;
     }
     const r = look.death;
@@ -361,9 +362,51 @@ export class EffectsLayer {
     // 6) 白闪收尾（打击确认；小怪更快）
     this.add({ kind: 'star', x, y, vx: 0, vy: 0, grav: 0, drag: 0, life: isSmall ? 0.1 : 0.13, size: radius * 1.4, color: '#FFFFFF', rot: 0.6, spin: 3, shrink: 1 });
     if (look.size === 'boss' || look.size === 'large') this.shake(isSmall ? 0 : look.size === 'boss' ? 7 : 3, 0.2);
+    // 7) 致命元素风味（火余烬/冰碎晶/雷电弧/毒气泡/物理白闪）——只叠一层，不覆盖怪物身份
+    this.elementalFlavor(x, y, radius, damageType);
   }
 
-  /** 爆炸：火球闪 + 冲击环 + 火星 + 烟。 */  explosion(x: number, y: number, radius: number, coreColor = '#FFD54F', edgeColor = '#FF5A3C'): void {
+  /**
+   * 致命元素风味（2D）：让"怎么死的"在画面上多一层可读的元素语言。
+   * 火=上飘余烬 + 焦痕红晕；冰=四散碎晶 + 霜环；雷=短电弧；毒=绿气泡；物理=白色星芒。
+   */
+  private elementalFlavor(x: number, y: number, radius: number, damageType?: string | null): void {
+    if (!damageType) return;
+    const R = radius;
+    if (damageType === 'fire') {
+      this.rings.push({ x, y, r0: R * 0.5, r1: R * 1.6, life: 0.35, maxLife: 0.35, color: '#FF5A3C', width: 3, filled: false });
+      for (let i = 0; i < 5; i++) {
+        const a = this.range(0, Math.PI * 2);
+        this.add({ kind: 'ember', x, y, vx: Math.cos(a) * this.range(30, 90), vy: this.range(60, 140), grav: -60, drag: 1.4, life: this.range(0.3, 0.6), size: this.range(2, 4), color: i % 2 ? '#FFD54F' : '#FF5A3C', rot: a, spin: 0, shrink: 1 });
+      }
+    } else if (damageType === 'frost') {
+      this.rings.push({ x, y, r0: R * 0.6, r1: R * 1.9, life: 0.45, maxLife: 0.45, color: '#4FC3F7', width: 2, filled: false });
+      for (let i = 0; i < 7; i++) {
+        const a = this.range(0, Math.PI * 2);
+        const sp = this.range(120, 260);
+        this.add({ kind: 'shard', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, grav: -120, drag: 1.4, life: this.range(0.3, 0.55), size: this.range(2.5, 5), color: i % 2 ? '#BFFFF2' : '#4FC3F7', rot: a, spin: this.range(-8, 8), shrink: 1 });
+      }
+    } else if (damageType === 'lightning') {
+      for (let i = 0; i < 2; i++) {
+        const a = this.range(0, Math.PI * 2);
+        const ex = x + Math.cos(a) * 44;
+        const ey = y + Math.sin(a) * 44;
+        if (this.bolts.length < MAX_BOLTS) {
+          this.bolts.push({ pts: [[x, y], [(x + ex) / 2 + this.range(-10, 10), (y + ey) / 2 + this.range(-10, 10)], [ex, ey]], life: 0.28, maxLife: 0.28, color: '#B388FF', width: 2.6 });
+        }
+      }
+    } else if (damageType === 'poison') {
+      for (let i = 0; i < 6; i++) {
+        const a = this.range(0, Math.PI * 2);
+        this.add({ kind: 'star', x: x + Math.cos(a) * R * 0.5, y: y + Math.sin(a) * R * 0.4, vx: Math.cos(a) * this.range(20, 70), vy: this.range(40, 110), grav: -30, drag: 1.8, life: this.range(0.35, 0.7), size: this.range(2, 3.6), color: '#7CB342', rot: a, spin: 0, shrink: 1 });
+      }
+    } else if (damageType === 'physical') {
+      this.add({ kind: 'star', x, y, vx: 0, vy: 0, grav: 0, drag: 0, life: 0.14, size: R * 1.5, color: '#F5F5FA', rot: this.range(0, 1), spin: 3, shrink: 1 });
+    }
+  }
+
+  /** 爆炸：火球闪 + 冲击环 + 火星 + 烟。 */
+  explosion(x: number, y: number, radius: number, coreColor = '#FFD54F', edgeColor = '#FF5A3C'): void {
     this.rings.push({
       x, y, r0: radius * 0.2, r1: radius * 1.15,
       life: 0.34, maxLife: 0.34, color: coreColor, width: 7, filled: true,

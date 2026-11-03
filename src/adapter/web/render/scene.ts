@@ -79,10 +79,12 @@ export class SceneRenderer {
     this.wallHeal.fill(0);
     this.heroInit = false;
 
-    bus.on<{ monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number }>(
+    bus.on<{ monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number; damageType?: string }>(
       'onHit',
-      ({ monsterId, dmg, isCrit, blocked, mitigated, x, y }) => {
+      ({ monsterId, dmg, isCrit, blocked, mitigated, x, y, damageType }) => {
         if (monsterId !== undefined && !blocked) fx.markHit(monsterId, session.timeSec);
+        // 元素化命中火花：火=橙、冰=青、雷=紫、毒=绿、物理=白（一眼读出"这发是什么属性"）
+        const elemColor = this.palette.damageType[damageType ?? 'physical'] ?? '#F5F5FA';
         if (blocked) {
           eff.pushFloat(x, y - 12, '挡', '#8A93B8', 15);
           eff.impact(x, y, '#8A93B8', undefined, 2);
@@ -93,12 +95,12 @@ export class SceneRenderer {
           x + (hash01(x + y * 3.3 + dmg) - 0.5) * 26,
           y + 18,
           String(Math.round(dmg)),
-          isCrit ? '#FFD54F' : '#F5F5FA',
+          isCrit ? '#FFD54F' : elemColor,
           isCrit ? 30 : 18,
           { crit: isCrit },
         );
         const sparkBase = this.fx.cfg.hitSpark?.count ?? 3;
-        eff.impact(x, y, isCrit ? '#FFD54F' : '#F5F5FA', undefined, isCrit ? sparkBase * 2 : sparkBase);
+        eff.impact(x, y, isCrit ? '#FFD54F' : elemColor, undefined, isCrit ? sparkBase * 2 : sparkBase);
         if (isCrit) {
           eff.rings.push({ x, y, r0: 4, r1: 26, life: 0.2, maxLife: 0.2, color: '#FFD54F', width: 2.5, filled: false });
           eff.shake(1.6, 0.08);
@@ -106,12 +108,13 @@ export class SceneRenderer {
       },
     );
 
-    bus.on<{ monsterId: number; key: string }>('onKill', ({ monsterId, key }) => {
+    bus.on<{ monsterId: number; key: string; shape?: string; x?: number; y?: number; radius?: number; damageType?: string | null }>('onKill', ({ monsterId, key, shape, damageType }) => {
       const m = session.monsters.find((x) => x.id === monsterId);
       if (!m) return;
       const color = monsterColorByKey(key);
       // 身份化死法：按怪物 id 取 identity.ts 的配方（材质/速度/环/尘烟/专属符号各不相同）
-      eff.deathFor(key, m.cfg.shape, m.x, m.y, m.cfg.radius, color);
+      // 致命伤害类型只叠一层风味（火余烬/冰碎晶/雷电弧/毒气泡），不覆盖怪物身份
+      eff.deathFor(key, shape ?? m.cfg.shape, m.x, m.y, m.cfg.radius, color, damageType);
       if (m.cfg.shape === 'boss') {
         eff.explosion(m.x, m.y, m.cfg.radius * 1.6, '#B537F2', '#FF3D71');
         eff.shake(9, 0.4);
@@ -216,9 +219,9 @@ export class SceneRenderer {
       const scale = this.spawnScale(m, timeMs);
       drawMonster(ctx, m, t, this.fx.flashAlpha(m.id, now), this.fx.hitSquash(m.id, now), scale);
     }
-    // 状态与血条画在全体怪之上，避免被后画的怪遮住
+    // 状态与血条画在全体怪之上，避免被后画的怪遮住（状态强度来自 fx-config.statusFx）
     for (const m of monsters) {
-      drawMonsterStatus(ctx, m, t, now);
+      drawMonsterStatus(ctx, m, t, now, this.fx.cfg.statusFx);
       this.drawHpBar(ctx, m);
     }
 

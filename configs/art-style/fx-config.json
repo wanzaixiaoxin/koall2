@@ -19,5 +19,12 @@
   "levelUpFlash":    { "duration": 250,  "easing": "easeOut", "note": "升级瞬间英雄光圈" },
   "muzzleFlash":     { "duration": 70, "note": "2D 炮口闪光时长（ms），与开火同帧" },
   "heroRecoil":      { "distance": 6,  "note": "2D 开火后坐位移（px），渲染层指数衰减" },
-  "hitSpark":        { "count": 3,     "note": "2D 每次直接命中的火花数；暴击 ×2" }
+  "hitSpark":        { "count": 3,     "note": "2D 每次直接命中的火花数；暴击 ×2" },
+  "statusFx": {
+    "$comment": "2D 元素状态视觉强度（美术可调，不改代码）。1 = 标准；0 = 关闭该层。",
+    "freeze": { "enabled": true, "iceShell": 0.34, "spikes": 6, "shards": 4, "sheen": 0.5, "note": "冰冻：冰壳覆盖 + 六角冰晶尖刺 + 霜晶飘落 + 冰面扫光" },
+    "burn":   { "enabled": true, "flameScale": 1.15, "embers": 4, "smoke": 0.35, "scorch": 0.28, "note": "燃烧：三层火舌 + 上升余烬 + 烟 + 地面焦痕微光" },
+    "shred":  { "enabled": true, "cracks": 3, "glow": 0.4, "note": "破甲：护甲裂纹 + 缺口红橙标记" },
+    "shield": { "enabled": true, "segments": 6, "note": "免伤盾：六边形护盾格（每命中掉一格）" }
+  }
 }

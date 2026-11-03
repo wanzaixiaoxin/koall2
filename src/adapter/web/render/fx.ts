@@ -35,6 +35,13 @@ export interface FxConfig {
   heroRecoil?: { distance?: number; note?: string };
   /** 命中火花数量（每次直接命中） */
   hitSpark?: { count?: number; note?: string };
+  /** 2D 元素状态视觉强度（美术可调）：冰冻 / 燃烧 / 破甲 / 免伤盾 */
+  statusFx?: {
+    freeze?: { enabled?: boolean; iceShell?: number; spikes?: number; shards?: number; sheen?: number; note?: string };
+    burn?: { enabled?: boolean; flameScale?: number; embers?: number; smoke?: number; scorch?: number; note?: string };
+    shred?: { enabled?: boolean; cracks?: number; glow?: number; note?: string };
+    shield?: { enabled?: boolean; segments?: number; note?: string };
+  };
 }
 
 /** 缓动函数库：统一签名，输入 t∈[0,1]（线性进度），输出缓动后的进度。 */

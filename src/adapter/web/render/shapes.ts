@@ -178,61 +178,208 @@ export function drawMonster(
   ctx.restore();
 }
 
-/** 单位状态叠加：冰冻、灼烧、护盾层数、被破甲（由 scene 每帧调用）。 */
+/** 2D 状态视觉参数（来自 fx-config.json statusFx，缺省用内置标准值）。 */
+export interface StatusFxCfg {
+  freeze?: { enabled?: boolean; iceShell?: number; spikes?: number; shards?: number; sheen?: number };
+  burn?: { enabled?: boolean; flameScale?: number; embers?: number; smoke?: number; scorch?: number };
+  shred?: { enabled?: boolean; cracks?: number; glow?: number };
+  shield?: { enabled?: boolean; segments?: number };
+}
+
+/**
+ * 单位状态叠加：冰冻、灼烧、破甲、免伤盾（由 scene 每帧调用）。
+ *
+ * 强化原则（2D）：状态必须"一眼可辨、且不遮挡本体识别"——
+ *  - 冰冻：冰壳整体覆盖（一眼看出被冻住）+ 六角冰晶尖刺 + 霜晶飘落 + 冰面扫光；
+ *  - 燃烧：三层火舌（外焰/内焰/白心）+ 上升余烬 + 烟 + 地面焦痕微光；
+ *  - 破甲：护甲裂纹 + 缺口红橙标记（此前完全没画，玩家看不到"破甲"生效）；
+ *  - 免伤盾：六边形护盾格，每命中掉一格（可数）。
+ * 强度/开关全部来自 fx-config.json statusFx，美术可调不改代码。
+ */
 export function drawMonsterStatus(
   ctx: CanvasRenderingContext2D,
   m: MonsterRuntime,
   t: number,
   now: number,
+  statusFx?: StatusFxCfg,
 ): void {
   const r = m.cfg.radius;
-  if (now < m.slowUntil) {
-    // 冰冻：青蓝双层环 + 冰晶碎片（信息型：减速中）
-    ctx.strokeStyle = rgba('#4FC3F7', 0.75);
-    ctx.lineWidth = 2;
+  const freeze = statusFx?.freeze;
+  const burn = statusFx?.burn;
+  const shred = statusFx?.shred;
+  const shield = statusFx?.shield;
+
+  // ---------- 冰冻（减速） ----------
+  if (now < m.slowUntil && freeze?.enabled !== false) {
+    const shell = freeze?.iceShell ?? 0.34;
+    const spikes = Math.max(0, Math.round(freeze?.spikes ?? 6));
+    const shards = Math.max(0, Math.round(freeze?.shards ?? 4));
+    const sheen = freeze?.sheen ?? 0.5;
+    // 1) 冰壳：半透明青蓝覆盖本体（读作"被冻住"，且不盖死本体色相）
+    ctx.fillStyle = rgba('#4FC3F7', shell);
     ctx.beginPath();
-    ctx.arc(m.x, m.y, r + 4, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = rgba('#BFFFF2', 0.35);
+    ctx.arc(m.x, m.y, r * 0.96, 0, Math.PI * 2);
+    ctx.fill();
+    // 冰壳高光（左上一块亮斑，冰的"厚"）
+    ctx.fillStyle = rgba('#DFF6FF', shell * 0.9);
     ctx.beginPath();
-    ctx.arc(m.x, m.y, r + 7, t * 1.4, t * 1.4 + 2.2);
+    ctx.ellipse(m.x - r * 0.3, m.y + r * 0.28, r * 0.38, r * 0.22, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    // 2) 六角冰晶尖刺：环绕本体的短棱锥（冻结的"锋"）
+    ctx.strokeStyle = rgba('#BFFFF2', 0.85);
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < spikes; i++) {
+      const a = (Math.PI * 2 * i) / Math.max(1, spikes) + m.phase * 0.15;
+      const x0 = m.x + Math.cos(a) * (r + 1);
+      const y0 = m.y + Math.sin(a) * (r + 1);
+      const len = r * 0.34 + Math.sin(t * 5 + i) * 1.6;
+      const x1 = x0 + Math.cos(a) * len;
+      const y1 = y0 + Math.sin(a) * len;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+      // 冰晶顶点亮
+      drawGlow(ctx, x1, y1, 4, '#BFFFF2', 0.55);
+    }
+    // 3) 冰面扫光（从左到右掠过的细亮带，周期性）
+    const sweep = ((t * 0.55 + m.phase) % 1);
+    const sx = m.x - r + 2 * r * sweep;
+    ctx.save();
+    ctx.globalAlpha = sheen * (1 - Math.abs(sweep - 0.5) * 1.6);
+    ctx.strokeStyle = rgba('#FFFFFF', 0.8);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(sx, m.y - r * 0.8);
+    ctx.lineTo(sx, m.y + r * 0.8);
     ctx.stroke();
-    for (let i = 0; i < 3; i++) {
-      const a = t * 0.6 + (i * Math.PI * 2) / 3;
-      drawGlow(ctx, m.x + Math.cos(a) * (r + 2), m.y + Math.sin(a) * (r + 2), 5, '#4FC3F7', 0.5);
+    ctx.restore();
+    // 4) 霜晶飘落：脚下几片缓慢下沉的冰屑
+    for (let i = 0; i < shards; i++) {
+      const seed = m.id * 7 + i * 13;
+      const k = (t * 0.5 + hash01(seed)) % 1;
+      const px = m.x + (hash01(seed + 1) - 0.5) * r * 1.6;
+      const py = m.y + r * 0.5 - k * r * 1.9;
+      ctx.fillStyle = rgba('#DFF6FF', 0.7 * (1 - k));
+      ctx.beginPath();
+      ctx.arc(px, py, 1.4, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
-  if (m.burn && m.burn.until > now) {
-    // 灼烧：摇曳的火舌 + 上升火星（DoT 的"看得见"）
-    const fl = 9 + Math.sin(t * 16 + m.phase) * 3;
+
+  // ---------- 燃烧（DoT） ----------
+  if (m.burn && m.burn.until > now && burn?.enabled !== false) {
+    const fs = burn?.flameScale ?? 1.15;
+    const embers = Math.max(0, Math.round(burn?.embers ?? 4));
+    const smokeA = burn?.smoke ?? 0.35;
+    const scorchA = burn?.scorch ?? 0.28;
     const bx = m.x;
     const by = m.y + r + 2;
-    ctx.fillStyle = '#FF5A3C';
+    // 地面焦痕微光（贴脚的一圈橙红光，读作"被点着了"）
+    drawGlow(ctx, m.x, m.y, r * 1.5, '#FF5A3C', scorchA * (0.7 + 0.3 * Math.sin(t * 12 + m.phase)));
+    // 三层火舌：外焰（深橙，左右摇曳）/ 内焰（亮橙）/ 白心
+    const flick = Math.sin(t * 16 + m.phase);
+    const h1 = (9 + flick * 3) * fs;
+    ctx.fillStyle = rgba('#FF5A3C', 0.9);
     ctx.beginPath();
-    ctx.moveTo(bx, by + fl * 1.8);
-    ctx.quadraticCurveTo(bx - 8, by + fl * 0.8, bx - 2.5, by);
-    ctx.quadraticCurveTo(bx, by + fl * 0.4, bx + 3, by);
-    ctx.quadraticCurveTo(bx + 8, by + fl * 0.8, bx, by + fl * 1.8);
+    ctx.moveTo(bx, by + h1 * 2.0);
+    ctx.quadraticCurveTo(bx - 9 * fs + flick * 2, by + h1 * 0.9, bx - 2.5 * fs, by);
+    ctx.quadraticCurveTo(bx, by + h1 * 0.45, bx + 3 * fs, by);
+    ctx.quadraticCurveTo(bx + 9 * fs + flick * 2, by + h1 * 0.9, bx, by + h1 * 2.0);
     ctx.fill();
-    ctx.fillStyle = '#FFD54F';
+    ctx.fillStyle = rgba('#FF9A3C', 0.95);
     ctx.beginPath();
-    ctx.moveTo(bx, by + fl * 1.1);
-    ctx.quadraticCurveTo(bx - 3.5, by + fl * 0.5, bx, by);
-    ctx.quadraticCurveTo(bx + 3.5, by + fl * 0.5, bx, by + fl * 1.1);
+    ctx.moveTo(bx, by + h1 * 1.45);
+    ctx.quadraticCurveTo(bx - 5.5 * fs - flick, by + h1 * 0.6, bx, by);
+    ctx.quadraticCurveTo(bx + 5.5 * fs - flick, by + h1 * 0.6, bx, by + h1 * 1.45);
     ctx.fill();
-    drawGlow(ctx, bx, by + fl * 0.7, 16, '#FF5A3C', 0.35);
-  }
-  if (m.shieldLeft > 0) {
-    // 免伤层数：护甲环上的刻度（打一次掉一格，可读）
-    const rr = r + 6;
-    ctx.strokeStyle = rgba('#8A93B8', 0.5);
-    ctx.lineWidth = 2.5;
-    for (let i = 0; i < Math.min(4, m.shieldLeft); i++) {
-      const a = Math.PI * 0.5 + (i - (Math.min(4, m.shieldLeft) - 1) / 2) * 0.42;
+    ctx.fillStyle = rgba('#FFF3C4', 0.95);
+    ctx.beginPath();
+    ctx.moveTo(bx, by + h1 * 0.95);
+    ctx.quadraticCurveTo(bx - 3 * fs, by + h1 * 0.42, bx, by);
+    ctx.quadraticCurveTo(bx + 3 * fs, by + h1 * 0.42, bx, by + h1 * 0.95);
+    ctx.fill();
+    // 火光照亮本体下半部分
+    drawGlow(ctx, bx, by + h1 * 0.6, 16 * fs, '#FF5A3C', 0.4);
+    // 上升余烬：底部升到头顶上方，左右飘
+    for (let i = 0; i < embers; i++) {
+      const seed = m.id * 11 + i * 17;
+      const k = (t * (0.8 + hash01(seed) * 0.5) + hash01(seed + 1)) % 1;
+      const ex = bx + Math.sin(seed + k * 7) * r * 0.55;
+      const ey = by + h1 * 0.6 + k * r * 2.2;
+      ctx.fillStyle = rgba(i % 2 === 0 ? '#FFD54F' : '#FF9A3C', 0.85 * (1 - k));
       ctx.beginPath();
-      ctx.arc(m.x, m.y, rr, a - 0.12, a + 0.12);
+      ctx.arc(ex, ey, 2.2 * (1 - k * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // 烟：稀薄灰烟上升（低透明度，不抢火舌）
+    for (let i = 0; i < 2; i++) {
+      const seed = m.id * 5 + i * 29;
+      const k = (t * 0.45 + hash01(seed)) % 1;
+      const sx = bx + Math.sin(seed + k * 4) * r * 0.4;
+      const sy = by + h1 * 1.2 + k * r * 2.6;
+      ctx.fillStyle = rgba('#6E7796', smokeA * (1 - k) * 0.6);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3 + k * 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ---------- 破甲（shredUntil，此前未绘制） ----------
+  if (now < m.shredUntil && shred?.enabled !== false) {
+    const cracks = Math.max(0, Math.round(shred?.cracks ?? 3));
+    const glow = shred?.glow ?? 0.4;
+    // 缺口红橙光晕（视觉上"护甲被打穿"）
+    drawGlow(ctx, m.x, m.y, r * 1.2, '#FF7A3C', glow * (0.6 + 0.4 * Math.sin(t * 8 + m.phase)));
+    // 裂纹：从本体边缘向内刻的折线
+    ctx.strokeStyle = rgba('#FFB357', 0.8);
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < cracks; i++) {
+      const a = (Math.PI * 2 * i) / Math.max(1, cracks) + m.phase + 0.4;
+      let px = m.x + Math.cos(a) * r * 0.9;
+      let py = m.y + Math.sin(a) * r * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      for (let s = 0; s < 2; s++) {
+        const aa = a + Math.PI + (s % 2 === 0 ? 0.5 : -0.4);
+        px += Math.cos(aa) * r * 0.3;
+        py += Math.sin(aa) * r * 0.3;
+        ctx.lineTo(px, py);
+      }
       ctx.stroke();
     }
+  }
+
+  // ---------- 免伤盾层数（六边形护盾格，可数） ----------
+  if (m.shieldLeft > 0 && shield?.enabled !== false) {
+    const segs = Math.max(3, Math.round(shield?.segments ?? 6));
+    const shown = Math.min(segs, m.shieldLeft);
+    const rr = r + 6;
+    for (let i = 0; i < shown; i++) {
+      const a = (Math.PI * 2 * i) / segs - Math.PI / 2;
+      const cx = m.x + Math.cos(a) * rr;
+      const cy = m.y + Math.sin(a) * rr;
+      ctx.strokeStyle = rgba('#C7CEE6', 0.85);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let k = 0; k < 6; k++) {
+        const aa = (Math.PI / 3) * k + t * 0.25;
+        const px = cx + Math.cos(aa) * 3;
+        const py = cy + Math.sin(aa) * 3;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+    // 整体护盾环（弱）
+    ctx.strokeStyle = rgba('#8A93B8', 0.28);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, rr, 0, Math.PI * 2);
+    ctx.stroke();
   }
 }
 

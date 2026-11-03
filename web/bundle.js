@@ -1321,7 +1321,8 @@
           blocked: dealt === 0,
           mitigated: dealt === 0 ? 0 : res.mitigated,
           x: m.x,
-          y: m.y
+          y: m.y,
+          damageType: p.damageType
         });
         if (p.damageType === "fire") this.burnCreep(m.x, m.y, 60);
         if (p.damageType === "fire" && p.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
@@ -1442,7 +1443,8 @@
           blocked: dealt === 0,
           mitigated: dealt === 0 ? 0 : res.mitigated,
           x: m.x,
-          y: m.y
+          y: m.y,
+          damageType: cmd.weapon.element
         });
         if (cmd.weapon.element === "fire") this.burnCreep(m.x, m.y, 60);
         if (cmd.weapon.element === "fire" && cmd.weapon.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
@@ -1507,7 +1509,7 @@
         cur.hp -= dealt;
         this.totalDamage += dealt;
         if (res.isCrit && dealt > 0) this.totalCrits++;
-        this.bus.emit("onHit", { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, mitigated: dealt === 0 ? 0 : res.mitigated, x: cur.x, y: cur.y });
+        this.bus.emit("onHit", { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, mitigated: dealt === 0 ? 0 : res.mitigated, x: cur.x, y: cur.y, damageType: "lightning" });
         if (cur.hp <= 0) this.killMonster(null, cur);
         path.push([cur.x, cur.y]);
         strikesLeft--;
@@ -1889,7 +1891,15 @@
       this.totalKills++;
       this.waveKills++;
       this.hero.xp += m.cfg.xp;
-      this.bus.emit("onKill", { monsterId: m.id, key: m.cfg.id });
+      this.bus.emit("onKill", {
+        monsterId: m.id,
+        key: m.cfg.id,
+        shape: m.cfg.shape,
+        x: m.x,
+        y: m.y,
+        radius: m.cfg.radius,
+        damageType: p ? p.damageType : null
+      });
       if (m.cfg.deathSplit) {
         this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
       }
@@ -2822,10 +2832,11 @@
      * 全部按「怪物 id」取配方，所以 19 只怪死法各不相同；未知 id 回落通用碎裂。
      * 只做观感，不读逻辑，不影响确定性。
      */
-    deathFor(key, shape, x, y, radius, fallbackColor) {
+    deathFor(key, shape, x, y, radius, fallbackColor, damageType) {
       const look = lookOf(key, shape);
       if (!key && !shape) {
         this.deathBurst(x, y, fallbackColor, radius);
+        this.elementalFlavor(x, y, radius, damageType);
         return;
       }
       const r = look.death;
@@ -2933,6 +2944,45 @@
       }
       this.add({ kind: "star", x, y, vx: 0, vy: 0, grav: 0, drag: 0, life: isSmall ? 0.1 : 0.13, size: radius * 1.4, color: "#FFFFFF", rot: 0.6, spin: 3, shrink: 1 });
       if (look.size === "boss" || look.size === "large") this.shake(isSmall ? 0 : look.size === "boss" ? 7 : 3, 0.2);
+      this.elementalFlavor(x, y, radius, damageType);
+    }
+    /**
+     * 致命元素风味（2D）：让"怎么死的"在画面上多一层可读的元素语言。
+     * 火=上飘余烬 + 焦痕红晕；冰=四散碎晶 + 霜环；雷=短电弧；毒=绿气泡；物理=白色星芒。
+     */
+    elementalFlavor(x, y, radius, damageType) {
+      if (!damageType) return;
+      const R = radius;
+      if (damageType === "fire") {
+        this.rings.push({ x, y, r0: R * 0.5, r1: R * 1.6, life: 0.35, maxLife: 0.35, color: "#FF5A3C", width: 3, filled: false });
+        for (let i = 0; i < 5; i++) {
+          const a = this.range(0, Math.PI * 2);
+          this.add({ kind: "ember", x, y, vx: Math.cos(a) * this.range(30, 90), vy: this.range(60, 140), grav: -60, drag: 1.4, life: this.range(0.3, 0.6), size: this.range(2, 4), color: i % 2 ? "#FFD54F" : "#FF5A3C", rot: a, spin: 0, shrink: 1 });
+        }
+      } else if (damageType === "frost") {
+        this.rings.push({ x, y, r0: R * 0.6, r1: R * 1.9, life: 0.45, maxLife: 0.45, color: "#4FC3F7", width: 2, filled: false });
+        for (let i = 0; i < 7; i++) {
+          const a = this.range(0, Math.PI * 2);
+          const sp = this.range(120, 260);
+          this.add({ kind: "shard", x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, grav: -120, drag: 1.4, life: this.range(0.3, 0.55), size: this.range(2.5, 5), color: i % 2 ? "#BFFFF2" : "#4FC3F7", rot: a, spin: this.range(-8, 8), shrink: 1 });
+        }
+      } else if (damageType === "lightning") {
+        for (let i = 0; i < 2; i++) {
+          const a = this.range(0, Math.PI * 2);
+          const ex = x + Math.cos(a) * 44;
+          const ey = y + Math.sin(a) * 44;
+          if (this.bolts.length < MAX_BOLTS) {
+            this.bolts.push({ pts: [[x, y], [(x + ex) / 2 + this.range(-10, 10), (y + ey) / 2 + this.range(-10, 10)], [ex, ey]], life: 0.28, maxLife: 0.28, color: "#B388FF", width: 2.6 });
+          }
+        }
+      } else if (damageType === "poison") {
+        for (let i = 0; i < 6; i++) {
+          const a = this.range(0, Math.PI * 2);
+          this.add({ kind: "star", x: x + Math.cos(a) * R * 0.5, y: y + Math.sin(a) * R * 0.4, vx: Math.cos(a) * this.range(20, 70), vy: this.range(40, 110), grav: -30, drag: 1.8, life: this.range(0.35, 0.7), size: this.range(2, 3.6), color: "#7CB342", rot: a, spin: 0, shrink: 1 });
+        }
+      } else if (damageType === "physical") {
+        this.add({ kind: "star", x, y, vx: 0, vy: 0, grav: 0, drag: 0, life: 0.14, size: R * 1.5, color: "#F5F5FA", rot: this.range(0, 1), spin: 3, shrink: 1 });
+      }
     }
     /** 爆炸：火球闪 + 冲击环 + 火星 + 烟。 */
     explosion(x, y, radius, coreColor = "#FFD54F", edgeColor = "#FF5A3C") {
@@ -3558,52 +3608,162 @@
     }
     ctx.restore();
   }
-  function drawMonsterStatus(ctx, m, t, now) {
+  function drawMonsterStatus(ctx, m, t, now, statusFx) {
     const r = m.cfg.radius;
-    if (now < m.slowUntil) {
-      ctx.strokeStyle = rgba("#4FC3F7", 0.75);
-      ctx.lineWidth = 2;
+    const freeze = statusFx?.freeze;
+    const burn = statusFx?.burn;
+    const shred = statusFx?.shred;
+    const shield = statusFx?.shield;
+    if (now < m.slowUntil && freeze?.enabled !== false) {
+      const shell = freeze?.iceShell ?? 0.34;
+      const spikes = Math.max(0, Math.round(freeze?.spikes ?? 6));
+      const shards = Math.max(0, Math.round(freeze?.shards ?? 4));
+      const sheen = freeze?.sheen ?? 0.5;
+      ctx.fillStyle = rgba("#4FC3F7", shell);
       ctx.beginPath();
-      ctx.arc(m.x, m.y, r + 4, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = rgba("#BFFFF2", 0.35);
+      ctx.arc(m.x, m.y, r * 0.96, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = rgba("#DFF6FF", shell * 0.9);
       ctx.beginPath();
-      ctx.arc(m.x, m.y, r + 7, t * 1.4, t * 1.4 + 2.2);
+      ctx.ellipse(m.x - r * 0.3, m.y + r * 0.28, r * 0.38, r * 0.22, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = rgba("#BFFFF2", 0.85);
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = "round";
+      for (let i = 0; i < spikes; i++) {
+        const a = Math.PI * 2 * i / Math.max(1, spikes) + m.phase * 0.15;
+        const x0 = m.x + Math.cos(a) * (r + 1);
+        const y0 = m.y + Math.sin(a) * (r + 1);
+        const len2 = r * 0.34 + Math.sin(t * 5 + i) * 1.6;
+        const x1 = x0 + Math.cos(a) * len2;
+        const y1 = y0 + Math.sin(a) * len2;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+        drawGlow(ctx, x1, y1, 4, "#BFFFF2", 0.55);
+      }
+      const sweep = (t * 0.55 + m.phase) % 1;
+      const sx = m.x - r + 2 * r * sweep;
+      ctx.save();
+      ctx.globalAlpha = sheen * (1 - Math.abs(sweep - 0.5) * 1.6);
+      ctx.strokeStyle = rgba("#FFFFFF", 0.8);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(sx, m.y - r * 0.8);
+      ctx.lineTo(sx, m.y + r * 0.8);
       ctx.stroke();
-      for (let i = 0; i < 3; i++) {
-        const a = t * 0.6 + i * Math.PI * 2 / 3;
-        drawGlow(ctx, m.x + Math.cos(a) * (r + 2), m.y + Math.sin(a) * (r + 2), 5, "#4FC3F7", 0.5);
+      ctx.restore();
+      for (let i = 0; i < shards; i++) {
+        const seed = m.id * 7 + i * 13;
+        const k = (t * 0.5 + hash01(seed)) % 1;
+        const px = m.x + (hash01(seed + 1) - 0.5) * r * 1.6;
+        const py = m.y + r * 0.5 - k * r * 1.9;
+        ctx.fillStyle = rgba("#DFF6FF", 0.7 * (1 - k));
+        ctx.beginPath();
+        ctx.arc(px, py, 1.4, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
-    if (m.burn && m.burn.until > now) {
-      const fl = 9 + Math.sin(t * 16 + m.phase) * 3;
+    if (m.burn && m.burn.until > now && burn?.enabled !== false) {
+      const fs = burn?.flameScale ?? 1.15;
+      const embers = Math.max(0, Math.round(burn?.embers ?? 4));
+      const smokeA = burn?.smoke ?? 0.35;
+      const scorchA = burn?.scorch ?? 0.28;
       const bx = m.x;
       const by = m.y + r + 2;
-      ctx.fillStyle = "#FF5A3C";
+      drawGlow(ctx, m.x, m.y, r * 1.5, "#FF5A3C", scorchA * (0.7 + 0.3 * Math.sin(t * 12 + m.phase)));
+      const flick = Math.sin(t * 16 + m.phase);
+      const h1 = (9 + flick * 3) * fs;
+      ctx.fillStyle = rgba("#FF5A3C", 0.9);
       ctx.beginPath();
-      ctx.moveTo(bx, by + fl * 1.8);
-      ctx.quadraticCurveTo(bx - 8, by + fl * 0.8, bx - 2.5, by);
-      ctx.quadraticCurveTo(bx, by + fl * 0.4, bx + 3, by);
-      ctx.quadraticCurveTo(bx + 8, by + fl * 0.8, bx, by + fl * 1.8);
+      ctx.moveTo(bx, by + h1 * 2);
+      ctx.quadraticCurveTo(bx - 9 * fs + flick * 2, by + h1 * 0.9, bx - 2.5 * fs, by);
+      ctx.quadraticCurveTo(bx, by + h1 * 0.45, bx + 3 * fs, by);
+      ctx.quadraticCurveTo(bx + 9 * fs + flick * 2, by + h1 * 0.9, bx, by + h1 * 2);
       ctx.fill();
-      ctx.fillStyle = "#FFD54F";
+      ctx.fillStyle = rgba("#FF9A3C", 0.95);
       ctx.beginPath();
-      ctx.moveTo(bx, by + fl * 1.1);
-      ctx.quadraticCurveTo(bx - 3.5, by + fl * 0.5, bx, by);
-      ctx.quadraticCurveTo(bx + 3.5, by + fl * 0.5, bx, by + fl * 1.1);
+      ctx.moveTo(bx, by + h1 * 1.45);
+      ctx.quadraticCurveTo(bx - 5.5 * fs - flick, by + h1 * 0.6, bx, by);
+      ctx.quadraticCurveTo(bx + 5.5 * fs - flick, by + h1 * 0.6, bx, by + h1 * 1.45);
       ctx.fill();
-      drawGlow(ctx, bx, by + fl * 0.7, 16, "#FF5A3C", 0.35);
-    }
-    if (m.shieldLeft > 0) {
-      const rr = r + 6;
-      ctx.strokeStyle = rgba("#8A93B8", 0.5);
-      ctx.lineWidth = 2.5;
-      for (let i = 0; i < Math.min(4, m.shieldLeft); i++) {
-        const a = Math.PI * 0.5 + (i - (Math.min(4, m.shieldLeft) - 1) / 2) * 0.42;
+      ctx.fillStyle = rgba("#FFF3C4", 0.95);
+      ctx.beginPath();
+      ctx.moveTo(bx, by + h1 * 0.95);
+      ctx.quadraticCurveTo(bx - 3 * fs, by + h1 * 0.42, bx, by);
+      ctx.quadraticCurveTo(bx + 3 * fs, by + h1 * 0.42, bx, by + h1 * 0.95);
+      ctx.fill();
+      drawGlow(ctx, bx, by + h1 * 0.6, 16 * fs, "#FF5A3C", 0.4);
+      for (let i = 0; i < embers; i++) {
+        const seed = m.id * 11 + i * 17;
+        const k = (t * (0.8 + hash01(seed) * 0.5) + hash01(seed + 1)) % 1;
+        const ex = bx + Math.sin(seed + k * 7) * r * 0.55;
+        const ey = by + h1 * 0.6 + k * r * 2.2;
+        ctx.fillStyle = rgba(i % 2 === 0 ? "#FFD54F" : "#FF9A3C", 0.85 * (1 - k));
         ctx.beginPath();
-        ctx.arc(m.x, m.y, rr, a - 0.12, a + 0.12);
+        ctx.arc(ex, ey, 2.2 * (1 - k * 0.5), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (let i = 0; i < 2; i++) {
+        const seed = m.id * 5 + i * 29;
+        const k = (t * 0.45 + hash01(seed)) % 1;
+        const sx = bx + Math.sin(seed + k * 4) * r * 0.4;
+        const sy = by + h1 * 1.2 + k * r * 2.6;
+        ctx.fillStyle = rgba("#6E7796", smokeA * (1 - k) * 0.6);
+        ctx.beginPath();
+        ctx.arc(sx, sy, 3 + k * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (now < m.shredUntil && shred?.enabled !== false) {
+      const cracks = Math.max(0, Math.round(shred?.cracks ?? 3));
+      const glow = shred?.glow ?? 0.4;
+      drawGlow(ctx, m.x, m.y, r * 1.2, "#FF7A3C", glow * (0.6 + 0.4 * Math.sin(t * 8 + m.phase)));
+      ctx.strokeStyle = rgba("#FFB357", 0.8);
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = "round";
+      for (let i = 0; i < cracks; i++) {
+        const a = Math.PI * 2 * i / Math.max(1, cracks) + m.phase + 0.4;
+        let px = m.x + Math.cos(a) * r * 0.9;
+        let py = m.y + Math.sin(a) * r * 0.9;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        for (let s = 0; s < 2; s++) {
+          const aa = a + Math.PI + (s % 2 === 0 ? 0.5 : -0.4);
+          px += Math.cos(aa) * r * 0.3;
+          py += Math.sin(aa) * r * 0.3;
+          ctx.lineTo(px, py);
+        }
         ctx.stroke();
       }
+    }
+    if (m.shieldLeft > 0 && shield?.enabled !== false) {
+      const segs = Math.max(3, Math.round(shield?.segments ?? 6));
+      const shown = Math.min(segs, m.shieldLeft);
+      const rr = r + 6;
+      for (let i = 0; i < shown; i++) {
+        const a = Math.PI * 2 * i / segs - Math.PI / 2;
+        const cx = m.x + Math.cos(a) * rr;
+        const cy = m.y + Math.sin(a) * rr;
+        ctx.strokeStyle = rgba("#C7CEE6", 0.85);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let k = 0; k < 6; k++) {
+          const aa = Math.PI / 3 * k + t * 0.25;
+          const px = cx + Math.cos(aa) * 3;
+          const py = cy + Math.sin(aa) * 3;
+          if (k === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+      ctx.strokeStyle = rgba("#8A93B8", 0.28);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, rr, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
   function drawMonsterBody(ctx, m, t, tint, tier) {
@@ -5366,8 +5526,9 @@
       this.heroInit = false;
       bus.on(
         "onHit",
-        ({ monsterId, dmg, isCrit, blocked, mitigated, x, y }) => {
+        ({ monsterId, dmg, isCrit, blocked, mitigated, x, y, damageType }) => {
           if (monsterId !== void 0 && !blocked) fx.markHit(monsterId, session.timeSec);
+          const elemColor = this.palette.damageType[damageType ?? "physical"] ?? "#F5F5FA";
           if (blocked) {
             eff.pushFloat(x, y - 12, "\u6321", "#8A93B8", 15);
             eff.impact(x, y, "#8A93B8", void 0, 2);
@@ -5378,23 +5539,23 @@
             x + (hash01(x + y * 3.3 + dmg) - 0.5) * 26,
             y + 18,
             String(Math.round(dmg)),
-            isCrit ? "#FFD54F" : "#F5F5FA",
+            isCrit ? "#FFD54F" : elemColor,
             isCrit ? 30 : 18,
             { crit: isCrit }
           );
           const sparkBase = this.fx.cfg.hitSpark?.count ?? 3;
-          eff.impact(x, y, isCrit ? "#FFD54F" : "#F5F5FA", void 0, isCrit ? sparkBase * 2 : sparkBase);
+          eff.impact(x, y, isCrit ? "#FFD54F" : elemColor, void 0, isCrit ? sparkBase * 2 : sparkBase);
           if (isCrit) {
             eff.rings.push({ x, y, r0: 4, r1: 26, life: 0.2, maxLife: 0.2, color: "#FFD54F", width: 2.5, filled: false });
             eff.shake(1.6, 0.08);
           }
         }
       );
-      bus.on("onKill", ({ monsterId, key }) => {
+      bus.on("onKill", ({ monsterId, key, shape, damageType }) => {
         const m = session.monsters.find((x) => x.id === monsterId);
         if (!m) return;
         const color = monsterColorByKey(key);
-        eff.deathFor(key, m.cfg.shape, m.x, m.y, m.cfg.radius, color);
+        eff.deathFor(key, shape ?? m.cfg.shape, m.x, m.y, m.cfg.radius, color, damageType);
         if (m.cfg.shape === "boss") {
           eff.explosion(m.x, m.y, m.cfg.radius * 1.6, "#B537F2", "#FF3D71");
           eff.shake(9, 0.4);
@@ -5484,7 +5645,7 @@
         drawMonster(ctx, m, t, this.fx.flashAlpha(m.id, now), this.fx.hitSquash(m.id, now), scale);
       }
       for (const m of monsters) {
-        drawMonsterStatus(ctx, m, t, now);
+        drawMonsterStatus(ctx, m, t, now, this.fx.cfg.statusFx);
         this.drawHpBar(ctx, m);
       }
       drawSegments(ctx, session.segments, now, "#B388FF");
