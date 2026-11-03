@@ -688,6 +688,8 @@
       this.bunkers = [];
       /** 菌毯网格活性：cellKey → a(0~100) */
       this.activity = /* @__PURE__ */ new Map();
+      /** 开局预孵批次（"虫多繁殖快"：第一窝直接上路） */
+      this.pendingBurst = 0;
       this.nextId = 1;
       this.cfg = cfg;
       this.A = {
@@ -701,7 +703,7 @@
       this.T = {
         hp: 80,
         maxCount: 9,
-        spreadIntervalSec: 8,
+        spreadIntervalSec: 7,
         dormantSec: 6,
         reviveCost: 20,
         ...cfg.tumor ?? {}
@@ -713,9 +715,9 @@
         ...cfg.migrate ?? {}
       };
       this.E = {
-        hiveIncomePerSec: 2,
-        tumorIncomeScale: 1.5,
-        startBiomass: 30,
+        hiveIncomePerSec: 4,
+        tumorIncomeScale: 2.2,
+        startBiomass: 80,
         unitCost: { zerg_ling: 5, zerg_roach: 12, zerg_lurker: 25, zerg_queen: 60, baneling: 20, zerg_ultra: 120 },
         ...cfg.economy ?? {}
       };
@@ -737,7 +739,9 @@
       };
       this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
       this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 180);
+      this.spawnTumor(cfg.hivePos.x - 60, cfg.hivePos.y - 500);
       this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
+      this.pendingBurst = 4;
     }
     // ---------------- 菌毯网格 ----------------
     keyAt(x, y) {
@@ -770,7 +774,7 @@
           if (px < 0 || px > this.cfg.hiveMoveRange[1] + 200 || py < 0) continue;
           if (this.inBunker(px, py)) continue;
           const k = cellKey(cx0 + dx, cy0 + dy);
-          if (this.activity.get(k) === void 0) this.activity.set(k, 40);
+          if (this.activity.get(k) === void 0) this.activity.set(k, 50);
         }
       }
     }
@@ -882,7 +886,7 @@
         if (t.spreadLeft <= 0) {
           t.spreadLeft += this.T.spreadIntervalSec;
           this.paintAround(t.x, t.y - CELL, 1);
-          if (alive < this.T.maxCount && this.rngLike() < 0.5) {
+          if (alive < this.T.maxCount && this.rngLike() < 0.8) {
             this.spawnTumor(t.x, t.y - CELL * 1.5);
           }
         }
@@ -939,18 +943,27 @@
       if (this.hive.migrateLeft > 0) return;
       this.hive.hatchLeft -= dt;
       if (this.hive.hatchLeft > 0) return;
-      this.hive.hatchLeft += 1.6;
+      this.hive.hatchLeft += 0.9;
       const pool = this.unlockedUnits();
       if (pool.length === 0) return;
-      const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
-      const cost = this.E.unitCost[key] ?? 10;
-      if (this.hive.biomass < cost) return;
-      this.hive.biomass -= cost;
+      const burst = this.pendingBurst > 0 ? this.pendingBurst : 1 + Math.floor(this.rngLike() * 2.4);
+      let hatched = 0;
+      for (let i = 0; i < burst; i++) {
+        const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+        const cost = this.E.unitCost[key] ?? 10;
+        if (this.hive.biomass < cost) break;
+        this.hive.biomass -= cost;
+        this.hatchOne(key, deps);
+        hatched++;
+      }
+      if (this.pendingBurst > 0 && hatched > 0) this.pendingBurst -= hatched;
+    }
+    hatchOne(key, deps) {
       const src = this.frontTumor();
       let sx;
       let sy;
       if (src) {
-        sx = src.x + (this.rngLike() - 0.5) * 40;
+        sx = src.x + (this.rngLike() - 0.5) * 60;
         sy = src.y - 20;
       } else {
         sx = this.hive.x + (this.rngLike() - 0.5) * 80;
@@ -971,11 +984,11 @@
     unlockedUnits() {
       const list = ["zerg_ling"];
       const unlock = this.cfg.unlock ?? [
-        { monster: "zerg_roach", needBiomass: 60 },
-        { monster: "baneling", needBiomass: 140 },
-        { monster: "zerg_lurker", needBiomass: 240 },
-        { monster: "zerg_queen", needBiomass: 400 },
-        { monster: "zerg_ultra", needBiomass: 700 }
+        { monster: "zerg_roach", needBiomass: 40 },
+        { monster: "baneling", needBiomass: 90 },
+        { monster: "zerg_lurker", needBiomass: 150 },
+        { monster: "zerg_queen", needBiomass: 260 },
+        { monster: "zerg_ultra", needBiomass: 420 }
       ];
       for (const u of unlock) {
         if (this.hive.biomassEarned >= u.needBiomass) list.push(u.monster);
