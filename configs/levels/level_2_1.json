@@ -13,6 +13,21 @@
     "yMin": 96,
     "yMax": 560
   },
+  "hive": {
+    "hivePos": { "x": 540, "y": 1780 },
+    "hiveMoveRange": [200, 880],
+    "hiveHp": 600,
+    "hiveArmorMax": 100,
+    "playerCoreArmorMax": 100,
+    "activity": { "risePerSec": 3, "fallPerSec": 8, "thresholdLow": 3, "thresholdHigh": 8 },
+    "tumor": { "hp": 80, "maxCount": 9, "spreadIntervalSec": 8, "dormantSec": 6, "reviveCost": 20 },
+    "migrate": { "intervalSec": 50, "durationSec": 1.5, "armorBonusWhileMoving": 15 },
+    "economy": { "hiveIncomePerSec": 2, "tumorIncomeScale": 1.5, "startBiomass": 30 },
+    "bunkers": [
+      { "x": 270, "y": 300, "r": 120, "hp": 400 },
+      { "x": 810, "y": 300, "r": 120, "hp": 400 }
+    ]
+  },
   "spawnBandY": [
     1600,
     1880

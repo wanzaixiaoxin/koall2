@@ -677,6 +677,337 @@
     }
   }
 
+  // src/gamecore/hive.ts
+  var CELL = 90;
+  function cellKey(cx, cy) {
+    return cx * 4096 + cy;
+  }
+  var HiveSystem = class {
+    constructor(cfg) {
+      this.tumors = [];
+      this.bunkers = [];
+      /** 菌毯网格活性：cellKey → a(0~100) */
+      this.activity = /* @__PURE__ */ new Map();
+      this.nextId = 1;
+      this.cfg = cfg;
+      this.A = {
+        risePerSec: 3,
+        fallPerSec: 8,
+        thresholdLow: 3,
+        thresholdHigh: 8,
+        baseCap: 100,
+        ...cfg.activity ?? {}
+      };
+      this.T = {
+        hp: 80,
+        maxCount: 9,
+        spreadIntervalSec: 8,
+        dormantSec: 6,
+        reviveCost: 20,
+        ...cfg.tumor ?? {}
+      };
+      this.M = {
+        intervalSec: 50,
+        durationSec: 1.5,
+        armorBonusWhileMoving: 15,
+        ...cfg.migrate ?? {}
+      };
+      this.E = {
+        hiveIncomePerSec: 2,
+        tumorIncomeScale: 1.5,
+        startBiomass: 30,
+        unitCost: { zerg_ling: 5, zerg_roach: 12, zerg_lurker: 25, zerg_queen: 60, baneling: 20, zerg_ultra: 120 },
+        ...cfg.economy ?? {}
+      };
+      this.hive = {
+        x: cfg.hivePos.x,
+        y: cfg.hivePos.y,
+        hp: cfg.hiveHp,
+        maxHp: cfg.hiveHp,
+        armor: cfg.hiveArmorMax,
+        armorMax: cfg.hiveArmorMax,
+        migrateLeft: 0,
+        migrateCd: this.M.intervalSec,
+        targetX: cfg.hivePos.x,
+        biomass: this.E.startBiomass,
+        biomassEarned: 0,
+        hatchLeft: 1.5,
+        armorTickLeft: 10,
+        dead: false
+      };
+      this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
+      this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 180);
+      this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
+    }
+    // ---------------- 菌毯网格 ----------------
+    keyAt(x, y) {
+      return cellKey(Math.floor(x / CELL), Math.floor(y / CELL));
+    }
+    cx(k) {
+      return Math.floor(k / 4096);
+    }
+    cy(k) {
+      return k % 4096;
+    }
+    cellCenterX(k) {
+      return this.cx(k) * CELL + CELL / 2;
+    }
+    cellCenterY(k) {
+      return this.cy(k) * CELL + CELL / 2;
+    }
+    hasCreep(x, y) {
+      return this.activity.get(this.keyAt(x, y)) !== void 0;
+    }
+    /** 在 (x,y) 半径格数内刷菌毯（避开地堡覆盖）。 */
+    paintAround(x, y, cells) {
+      const cx0 = Math.floor(x / CELL);
+      const cy0 = Math.floor(y / CELL);
+      for (let dx = -cells; dx <= cells; dx++) {
+        for (let dy = -cells; dy <= cells; dy++) {
+          if (dx * dx + dy * dy > cells * cells) continue;
+          const px = (cx0 + dx) * CELL + CELL / 2;
+          const py = (cy0 + dy) * CELL + CELL / 2;
+          if (px < 0 || px > this.cfg.hiveMoveRange[1] + 200 || py < 0) continue;
+          if (this.inBunker(px, py)) continue;
+          const k = cellKey(cx0 + dx, cy0 + dy);
+          if (this.activity.get(k) === void 0) this.activity.set(k, 40);
+        }
+      }
+    }
+    inBunker(x, y) {
+      for (const b of this.bunkers) {
+        if (b.hp <= 0) continue;
+        const dx = x - b.x;
+        const dy = y - b.y;
+        if (Math.abs(dx) <= b.r && Math.abs(dy) <= b.r) return true;
+      }
+      return false;
+    }
+    /** 某个瘤是否已休眠（休眠瘤不产收入、不孵兵）。 */
+    activeTumors() {
+      return this.tumors.filter((t) => !t.dormant);
+    }
+    // ---------------- 瘤 ----------------
+    spawnTumor(x, y) {
+      if (this.tumors.length >= this.T.maxCount) return;
+      if (this.inBunker(x, y)) return;
+      const cx = Math.max(1, Math.min(this.cfg.hiveMoveRange[1], x));
+      this.tumors.push({
+        id: this.nextId++,
+        x: cx,
+        y,
+        hp: this.T.hp,
+        maxHp: this.T.hp,
+        dormant: false,
+        dormantLeft: 0,
+        spreadLeft: this.T.spreadIntervalSec
+      });
+    }
+    /** 供战斗层调用：对瘤造成（AOE/穿透的顺带）伤害；不秒，掉空→休眠。 */
+    damageTumor(t, dmg) {
+      if (t.dormant) return;
+      t.hp -= dmg;
+      if (t.hp <= 0) {
+        t.hp = 0;
+        t.dormant = true;
+        t.dormantLeft = this.T.dormantSec;
+      }
+    }
+    /** 玩家火力/AOE 波及某点：对附近的瘤施加顺带伤害（用于穿透/溅射/AOE 弹）。 */
+    applySplashToTumors(x, y, radius, dmg) {
+      for (const t of this.tumors) {
+        if (t.dormant) continue;
+        const dx = t.x - x;
+        const dy = t.y - y;
+        if (dx * dx + dy * dy <= (radius + 30) * (radius + 30)) this.damageTumor(t, dmg);
+      }
+    }
+    // ---------------- 主更新 ----------------
+    update(dt, deps) {
+      if (this.hive.dead) return;
+      const now = deps.now;
+      this.updateActivity(dt, deps.monsters);
+      this.updateTumors(dt);
+      this.updateEconomy(dt);
+      this.updateArmor(dt);
+      this.updateMigration(dt);
+      this.updateHatch(dt, deps);
+      if (this.hive.hp <= 0 && this.hive.armor <= 0) {
+        this.hive.dead = true;
+        deps.onEvent?.("hiveDead");
+      }
+    }
+    /** 区域虫群密度统计：每格虫数；据此涨落活性。 */
+    updateActivity(dt, monsters) {
+      const count = /* @__PURE__ */ new Map();
+      for (const m of monsters) {
+        if (m.hp <= 0) continue;
+        const k = this.keyAt(m.x, m.y);
+        count.set(k, (count.get(k) ?? 0) + 1);
+      }
+      const { risePerSec, fallPerSec, thresholdLow, thresholdHigh, baseCap } = this.A;
+      for (const k of this.activity.keys()) {
+        const n = count.get(k) ?? 0;
+        let a = this.activity.get(k);
+        if (n > thresholdHigh) a += risePerSec * dt;
+        else if (n <= thresholdLow) a -= fallPerSec * dt;
+        const px = this.cellCenterX(k);
+        const py = this.cellCenterY(k);
+        if (this.nearTumor(px, py)) a += 2 * dt;
+        if (Math.hypot(px - this.hive.x, py - this.hive.y) < 260) a += 4 * dt;
+        a = Math.max(0, Math.min(baseCap, a));
+        this.activity.set(k, a);
+      }
+    }
+    nearTumor(x, y) {
+      for (const t of this.tumors) {
+        if (t.dormant) continue;
+        if (Math.abs(t.x - x) <= CELL * 1.2 && Math.abs(t.y - y) <= CELL * 1.2) return true;
+      }
+      return false;
+    }
+    updateTumors(dt) {
+      const alive = this.tumors.length;
+      for (const t of this.tumors) {
+        if (t.dormant) {
+          t.dormantLeft -= dt;
+          if (t.dormantLeft <= 0 && this.hive.biomass >= this.T.reviveCost) {
+            this.hive.biomass -= this.T.reviveCost;
+            t.dormant = false;
+            t.hp = t.maxHp * 0.5;
+          }
+          continue;
+        }
+        t.spreadLeft -= dt;
+        if (t.spreadLeft <= 0) {
+          t.spreadLeft += this.T.spreadIntervalSec;
+          this.paintAround(t.x, t.y - CELL, 1);
+          if (alive < this.T.maxCount && this.rngLike() < 0.5) {
+            this.spawnTumor(t.x, t.y - CELL * 1.5);
+          }
+        }
+      }
+    }
+    rngLike() {
+      this.nextId = this.nextId * 1103515245 + 12345 & 2147483647;
+      return this.nextId % 1e3 / 1e3;
+    }
+    /** 全局平均活性（仅统计有菌毯的格） */
+    avgActivity() {
+      if (this.activity.size === 0) return 0;
+      let sum = 0;
+      for (const a of this.activity.values()) sum += a;
+      return sum / this.activity.size;
+    }
+    updateEconomy(dt) {
+      const tumorCount = this.activeTumors().length;
+      const income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
+      this.hive.biomass += income * dt;
+      this.hive.biomassEarned += income * dt;
+    }
+    updateArmor(dt) {
+      if (this.hive.armor <= 0) return;
+      this.hive.armorTickLeft -= dt;
+      if (this.hive.armorTickLeft <= 0) {
+        this.hive.armorTickLeft += 10;
+        const drop = Math.max(0, (100 - this.avgActivity()) / 10);
+        this.hive.armor = Math.max(0, this.hive.armor - drop);
+      }
+    }
+    updateMigration(dt) {
+      if (this.hive.migrateLeft > 0) {
+        this.hive.migrateLeft -= dt;
+        const dx = this.hive.targetX - this.hive.x;
+        const step = Math.min(Math.abs(dx), 120 * dt);
+        this.hive.x += Math.sign(dx) * step;
+        if (this.hive.migrateLeft <= 0) {
+          this.hive.x = this.hive.targetX;
+          this.hive.migrateCd = this.M.intervalSec;
+        }
+        return;
+      }
+      this.hive.migrateCd -= dt;
+      if (this.hive.migrateCd <= 0) {
+        const [minX, maxX] = this.cfg.hiveMoveRange;
+        const span = maxX - minX;
+        const drift = (this.rngLike() - 0.5) * span * 0.6;
+        this.hive.targetX = Math.max(minX, Math.min(maxX, this.hive.x + drift));
+        this.hive.migrateLeft = this.M.durationSec;
+      }
+    }
+    updateHatch(dt, deps) {
+      if (this.hive.migrateLeft > 0) return;
+      this.hive.hatchLeft -= dt;
+      if (this.hive.hatchLeft > 0) return;
+      this.hive.hatchLeft += 1.6;
+      const pool = this.unlockedUnits();
+      if (pool.length === 0) return;
+      const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+      const cost = this.E.unitCost[key] ?? 10;
+      if (this.hive.biomass < cost) return;
+      this.hive.biomass -= cost;
+      const src = this.frontTumor();
+      let sx;
+      let sy;
+      if (src) {
+        sx = src.x + (this.rngLike() - 0.5) * 40;
+        sy = src.y - 20;
+      } else {
+        sx = this.hive.x + (this.rngLike() - 0.5) * 80;
+        sy = this.hive.y - 60;
+      }
+      if (!this.hasCreep(sx, sy)) this.paintAround(sx, sy, 1);
+      deps.onHatch(key, sx, sy);
+      deps.onEvent?.("hatch", { x: sx, y: sy });
+    }
+    frontTumor() {
+      let best = null;
+      for (const t of this.activeTumors()) {
+        if (!best || t.y < best.y) best = t;
+      }
+      return best;
+    }
+    /** 已解锁单位（缺省：初始只有 zerg_ling，随累计虫核解锁） */
+    unlockedUnits() {
+      const list = ["zerg_ling"];
+      const unlock = this.cfg.unlock ?? [
+        { monster: "zerg_roach", needBiomass: 60 },
+        { monster: "baneling", needBiomass: 140 },
+        { monster: "zerg_lurker", needBiomass: 240 },
+        { monster: "zerg_queen", needBiomass: 400 },
+        { monster: "zerg_ultra", needBiomass: 700 }
+      ];
+      for (const u of unlock) {
+        if (this.hive.biomassEarned >= u.needBiomass) list.push(u.monster);
+      }
+      return list;
+    }
+    // ---------------- 战斗接口 ----------------
+    /** 玩家对虫巢造成伤害：护甲>0 时免伤（不能拆家）。返回实际伤害。 */
+    damageHive(raw) {
+      if (this.hive.dead) return 0;
+      if (this.hive.armor > 0) return 0;
+      const dealt = Math.min(this.hive.hp, raw);
+      this.hive.hp -= dealt;
+      return dealt;
+    }
+    /** 虫族摧毁玩家设施后：玩家核心护甲下降（对称）。由 session 记录。 */
+    /** 地堡是否被摧毁（供 session 侦测）。 */
+    bunkersAlive() {
+      return this.bunkers.filter((b) => b.hp > 0).length;
+    }
+    /** 虫群攻击地堡（毒爆/雷兽靠近时调用）。 */
+    damageBunker(x, y, dmg) {
+      for (const b of this.bunkers) {
+        if (b.hp <= 0) continue;
+        if (Math.abs(b.x - x) <= b.r + 20 && Math.abs(b.y - y) <= b.r + 20) {
+          b.hp = Math.max(0, b.hp - dmg);
+          return;
+        }
+      }
+    }
+  };
+
   // src/gamecore/session.ts
   var TICK_DT = 1 / 30;
   function distToSegment(px, py, ax, ay, bx, by) {
@@ -801,6 +1132,10 @@
       // 激光能量束（瞬时结算，仅渲染快照，见 doLaser）
       /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
       this.creep = /* @__PURE__ */ new Map();
+      /** 虫巢对抗模式（docs/13）：关卡带 level.hive 时启用；否则为 null（第一章/实验室走原逻辑）。 */
+      this.hiveSystem = null;
+      /** 玩家核心茧壳护甲（虫巢模式）；0 表示无护甲保护。 */
+      this.playerCoreArmor = 0;
       // 可被 B 类卡（加固城墙）提升
       this.tick = 0;
       this.result = null;
@@ -850,12 +1185,20 @@
       this.wallMaxHp = opts.level.wall.hp;
       this.wallHp = opts.level.wall.hp;
       this.director = new WaveDirector(opts.level, this.rng);
+      if (opts.level.hive) {
+        this.hiveSystem = new HiveSystem(opts.level.hive);
+        this.playerCoreArmor = opts.level.hive.playerCoreArmorMax;
+      }
     }
     static {
       this.CREEP_CELL = 90;
     }
     static {
       this.CREEP_LIFE = 60;
+    }
+    /** 是否虫巢对抗模式 */
+    get hiveMode() {
+      return this.hiveSystem !== null;
     }
     get timeSec() {
       return this.tick * TICK_DT;
@@ -868,8 +1211,22 @@
       this.motionCtx.now = now;
       this.motionCtx.ownerX = this.hero.x;
       this.motionCtx.ownerY = this.hero.y;
-      const spawned = this.director.update(this, dt);
-      for (const item of spawned) this.spawnMonster(item.monsterKey, item.spawnX);
+      if (this.hiveSystem) {
+        this.hiveSystem.update(dt, {
+          arenaW: this.level.arena.width,
+          arenaH: this.level.arena.height,
+          monsters: this.monsters,
+          now,
+          onHatch: (key, x, y) => this.spawnMonster(key, x, y),
+          onEvent: (evt, payload) => this.bus.emit("onHiveEvent", { evt, ...payload ?? {} })
+        });
+        for (const [key] of this.hiveSystem.activity) {
+          this.creep.set(key, now + 60);
+        }
+      } else {
+        const spawned = this.director.update(this, dt);
+        for (const item of spawned) this.spawnMonster(item.monsterKey, item.spawnX);
+      }
       const move = this.controller.getMoveDir(this);
       const len2 = Math.hypot(move.x, move.y);
       if (len2 > 1e-6) {
@@ -1137,7 +1494,15 @@
       this.maxMonsters = Math.max(this.maxMonsters, this.monsters.length);
       this.maxProjectiles = Math.max(this.maxProjectiles, this.projectiles.length);
       if (!this.sandboxMode) {
-        if (this.wallHp <= 0) {
+        if (this.hiveSystem) {
+          if (this.hiveSystem.hive.dead) {
+            this.result = "victory";
+            this.bus.emit("onGameOver", { result: this.result });
+          } else if (this.wallHp <= 0) {
+            this.result = "defeat";
+            this.bus.emit("onGameOver", { result: this.result });
+          }
+        } else if (this.wallHp <= 0) {
           this.result = "defeat";
           this.bus.emit("onGameOver", { result: this.result });
         } else if (this.director.state === "done" && this.monsters.length === 0) {
@@ -1290,6 +1655,27 @@
     }
     collideProjectile(p) {
       const now = this.timeSec;
+      if (this.hiveSystem && !this.hiveSystem.hive.dead && p.alive) {
+        const h = this.hiveSystem.hive;
+        const rr = p.radius + 46;
+        if (distToSegment(h.x, h.y, p.px, p.py, p.x, p.y) <= rr) {
+          const raw = p.dmg;
+          const dealt = this.hiveSystem.damageHive(raw);
+          if (dealt > 0) {
+            this.totalDamage += dealt;
+            this.bus.emit("onHiveHit", { dmg: dealt, armor: h.armor, armorMax: h.armorMax, x: h.x, y: h.y });
+          } else {
+            this.bus.emit("onHiveHit", { dmg: 0, armor: h.armor, armorMax: h.armorMax, x: h.x, y: h.y });
+          }
+          if (p.pierceLeft > 0) {
+            p.pierceLeft--;
+            p.pierceCount++;
+          } else {
+            this.killProjectile(p);
+          }
+          if (!p.alive) return;
+        }
+      }
       const reach = p.radius + 34 + p.stepLen;
       this.hash.queryCircle(p.x, p.y, reach, this.scratch);
       for (const mid of this.scratch) {
@@ -1653,6 +2039,7 @@
         if (m.hp <= 0) this.killMonster(null, m);
       }
       if (p.damageType === "fire") this.burnCreep(p.x, p.y, radius);
+      if (this.hiveSystem) this.hiveSystem.applySplashToTumors(p.x, p.y, radius, p.dmg * dmgMul * 0.6);
       this.pools.push({
         x: p.x,
         y: p.y,
@@ -5695,6 +6082,7 @@
       this.drawBackground(ctx, session, t, wallRatio, sh);
       ctx.setTransform(1, 0, 0, -1, sh.x, this.H + sh.y);
       this.drawCreep(ctx, session, t);
+      this.drawHiveEntities(ctx, session, t);
       for (const pool of session.pools) drawPool(ctx, pool, now);
       this.drawWall(ctx, session, wallRatio, t, dt);
       const monsters = session.monsters.slice().sort((a, b) => b.y - a.y);
@@ -5958,33 +6346,174 @@
     // ---------------- 虫苔 ----------------
     drawCreep(ctx, session, t) {
       if (session.creep.size === 0) return;
-      const CELL = 90;
+      const CELL2 = 90;
       const creepColor = "#7CB342";
       for (const [key, until] of session.creep) {
         const cx = Math.floor(key / 4096);
         const cy = key % 4096;
-        const x = cx * CELL;
-        const y = cy * CELL;
+        const x = cx * CELL2;
+        const y = cy * CELL2;
         const left = until - session.timeSec;
         const fade = Math.min(1, Math.max(0, left / 3));
         const s = hash01(cx * 3.7 + cy * 9.1);
         ctx.fillStyle = rgba(creepColor, 0.14 * fade);
         ctx.beginPath();
-        ctx.ellipse(x + CELL * 0.5 + (s - 0.5) * 10, y + CELL * 0.5, CELL * 0.56, CELL * 0.46, s * 2, 0, Math.PI * 2);
+        ctx.ellipse(x + CELL2 * 0.5 + (s - 0.5) * 10, y + CELL2 * 0.5, CELL2 * 0.56, CELL2 * 0.46, s * 2, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = rgba(creepColor, 0.1 * fade);
         ctx.beginPath();
-        ctx.ellipse(x + CELL * 0.4, y + CELL * 0.58, CELL * 0.36, CELL * 0.3, -s, 0, Math.PI * 2);
+        ctx.ellipse(x + CELL2 * 0.4, y + CELL2 * 0.58, CELL2 * 0.36, CELL2 * 0.3, -s, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = rgba("#AEEA00", (0.12 + 0.06 * Math.sin(t * 2 + s * 6)) * fade);
         ctx.lineWidth = 1.2;
         ctx.beginPath();
-        ctx.ellipse(x + CELL * 0.5, y + CELL * 0.5, CELL * 0.5, CELL * 0.4, 0, 0, Math.PI * 2);
+        ctx.ellipse(x + CELL2 * 0.5, y + CELL2 * 0.5, CELL2 * 0.5, CELL2 * 0.4, 0, 0, Math.PI * 2);
         ctx.stroke();
         ctx.fillStyle = rgba("#D8FF50", 0.22 * fade);
         ctx.beginPath();
-        ctx.arc(x + CELL * (0.3 + s * 0.4), y + CELL * (0.3 + s * 0.5), 2 + Math.sin(t * 3 + s * 9), 0, Math.PI * 2);
+        ctx.arc(x + CELL2 * (0.3 + s * 0.4), y + CELL2 * (0.3 + s * 0.5), 2 + Math.sin(t * 3 + s * 9), 0, Math.PI * 2);
         ctx.fill();
+      }
+    }
+    // ---------------- 虫巢对抗模式实体（docs/13） ----------------
+    /** 瘤/虫巢/地堡：画在菌毯之上、怪物之下。 */
+    drawHiveEntities(ctx, session, t) {
+      const hive = session.hiveSystem;
+      if (!hive) return;
+      for (const b of hive.bunkers) {
+        if (b.hp <= 0) {
+          ctx.fillStyle = "rgba(40,42,60,0.5)";
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, b.r * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          continue;
+        }
+        ctx.strokeStyle = "rgba(53,224,195,0.22)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 6]);
+        ctx.strokeRect(b.x - b.r, b.y - b.r, b.r * 2, b.r * 2);
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#12303F";
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = Math.PI / 3 * i + Math.PI / 6;
+          const px = b.x + Math.cos(a) * 24;
+          const py = b.y + Math.sin(a) * 24;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = "#35E0C3";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        const hk = b.hp / b.maxHp;
+        ctx.fillStyle = "rgba(7,8,15,0.6)";
+        ctx.fillRect(b.x - 18, b.y - 34, 36, 5);
+        ctx.fillStyle = "#35E0C3";
+        ctx.fillRect(b.x - 18, b.y - 34, 36 * hk, 5);
+      }
+      for (const tu of hive.tumors) {
+        const alive = !tu.dormant;
+        const hpk = tu.hp / tu.maxHp;
+        ctx.strokeStyle = alive ? "rgba(85,139,47,0.7)" : "rgba(90,95,90,0.4)";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 4; i++) {
+          const a = Math.PI / 2 * i + 0.4 + tu.id;
+          ctx.beginPath();
+          ctx.moveTo(tu.x + Math.cos(a) * 10, tu.y + Math.sin(a) * 10);
+          ctx.lineTo(tu.x + Math.cos(a) * 22, tu.y + Math.sin(a) * 22);
+          ctx.stroke();
+        }
+        const breathe = 1 + (alive ? 0.06 * Math.sin(t * 4 + tu.id) : 0);
+        ctx.fillStyle = alive ? "#558B2F" : "#4A4F45";
+        ctx.beginPath();
+        ctx.arc(tu.x, tu.y, 16 * breathe, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(11,12,29,0.8)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = alive ? `rgba(174,234,0,${0.65 + 0.25 * Math.sin(t * 5 + tu.id)})` : "rgba(140,150,130,0.35)";
+        ctx.beginPath();
+        ctx.arc(tu.x, tu.y - 6, 7 * breathe, 0, Math.PI * 2);
+        ctx.fill();
+        if (alive && hpk < 1) {
+          ctx.fillStyle = "rgba(7,8,15,0.6)";
+          ctx.fillRect(tu.x - 16, tu.y - 28, 32, 4);
+          ctx.fillStyle = "#AEEA00";
+          ctx.fillRect(tu.x - 16, tu.y - 28, 32 * hpk, 4);
+        }
+        if (tu.dormant) {
+          const k = 1 - tu.dormantLeft / 6;
+          ctx.strokeStyle = "rgba(140,150,130,0.5)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(tu.x, tu.y, 20, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      const h = hive.hive;
+      if (!h.dead) {
+        const R = 46;
+        const pulse = 1 + 0.03 * Math.sin(t * 2.2);
+        ctx.fillStyle = "rgba(85,139,47,0.25)";
+        ctx.beginPath();
+        ctx.ellipse(h.x, h.y, R * 1.7, R * 1.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#3E5B21";
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, R * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#558B2F";
+        ctx.beginPath();
+        ctx.arc(h.x, h.y - 6, R * 0.72 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#9CCC65";
+        ctx.beginPath();
+        ctx.arc(h.x, h.y - 12, R * 0.4 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = `rgba(216,255,80,${0.5 + 0.3 * Math.sin(t * 3)})`;
+        ctx.beginPath();
+        ctx.arc(h.x, h.y - 12, R * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(11,12,29,0.85)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, R * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        const ak = h.armor / h.armorMax;
+        if (ak > 0) {
+          ctx.strokeStyle = "rgba(199,206,230,0.75)";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(h.x, h.y, R * 1.18, -Math.PI * 0.35, -Math.PI * 0.35 + ak * Math.PI * 1.7);
+          ctx.stroke();
+          const cracks = Math.round((1 - ak) * 5);
+          ctx.strokeStyle = "rgba(11,12,29,0.7)";
+          ctx.lineWidth = 1.6;
+          for (let i = 0; i < cracks; i++) {
+            const a = Math.PI * 2 * i / 5 + h.x * 0.01;
+            ctx.beginPath();
+            ctx.moveTo(h.x + Math.cos(a) * R * 0.55, h.y + Math.sin(a) * R * 0.55);
+            ctx.lineTo(h.x + Math.cos(a) * R * 1.05, h.y + Math.sin(a) * R * 1.05);
+            ctx.stroke();
+          }
+        }
+        if (h.migrateLeft > 0) {
+          ctx.strokeStyle = "rgba(85,139,47,0.5)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(h.x, h.y);
+          ctx.lineTo(h.x - Math.sign(h.targetX - h.x) * 70, h.y + 10);
+          ctx.stroke();
+        }
+        if (h.armor <= 0) {
+          const hk2 = h.hp / h.maxHp;
+          ctx.fillStyle = "rgba(7,8,15,0.65)";
+          ctx.fillRect(h.x - 40, h.y + R * 1.35, 80, 7);
+          ctx.fillStyle = "#FF3D71";
+          ctx.fillRect(h.x - 40, h.y + R * 1.35, 80 * hk2, 7);
+        }
       }
     }
     // ---------------- 血条 ----------------

@@ -192,9 +192,93 @@ export interface LevelConfig {
   /** 每波清空的通关经验奖励（自动入账） */
   waveClearBonusXp?: number;
   waves: WaveConfig[];
+  /** 虫巢对抗模式（docs/13）：存在此字段即启用——跳过波次时间轴，改双核心胜负 + 菌毯经济。 */
+  hive?: HiveLevelConfig;
+}
+
+// ---------- 虫巢对抗模式配置（docs/13） ----------
+
+/** 关卡级虫巢配置：存在即开启虫巢模式。 */
+export interface HiveLevelConfig {
+  /** 虫巢初始位置（arena 坐标，y 靠上） */
+  hivePos: { x: number; y: number };
+  /** 虫巢左右可移动范围 x∈[minX,maxX] */
+  hiveMoveRange: [number, number];
+  /** 虫巢本体 HP 与茧壳护甲（100=满） */
+  hiveHp: number;
+  hiveArmorMax: number;
+  /** 玩家核心（= 城墙核心）茧壳护甲，用于对称；虫族拆设施时下降 */
+  playerCoreArmorMax: number;
+  /** 菌毯网格尺寸（沿用 90） */
+  creepCell?: number;
+  /** 活性参数（缺省用内置） */
+  activity?: {
+    risePerSec?: number;     // 区域虫数>H 时 a 上升/秒
+    fallPerSec?: number;     // 区域虫数<=L 时 a 下降/秒
+    thresholdLow?: number;   // L
+    thresholdHigh?: number;  // H
+    baseCap?: number;        // 活性上限（100）
+  };
+  /** 瘤参数 */
+  tumor?: { hp?: number; maxCount?: number; spreadIntervalSec?: number; dormantSec?: number; reviveCost?: number };
+  /** 虫巢迁徙 */
+  migrate?: { intervalSec?: number; durationSec?: number; armorBonusWhileMoving?: number };
+  /** 虫核经济 */
+  economy?: { hiveIncomePerSec?: number; tumorIncomeScale?: number; startBiomass?: number; unitCost?: Record<string, number> };
+  /** 虫族单位解锁（虫核累计收入门控；缺省全开） */
+  unlock?: { monster: string; needBiomass: number }[];
+  /** 地堡（M1：固定预置，不做建造） */
+  bunkers?: { x: number; y: number; r: number; hp: number }[];
 }
 
 // ---------- 运行时实体 ----------
+
+/** 菌毯瘤（docs/13 §4.4）：不进入索敌表，只被 AOE/穿透顺带波及；打空 HP → 休眠，N 秒后复活。 */
+export interface TumorRuntime {
+  id: number;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  /** 是否休眠（被打空 HP）——休眠期不产虫核、不增殖、不孵兵 */
+  dormant: boolean;
+  dormantLeft: number;
+  /** 下一次增殖倒计时（秒） */
+  spreadLeft: number;
+}
+
+/** 虫巢（docs/13 §5）：唯一可摧毁目标；可左右移动；茧壳护甲由"菌毯活性"剥离。 */
+export interface HiveRuntime {
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  armor: number;       // 0~armorMax；>0 时本体免伤（不能拆家）
+  armorMax: number;
+  /** 迁徙状态：剩余迁徙时间（>0 表示正在迁徙，不孵兵、护甲加成） */
+  migrateLeft: number;
+  migrateCd: number;   // 下次可迁徙倒计时
+  /** 目标移动 x（迁徙时用） */
+  targetX: number;
+  /** 虫核存量（虫族经济） */
+  biomass: number;
+  /** 累计获得虫核（用于解锁门控） */
+  biomassEarned: number;
+  /** 孵兵计时 */
+  hatchLeft: number;
+  /** 护甲剥离节拍 */
+  armorTickLeft: number;
+  dead: boolean;
+}
+
+/** 地堡（docs/13 §8）：覆盖区免疫菌毯；有 HP，可被虫族摧毁。 */
+export interface BunkerRuntime {
+  x: number;
+  y: number;
+  r: number;
+  hp: number;
+  maxHp: number;
+}
 
 export interface HeroStats {
   atk: number;

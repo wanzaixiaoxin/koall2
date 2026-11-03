@@ -9,3 +9,4 @@ export * from './monster';
 export * from './hero';
 export * from './session';
 export * from './data/types';
+export * from './hive';

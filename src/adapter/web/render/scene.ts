@@ -210,6 +210,7 @@ export class SceneRenderer {
     ctx.setTransform(1, 0, 0, -1, sh.x, this.H + sh.y);
 
     this.drawCreep(ctx, session, t);
+    this.drawHiveEntities(ctx, session, t);
     for (const pool of session.pools) drawPool(ctx, pool, now);
     this.drawWall(ctx, session, wallRatio, t, dt);
 
@@ -572,6 +573,171 @@ export class SceneRenderer {
       ctx.beginPath();
       ctx.arc(x + CELL * (0.3 + s * 0.4), y + CELL * (0.3 + s * 0.5), 2 + Math.sin(t * 3 + s * 9), 0, Math.PI * 2);
       ctx.fill();
+    }
+  }
+
+  // ---------------- 虫巢对抗模式实体（docs/13） ----------------
+
+  /** 瘤/虫巢/地堡：画在菌毯之上、怪物之下。 */
+  private drawHiveEntities(ctx: CanvasRenderingContext2D, session: GameSession, t: number): void {
+    const hive = session.hiveSystem;
+    if (!hive) return;
+
+    // 地堡：青绿六边基座 + 覆盖虚线 + HP 条（我方建造物语言，与城墙同族）
+    for (const b of hive.bunkers) {
+      if (b.hp <= 0) {
+        // 摧毁：焦黑残迹
+        ctx.fillStyle = 'rgba(40,42,60,0.5)';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
+      // 覆盖区（虚线方框，青绿）
+      ctx.strokeStyle = 'rgba(53,224,195,0.22)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 6]);
+      ctx.strokeRect(b.x - b.r, b.y - b.r, b.r * 2, b.r * 2);
+      ctx.setLineDash([]);
+      // 六边基座
+      ctx.fillStyle = '#12303F';
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 3) * i + Math.PI / 6;
+        const px = b.x + Math.cos(a) * 24;
+        const py = b.y + Math.sin(a) * 24;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#35E0C3';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // HP 条
+      const hk = b.hp / b.maxHp;
+      ctx.fillStyle = 'rgba(7,8,15,0.6)';
+      ctx.fillRect(b.x - 18, b.y - 34, 36, 5);
+      ctx.fillStyle = '#35E0C3';
+      ctx.fillRect(b.x - 18, b.y - 34, 36 * hk, 5);
+    }
+
+    // 菌毯瘤：酸绿肉瘤 + 孢子囊 + 根须；休眠=灰败
+    for (const tu of hive.tumors) {
+      const alive = !tu.dormant;
+      const hpk = tu.hp / tu.maxHp;
+      // 根须（4 根向外）
+      ctx.strokeStyle = alive ? 'rgba(85,139,47,0.7)' : 'rgba(90,95,90,0.4)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i++) {
+        const a = (Math.PI / 2) * i + 0.4 + tu.id;
+        ctx.beginPath();
+        ctx.moveTo(tu.x + Math.cos(a) * 10, tu.y + Math.sin(a) * 10);
+        ctx.lineTo(tu.x + Math.cos(a) * 22, tu.y + Math.sin(a) * 22);
+        ctx.stroke();
+      }
+      // 肉瘤本体
+      const breathe = 1 + (alive ? 0.06 * Math.sin(t * 4 + tu.id) : 0);
+      ctx.fillStyle = alive ? '#558B2F' : '#4A4F45';
+      ctx.beginPath();
+      ctx.arc(tu.x, tu.y, 16 * breathe, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(11,12,29,0.8)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // 孢子囊（亮黄绿，脉动）
+      ctx.fillStyle = alive ? `rgba(174,234,0,${0.65 + 0.25 * Math.sin(t * 5 + tu.id)})` : 'rgba(140,150,130,0.35)';
+      ctx.beginPath();
+      ctx.arc(tu.x, tu.y - 6, 7 * breathe, 0, Math.PI * 2);
+      ctx.fill();
+      // 血条（被 AOE 削时可见）
+      if (alive && hpk < 1) {
+        ctx.fillStyle = 'rgba(7,8,15,0.6)';
+        ctx.fillRect(tu.x - 16, tu.y - 28, 32, 4);
+        ctx.fillStyle = '#AEEA00';
+        ctx.fillRect(tu.x - 16, tu.y - 28, 32 * hpk, 4);
+      }
+      if (tu.dormant) {
+        // 休眠倒计时环
+        const k = 1 - tu.dormantLeft / 6;
+        ctx.strokeStyle = 'rgba(140,150,130,0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(tu.x, tu.y, 20, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    // 虫巢：大型虫核 + 茧壳护甲环（护甲>0=外壳厚实；护甲越低裂纹越多）
+    const h = hive.hive;
+    if (!h.dead) {
+      const R = 46;
+      const pulse = 1 + 0.03 * Math.sin(t * 2.2);
+      // 外圈菌毯基座
+      ctx.fillStyle = 'rgba(85,139,47,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(h.x, h.y, R * 1.7, R * 1.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // 本体（多层）
+      ctx.fillStyle = '#3E5B21';
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, R * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#558B2F';
+      ctx.beginPath();
+      ctx.arc(h.x, h.y - 6, R * 0.72 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#9CCC65';
+      ctx.beginPath();
+      ctx.arc(h.x, h.y - 12, R * 0.4 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      // 核心（酸绿发光）
+      ctx.fillStyle = `rgba(216,255,80,${0.5 + 0.3 * Math.sin(t * 3)})`;
+      ctx.beginPath();
+      ctx.arc(h.x, h.y - 12, R * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(11,12,29,0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, R * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      // 茧壳护甲环：外弧显示剩余比例
+      const ak = h.armor / h.armorMax;
+      if (ak > 0) {
+        ctx.strokeStyle = 'rgba(199,206,230,0.75)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, R * 1.18, -Math.PI * 0.35, -Math.PI * 0.35 + ak * Math.PI * 1.7);
+        ctx.stroke();
+        // 护甲裂纹（越低越多）
+        const cracks = Math.round((1 - ak) * 5);
+        ctx.strokeStyle = 'rgba(11,12,29,0.7)';
+        ctx.lineWidth = 1.6;
+        for (let i = 0; i < cracks; i++) {
+          const a = (Math.PI * 2 * i) / 5 + h.x * 0.01;
+          ctx.beginPath();
+          ctx.moveTo(h.x + Math.cos(a) * R * 0.55, h.y + Math.sin(a) * R * 0.55);
+          ctx.lineTo(h.x + Math.cos(a) * R * 1.05, h.y + Math.sin(a) * R * 1.05);
+          ctx.stroke();
+        }
+      }
+      // 迁徙中：拖尾根须
+      if (h.migrateLeft > 0) {
+        ctx.strokeStyle = 'rgba(85,139,47,0.5)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(h.x, h.y);
+        ctx.lineTo(h.x - Math.sign(h.targetX - h.x) * 70, h.y + 10);
+        ctx.stroke();
+      }
+      // HP 条（仅破甲后显示——护甲阶段玩家打不动它，显示反而误导）
+      if (h.armor <= 0) {
+        const hk2 = h.hp / h.maxHp;
+        ctx.fillStyle = 'rgba(7,8,15,0.65)';
+        ctx.fillRect(h.x - 40, h.y + R * 1.35, 80, 7);
+        ctx.fillStyle = '#FF3D71';
+        ctx.fillRect(h.x - 40, h.y + R * 1.35, 80 * hk2, 7);
+      }
     }
   }
 

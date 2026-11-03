@@ -18,6 +18,7 @@ import {
   CardPolicy,
 } from './hero';
 import { updateMonster } from './monster';
+import { HiveSystem } from './hive';
 import {
   BlastSpec,
   CardConfig,
@@ -220,6 +221,11 @@ export class GameSession {
   private static readonly CREEP_CELL = 90;
   private static readonly CREEP_LIFE = 60;
 
+  /** 虫巢对抗模式（docs/13）：关卡带 level.hive 时启用；否则为 null（第一章/实验室走原逻辑）。 */
+  hiveSystem: HiveSystem | null = null;
+  /** 玩家核心茧壳护甲（虫巢模式）；0 表示无护甲保护。 */
+  playerCoreArmor = 0;
+
   wallHp: number;
   wallMaxHp: number; // 可被 B 类卡（加固城墙）提升
 
@@ -275,6 +281,17 @@ export class GameSession {
     this.wallHp = opts.level.wall.hp;
 
     this.director = new WaveDirector(opts.level, this.rng);
+
+    // 虫巢对抗模式：关卡带 hive 配置时启用（第一章/实验室走原逻辑，不受影响）
+    if (opts.level.hive) {
+      this.hiveSystem = new HiveSystem(opts.level.hive);
+      this.playerCoreArmor = opts.level.hive.playerCoreArmorMax;
+    }
+  }
+
+  /** 是否虫巢对抗模式 */
+  get hiveMode(): boolean {
+    return this.hiveSystem !== null;
   }
 
   get timeSec(): number {
@@ -290,9 +307,24 @@ export class GameSession {
     this.motionCtx.ownerX = this.hero.x;
     this.motionCtx.ownerY = this.hero.y;
 
-    // 1) 导演刷怪
-    const spawned = this.director.update(this, dt);
-    for (const item of spawned) this.spawnMonster(item.monsterKey, item.spawnX);
+    // 1) 刷怪：虫巢模式由菌毯/虫巢驱动；否则走波次时间轴
+    if (this.hiveSystem) {
+      this.hiveSystem.update(dt, {
+        arenaW: this.level.arena.width,
+        arenaH: this.level.arena.height,
+        monsters: this.monsters,
+        now,
+        onHatch: (key, x, y) => this.spawnMonster(key, x, y),
+        onEvent: (evt, payload) => this.bus.emit('onHiveEvent', { evt, ...(payload ?? {}) }),
+      });
+      // 菌毯活性格子 → 渲染层复用现有 creep 绘制（until=now+60 使 fade=1）
+      for (const [key] of this.hiveSystem.activity) {
+        this.creep.set(key, now + 60);
+      }
+    } else {
+      const spawned = this.director.update(this, dt);
+      for (const item of spawned) this.spawnMonster(item.monsterKey, item.spawnX);
+    }
 
     // 2) 英雄移动（控制器给方向，session 位移 + 钳制在防守区域）
     const move = this.controller.getMoveDir(this);
@@ -605,7 +637,16 @@ export class GameSession {
     this.maxProjectiles = Math.max(this.maxProjectiles, this.projectiles.length);
 
     if (!this.sandboxMode) {
-      if (this.wallHp <= 0) {
+      if (this.hiveSystem) {
+        // 虫巢对抗模式（docs/13）：虫巢被摧毁=胜；玩家核心（城墙）被毁=败
+        if (this.hiveSystem.hive.dead) {
+          this.result = 'victory';
+          this.bus.emit('onGameOver', { result: this.result });
+        } else if (this.wallHp <= 0) {
+          this.result = 'defeat';
+          this.bus.emit('onGameOver', { result: this.result });
+        }
+      } else if (this.wallHp <= 0) {
         this.result = 'defeat';
         this.bus.emit('onGameOver', { result: this.result });
       } else if (this.director.state === 'done' && this.monsters.length === 0) {
@@ -783,6 +824,29 @@ export class GameSession {
 
   private collideProjectile(p: ProjectileRuntime): void {
     const now = this.timeSec;
+    // 虫巢对抗模式：投射物飞越虫巢本体即命中（护甲>0 免伤，破甲后才能拆）
+    if (this.hiveSystem && !this.hiveSystem.hive.dead && p.alive) {
+      const h = this.hiveSystem.hive;
+      const rr = p.radius + 46; // 虫巢半径近似
+      if (distToSegment(h.x, h.y, p.px, p.py, p.x, p.y) <= rr) {
+        const raw = p.dmg;
+        const dealt = this.hiveSystem.damageHive(raw);
+        if (dealt > 0) {
+          this.totalDamage += dealt;
+          this.bus.emit('onHiveHit', { dmg: dealt, armor: h.armor, armorMax: h.armorMax, x: h.x, y: h.y });
+        } else {
+          // 护甲吸收：提示"被茧壳挡住"
+          this.bus.emit('onHiveHit', { dmg: 0, armor: h.armor, armorMax: h.armorMax, x: h.x, y: h.y });
+        }
+        if (p.pierceLeft > 0) {
+          p.pierceLeft--;
+          p.pierceCount++;
+        } else {
+          this.killProjectile(p);
+        }
+        if (!p.alive) return;
+      }
+    }
     const reach = p.radius + 34 + p.stepLen; // 34=怪物半径上限近似；stepLen 覆盖本帧扫掠范围
     this.hash.queryCircle(p.x, p.y, reach, this.scratch);
     for (const mid of this.scratch) {
@@ -1175,6 +1239,8 @@ export class GameSession {
       if (m.hp <= 0) this.killMonster(null, m);
     }
     if (p.damageType === 'fire') this.burnCreep(p.x, p.y, radius); // 火焰爆炸烧虫苔
+    // 虫巢模式：AOE 波及附近的菌毯瘤（顺带伤害，不秒→休眠）
+    if (this.hiveSystem) this.hiveSystem.applySplashToTumors(p.x, p.y, radius, p.dmg * dmgMul * 0.6);
     // 持续伤害圈
     this.pools.push({
       x: p.x,
