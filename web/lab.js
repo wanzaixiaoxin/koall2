@@ -719,8 +719,8 @@
         ...cfg.migrate ?? {}
       };
       this.E = {
-        hiveIncomePerSec: 4,
-        tumorIncomeScale: 2.2,
+        hiveIncomePerSec: 6,
+        tumorIncomeScale: 3,
         startBiomass: 80,
         unitCost: { zerg_ling: 5, zerg_roach: 12, zerg_lurker: 25, zerg_queen: 60, baneling: 20, zerg_ultra: 120 },
         ...cfg.economy ?? {}
@@ -743,7 +743,7 @@
       };
       this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
       this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 180);
-      this.spawnTumor(cfg.hivePos.x - 60, cfg.hivePos.y - 500);
+      this.spawnTumor(cfg.hivePos.x - 90, cfg.hivePos.y - 300);
       this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
       this.pendingBurst = 4;
     }
@@ -917,8 +917,8 @@
       this.hive.biomassEarned += income * dt;
       this.hiveWaveLeft -= dt;
       if (this.hiveWaveLeft <= 0) {
-        this.hiveWaveLeft += 45;
-        this.pendingBurst += 6 + Math.floor(this.rngLike() * 5);
+        this.hiveWaveLeft += 30;
+        this.pendingBurst += 12 + Math.floor(this.rngLike() * 8);
         this.waveCallback?.();
       }
     }
@@ -962,7 +962,7 @@
       this.hive.hatchLeft += 0.9;
       const pool = this.unlockedUnits();
       if (pool.length === 0) return;
-      const burst = this.pendingBurst > 0 ? this.pendingBurst : 1 + Math.floor(this.rngLike() * 2.4);
+      const burst = this.pendingBurst > 0 ? Math.min(4, this.pendingBurst) : 2 + Math.floor(this.rngLike() * 2.4);
       let hatched = 0;
       for (let i = 0; i < burst; i++) {
         const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
