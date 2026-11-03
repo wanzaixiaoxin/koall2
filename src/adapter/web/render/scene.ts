@@ -249,6 +249,63 @@ export class SceneRenderer {
     // 飘字（回到屏幕坐标）
     this.effects.drawTexts(ctx, this.H);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // 虫巢模式 HUD：进攻进度（虫巢护甲）+ 战场压制（全局活性）——把"输赢"画出来
+    this.drawHiveHud(ctx, session, t);
+  }
+
+  /** 顶部大进度条：让玩家一眼看到"我正在赢/正在输"。 */
+  private drawHiveHud(ctx: CanvasRenderingContext2D, session: GameSession, t: number): void {
+    const hive = session.hiveSystem;
+    if (!hive) return;
+    const h = hive.hive;
+    if (h.dead) {
+      ctx.fillStyle = 'rgba(245,245,250,0.92)';
+      ctx.font = '700 30px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('虫 巢 己 破', this.W / 2, this.H * 0.4);
+      return;
+    }
+    const barW = this.W * 0.8;
+    const barX = (this.W - barW) / 2;
+    // 1) 虫巢护甲条（进攻进度：满=茧壳完好，空=可拆家）——放在 DOM 城墙条下方，避免重叠
+    const ak = h.armor / h.armorMax;
+    const y1 = 118;
+    ctx.fillStyle = 'rgba(7,8,15,0.72)';
+    ctx.beginPath();
+    ctx.roundRect(barX - 2, y1 - 2, barW + 4, 16, 8);
+    ctx.fill();
+    const armorColor = ak > 0.5 ? '#C7CEE6' : ak > 0.15 ? '#FFD54F' : '#FF3D71';
+    ctx.fillStyle = armorColor;
+    ctx.beginPath();
+    ctx.roundRect(barX, y1, barW * ak, 12, 6);
+    ctx.fill();
+    // 护甲临界闪动（"快破甲了！"）
+    if (ak <= 0.15) {
+      ctx.strokeStyle = `rgba(255,61,113,${0.5 + 0.5 * Math.sin(t * 10)})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(barX - 2, y1 - 2, barW + 4, 16, 8);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(245,245,250,0.85)';
+    ctx.font = '600 11px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(ak > 0 ? `虫巢茧壳 ${(ak * 100).toFixed(0)}%  —  持续清虫压制菌毯以剥壳` : '茧壳已破！全火力拆虫巢！', this.W / 2, y1 - 6);
+    // 2) 全局活性条（战场态势：高=虫族兴盛 危险；低=你压住了）
+    const avg = hive.avgActivity();
+    const y2 = y1 + 24;
+    ctx.fillStyle = 'rgba(7,8,15,0.6)';
+    ctx.beginPath();
+    ctx.roundRect(barX - 2, y2 - 2, barW + 4, 10, 5);
+    ctx.fill();
+    ctx.fillStyle = avg > 60 ? '#FF6B57' : avg > 30 ? '#FFB357' : '#7CB342';
+    ctx.beginPath();
+    ctx.roundRect(barX, y2, barW * (avg / 100), 6, 3);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(245,245,250,0.55)';
+    ctx.font = '500 10px "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.fillText(`菌毯活性 ${(avg).toFixed(0)}  —  越低虫巢越弱`, this.W / 2, y2 + 20);
   }
 
   // ---------------- 英雄视觉 ----------------

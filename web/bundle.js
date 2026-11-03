@@ -690,6 +690,10 @@
       this.activity = /* @__PURE__ */ new Map();
       /** 开局预孵批次（"虫多繁殖快"：第一窝直接上路） */
       this.pendingBurst = 0;
+      /** 对局累计时间（护甲剥离与经济递增用） */
+      this.hiveArmorElapsed = 0;
+      /** 孵化潮倒计时（波次感的替代物） */
+      this.hiveWaveLeft = 45;
       this.nextId = 1;
       this.cfg = cfg;
       this.A = {
@@ -905,16 +909,28 @@
     }
     updateEconomy(dt) {
       const tumorCount = this.activeTumors().length;
-      const income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
+      let income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
+      if (this.hive.armor <= 0) income *= 1.4;
+      const now = this.hiveArmorElapsed;
+      income *= Math.min(2.5, 1 + now / 240);
       this.hive.biomass += income * dt;
       this.hive.biomassEarned += income * dt;
+      this.hiveWaveLeft -= dt;
+      if (this.hiveWaveLeft <= 0) {
+        this.hiveWaveLeft += 45;
+        this.pendingBurst += 6 + Math.floor(this.rngLike() * 5);
+        this.waveCallback?.();
+      }
     }
     updateArmor(dt) {
+      this.hiveArmorElapsed += dt;
       if (this.hive.armor <= 0) return;
       this.hive.armorTickLeft -= dt;
       if (this.hive.armorTickLeft <= 0) {
-        this.hive.armorTickLeft += 10;
-        const drop = Math.max(0, (100 - this.avgActivity()) / 10);
+        this.hive.armorTickLeft += 6;
+        const avg = this.avgActivity();
+        let drop = Math.max(0, (100 - avg) / 10);
+        if (avg < 50) drop *= 1.8;
         this.hive.armor = Math.max(0, this.hive.armor - drop);
       }
     }
@@ -6120,6 +6136,57 @@
       this.effects.draw(ctx);
       this.effects.drawTexts(ctx, this.H);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.drawHiveHud(ctx, session, t);
+    }
+    /** 顶部大进度条：让玩家一眼看到"我正在赢/正在输"。 */
+    drawHiveHud(ctx, session, t) {
+      const hive = session.hiveSystem;
+      if (!hive) return;
+      const h = hive.hive;
+      if (h.dead) {
+        ctx.fillStyle = "rgba(245,245,250,0.92)";
+        ctx.font = '700 30px "PingFang SC", "Microsoft YaHei", sans-serif';
+        ctx.textAlign = "center";
+        ctx.fillText("\u866B \u5DE2 \u5DF1 \u7834", this.W / 2, this.H * 0.4);
+        return;
+      }
+      const barW = this.W * 0.8;
+      const barX = (this.W - barW) / 2;
+      const ak = h.armor / h.armorMax;
+      const y1 = 118;
+      ctx.fillStyle = "rgba(7,8,15,0.72)";
+      ctx.beginPath();
+      ctx.roundRect(barX - 2, y1 - 2, barW + 4, 16, 8);
+      ctx.fill();
+      const armorColor = ak > 0.5 ? "#C7CEE6" : ak > 0.15 ? "#FFD54F" : "#FF3D71";
+      ctx.fillStyle = armorColor;
+      ctx.beginPath();
+      ctx.roundRect(barX, y1, barW * ak, 12, 6);
+      ctx.fill();
+      if (ak <= 0.15) {
+        ctx.strokeStyle = `rgba(255,61,113,${0.5 + 0.5 * Math.sin(t * 10)})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(barX - 2, y1 - 2, barW + 4, 16, 8);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(245,245,250,0.85)";
+      ctx.font = '600 11px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.textAlign = "center";
+      ctx.fillText(ak > 0 ? `\u866B\u5DE2\u8327\u58F3 ${(ak * 100).toFixed(0)}%  \u2014  \u6301\u7EED\u6E05\u866B\u538B\u5236\u83CC\u6BEF\u4EE5\u5265\u58F3` : "\u8327\u58F3\u5DF2\u7834\uFF01\u5168\u706B\u529B\u62C6\u866B\u5DE2\uFF01", this.W / 2, y1 - 6);
+      const avg = hive.avgActivity();
+      const y2 = y1 + 24;
+      ctx.fillStyle = "rgba(7,8,15,0.6)";
+      ctx.beginPath();
+      ctx.roundRect(barX - 2, y2 - 2, barW + 4, 10, 5);
+      ctx.fill();
+      ctx.fillStyle = avg > 60 ? "#FF6B57" : avg > 30 ? "#FFB357" : "#7CB342";
+      ctx.beginPath();
+      ctx.roundRect(barX, y2, barW * (avg / 100), 6, 3);
+      ctx.fill();
+      ctx.fillStyle = "rgba(245,245,250,0.55)";
+      ctx.font = '500 10px "PingFang SC", "Microsoft YaHei", sans-serif';
+      ctx.fillText(`\u83CC\u6BEF\u6D3B\u6027 ${avg.toFixed(0)}  \u2014  \u8D8A\u4F4E\u866B\u5DE2\u8D8A\u5F31`, this.W / 2, y2 + 20);
     }
     // ---------------- 英雄视觉 ----------------
     updateHeroVisuals(session, dt, t) {

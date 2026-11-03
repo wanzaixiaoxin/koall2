@@ -42,6 +42,12 @@ export class HiveSystem {
   activity = new Map<number, number>();
   /** 开局预孵批次（"虫多繁殖快"：第一窝直接上路） */
   private pendingBurst = 0;
+  /** 对局累计时间（护甲剥离与经济递增用） */
+  private hiveArmorElapsed = 0;
+  /** 孵化潮倒计时（波次感的替代物） */
+  private hiveWaveLeft = 45;
+  /** 孵化潮回调（渲染层可用来放横幅/音效） */
+  waveCallback?: () => void;
 
   /** 参数（含缺省） */
   private readonly A: Required<NonNullable<HiveLevelConfig['activity']>>;
@@ -306,18 +312,33 @@ export class HiveSystem {
 
   private updateEconomy(dt: number): void {
     const tumorCount = this.activeTumors().length;
-    const income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
+    let income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
+    // 败者保护反转：护甲剥穿后虫族背水一战（收入×1.4），拆家期有真实的最后对抗
+    if (this.hive.armor <= 0) income *= 1.4;
+    // 失败压力递增：随对局时间虫族经济缓慢成长（×1→×2.5 / 4 分钟），墙真的会被打爆
+    const now = this.hiveArmorElapsed;
+    income *= Math.min(2.5, 1 + now / 240);
     this.hive.biomass += income * dt;
     this.hive.biomassEarned += income * dt;
+    // 孵化潮：每 45s 一次"burst"——玩家有明确的喘息/爆发节奏（波次感的替代物）
+    this.hiveWaveLeft -= dt;
+    if (this.hiveWaveLeft <= 0) {
+      this.hiveWaveLeft += 45;
+      this.pendingBurst += 6 + Math.floor(this.rngLike() * 5);
+      this.waveCallback?.();
+    }
   }
 
   private updateArmor(dt: number): void {
+    this.hiveArmorElapsed += dt;
     if (this.hive.armor <= 0) return;
     this.hive.armorTickLeft -= dt;
     if (this.hive.armorTickLeft <= 0) {
-      this.hive.armorTickLeft += 10;
-      // 每 10s：下降量 ∝ (100 - 平均活性)/10
-      const drop = Math.max(0, (100 - this.avgActivity()) / 10);
+      this.hive.armorTickLeft += 6;
+      // 每 6s：下降量 ∝ (100-平均活性)/10；活性已压到 50 以下时额外 ×1.8（压制正反馈：越压越快破）
+      const avg = this.avgActivity();
+      let drop = Math.max(0, (100 - avg) / 10);
+      if (avg < 50) drop *= 1.8;
       this.hive.armor = Math.max(0, this.hive.armor - drop);
     }
   }
