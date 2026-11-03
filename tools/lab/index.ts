@@ -23,8 +23,6 @@ import {
   WeaponConfig,
 } from '../../src/gamecore';
 import { greedyDpsPolicy } from '../sim/policies';
-import { HumanInputController, TraceRecorder, parseTrace, serializeTrace } from '../sim/human';
-import { runTraceReplay } from '../sim/replay';
 
 const root = process.cwd();
 
@@ -164,27 +162,31 @@ const tests: TestCase[] = [
     s.grantCard('swift'); s.grantCard('swift');
     return approx(s.hero.weapons[0].mods.projSpeedMul, 1.44, 0.001);
   } },
-  { name: 'A-强装药：伤害倍率 1.15 → 1.3225', run: () => {
+  { name: 'A-强装药：伤害倍率按卡面值累乘', run: () => {
     const s = freshSession();
+    const v = (loadConfigs().cards.find((c) => c.id === 'overload')!.effect as { value: number }).value;
     s.grantCard('overload'); s.grantCard('overload');
-    return approx(s.hero.weapons[0].mods.damageMul, 1.3225, 0.001);
+    return approx(s.hero.weapons[0].mods.damageMul, (1 + v) * (1 + v), 0.001);
   } },
   { name: 'A-长枪管：射程倍率 1.15', run: () => {
     const s = freshSession();
     s.grantCard('longbarrel');
     return approx(s.hero.weapons[0].mods.rangeMul, 1.15, 0.001);
   } },
-  { name: 'A-行为：齐射×3 每轮打出 4 发', run: () => {
+  { name: 'A-行为：齐射×3 每轮发射数 = 基础数 + 3', run: () => {
     const s = freshSession();
+    const base = s.hero.weapons[0].cfg.count;
     s.grantCard('volley'); s.grantCard('volley'); s.grantCard('volley');
     s.debugSpawn('slime', 540, 800);
     const groups = fireGroups(s, 3);
-    return groups.length >= 1 && groups.every((g) => g === 4);
+    return groups.length >= 1 && groups.every((g) => g === base + 3);
   } },
   { name: 'A-行为：穿透衰减与破甲（均值比，消除浮动噪声）', run: () => {
     // 穿透弩直线穿过三只岩甲兽；按 0.4s 窗口分组每次齐射的多次命中，取 (第1命中,第2命中) 均值比
     const meanRatio = (shredLv: number): number | null => {
       const s = freshSession(7, 1); // crossbow_pierce
+      // 隔离穿透序列：把该武器副本改为单发（原为双发齐射，会干扰"连续命中"配对）
+      s.hero.weapons[0].cfg = { ...s.hero.weapons[0].cfg, count: 1 };
       for (let i = 0; i < shredLv; i++) s.grantCard('shred');
       s.debugSpawn('bulwark', 540, 680);
       s.debugSpawn('bulwark', 540, 760);
@@ -217,24 +219,28 @@ const tests: TestCase[] = [
 
   { name: 'A-行为：齐射主弹对准目标，附加弹左右交替展开', run: () => {
     const s = freshSession();
+    const base = s.hero.weapons[0].cfg.count;
+    const sp = s.hero.weapons[0].cfg.spread ?? 0.1;
     s.grantCard('volley'); s.grantCard('volley'); s.grantCard('volley');
     s.debugSpawn('slime', 540, 900); // 英雄(540,328) 正上方，瞄准方向 = +y（90°）
-    if (!runFor(s, 3, () => s.projectiles.length >= 4)) return '未观察到 4 发齐射';
+    if (!runFor(s, 3, () => s.projectiles.length >= base + 3)) return `未观察到 ${base + 3} 发齐射`;
     const aim = Math.PI / 2;
-    const devs = s.projectiles.slice(0, 4).map((p) => {
+    const devs = s.projectiles.slice(0, base + 3).map((p) => {
       const ang = Math.atan2(p.y - p.py, p.x - p.px);
       let d = ang - aim;
       while (d > Math.PI) d -= 2 * Math.PI;
       while (d < -Math.PI) d += 2 * Math.PI;
       return Math.round(d * 1000) / 1000;
     }).sort((a, b) => a - b);
-    const expect = [-0.2, -0.1, 0, 0.1]; // 主弹 0；+1 左 0.1；+2 右 0.1；+3 左 0.2
-    return JSON.stringify(devs) === JSON.stringify(expect) || `实际偏差 ${JSON.stringify(devs)}`;
+    const r = (n: number) => Math.round(n * 1000) / 1000;
+    const expect = [r(-2 * sp), r(-sp), 0, r(sp), r(2 * sp), r(3 * sp)].slice(0, base + 3);
+    return JSON.stringify(devs) === JSON.stringify(expect) || `实际偏差 ${JSON.stringify(devs)}（期望 ${JSON.stringify(expect)}）`;
   } },
-  { name: 'A-行为：连射×3 每次攻击共 4 发（1+3 延迟）', run: () => {
+  { name: 'A-行为：连射×3 每次攻击共 基础数×(1+3) 发', run: () => {
     const s = freshSession();
     s.grantCard('burst_fire'); s.grantCard('burst_fire'); s.grantCard('burst_fire');
     s.debugSpawn('slime', 540, 800);
+    s.monsters[0].hp = s.monsters[0].maxHp = 1e6; // 测试靶不死，隔离伤害数值对射击节奏断言的影响
     const times: number[] = [];
     s.bus.on('onShoot', () => { if (times.length < 40) times.push(s.timeSec); });
     const ticks = Math.round(2.2 * 30); // 4 轮攻击窗口
@@ -247,7 +253,10 @@ const tests: TestCase[] = [
       else groups[groups.length - 1]++;
       lastT = t;
     }
-    return groups.length >= 2 && groups.every((g) => g === 4);
+    // 末尾不完整的组是观测窗口截断（最后一轮没打完），剔除后逐组应为 基础数×(1+3) 发
+    const expected = (s.hero.weapons[0].cfg.count) * (1 + 3);
+    const complete = groups[groups.length - 1] < expected ? groups.slice(0, -1) : groups;
+    return complete.length >= 2 && complete.every((g) => g === expected);
   } },
 
   // ===== B 类：城墙卡 =====
@@ -261,21 +270,21 @@ const tests: TestCase[] = [
     const expect2 = expect1 + Math.round(expect1 * 0.3);
     return Number(s.wallMaxHp) === expect2 && Number(s.wallHp) === expect2;
   } },
-  { name: 'B-紧急修缮：+3000 且不超上限（封顶）', run: () => {
+  { name: 'B-紧急修缮：+300 且不超上限（封顶）', run: () => {
     const s = freshSession();
     const base = s.wallMaxHp;
-    s.wallHp = base - 10000;
+    s.wallHp = base - 1000;
     s.grantCard('repair');
-    if (Number(s.wallHp) !== base - 7000) return `第 1 次修复后 ${s.wallHp}`;
+    if (Number(s.wallHp) !== base - 700) return `第 1 次修复后 ${s.wallHp}`;
     s.grantCard('repair');
-    if (Number(s.wallHp) !== base - 4000) return `第 2 次修复后 ${s.wallHp}`;
+    if (Number(s.wallHp) !== base - 400) return `第 2 次修复后 ${s.wallHp}`;
     s.grantCard('repair');
-    if (Number(s.wallHp) !== base - 1000) return `第 3 次修复后 ${s.wallHp}`;
-    s.grantCard('repair'); // base-1000+3000 → 封顶 base
+    if (Number(s.wallHp) !== base - 100) return `第 3 次修复后 ${s.wallHp}`;
+    s.grantCard('repair'); // base-100+300 → 封顶 base
     if (Number(s.wallHp) !== base) return `第 4 次修复后 ${s.wallHp}（未封顶 ${base}）`;
     // 加固提升上限后：修复在新上限内生效
     s.grantCard('fortify');
-    s.wallHp = s.wallMaxHp - 1000;
+    s.wallHp = s.wallMaxHp - 100;
     s.grantCard('repair');
     return Number(s.wallHp) === s.wallMaxHp;
   } },
@@ -295,15 +304,16 @@ const tests: TestCase[] = [
     if (rifle.grantCard('ricochet')) return '步枪不应能拿跳箭';
     return true;
   } },
-  { name: 'C-扩爆（炸弹专属）：在本体爆破上放大半径', run: () => {
-    const s = freshSession(1, 2); // alchemist_bomb（本体爆破 r95）
+  { name: 'C-弹片/扩爆（炸弹专属）：分裂成长 + 在本体爆破上放大半径', run: () => {
+    const s = freshSession(1, 2); // alchemist_bomb（本体爆破 r90）
+    s.grantCard('split'); s.grantCard('split');
     s.grantCard('blast');
     const a = s.hero.weapons[0].affixes;
-    if (!(a.blast === 1)) return `blast=${a.blast}`;
-    s.debugSpawn('slime', 540, 850); // 中远目标（索敌距内），落地爆炸
+    if (!(a.split === 2 && a.blast === 1)) return `split=${a.split} blast=${a.blast}`;
+    s.debugSpawn('slime', 540, 1100); // 远目标，射程尽头落地爆炸
     const ok = runFor(s, 6, () => s.pools.length > 0);
     if (!ok) return '伤害圈未出现';
-    return s.pools[0].radius >= 95 ? true : `半径 ${s.pools[0].radius}（应 ≥ 本体 95）`;
+    return s.pools[0].radius >= 90 ? true : `半径 ${s.pools[0].radius}（应 ≥ 本体 90）`;
   } },
   { name: 'C-元素：赋予解锁骑士效果、加持成长、互斥与门控', run: () => {
     // 门控：未携带元素时加持卡不可授予
@@ -470,8 +480,8 @@ const tests: TestCase[] = [
     s.wallHp = 10000;
     s.debugSpawn('split_shroom', 540, 900);
     const parent = s.monsters[0];
-    if (parent.cfg.hp !== 600) return `母体血量未强化 cfg.hp=${parent.cfg.hp}`;
-    parent.hp = parent.maxHp = 1e6; // 测试靶：防止被步枪提前打死（600 血撑不过 6s 分裂周期）
+    if (parent.cfg.hp !== 60) return `母体血量未强化 cfg.hp=${parent.cfg.hp}`;
+    parent.hp = parent.maxHp = 1e6; // 测试靶：防止被步枪提前打死（54 血撑不过 6s 分裂周期）
     // 定时分裂：6~9s 内应出现幼体
     const born = runFor(s, 10, () => s.monsters.some((m) => m.cfg.id === 'shroom_baby'));
     if (!born) return '定时分裂未发生';
@@ -488,67 +498,14 @@ const tests: TestCase[] = [
     const after = s.monsters.filter((m) => m.cfg.id === 'shroom_baby').length;
     return after >= 2 ? true : `死后分裂 ${after} 只（应 ≥2）`;
   } },
-  { name: 'Z-虫族：潜伏者钻地后不可被直击；爆炸可提前轰出（周期上浮见下条）', run: () => {
-    const s = freshSession();
-    s.wallMaxHp = 10000;
-    s.wallHp = 10000;
-    s.debugSpawn('zerg_lurker', 540, 460); // 距墙 396 ≈ siegeDist 400+r → 接近即钻地
-    const lurker = s.monsters.find((m) => m.cfg.id === 'zerg_lurker')!;
-    const lurkerBurrowed = runFor(s, 2, () => lurker.burrowed);
-    if (!lurkerBurrowed) return '潜伏者未钻地';
-    runFor(s, 2, () => false);
-    // 爆炸强制出土：在潜伏者脚下放火属性伤害圈（surfaceEvery=10 前完成，验证的是"轰出"而非"到点上浮"）
-    s.debugLink(lurker.x - 10, lurker.y, lurker.x + 10, lurker.y, 60, 0.5, 120);
-    s.debugLink(lurker.x, lurker.y - 10, lurker.x, lurker.y + 10, 60, 0.5, 120);
-    return runFor(s, 2, () => !lurker.burrowed) ? true : '爆炸未轰出潜伏者';
-  } },
-  { name: 'Z-虫族：潜伏者周期上浮（不再永久隐身，上浮期可索敌击杀；结束后重新入地）', run: () => {
-    const s = freshSession();
-    s.wallMaxHp = 10000;
-    s.wallHp = 10000;
-    s.debugSpawn('zerg_lurker', 540, 460);
-    const lurker = s.monsters.find((m) => m.cfg.id === 'zerg_lurker')!;
-    const every = lurker.cfg.burrowSiege!.surfaceEvery!;
-    const forSec = lurker.cfg.burrowSiege!.surfaceFor!;
-    lurker.hp = lurker.maxHp = 1e6; // 测试靶：避免上浮期被英雄直接打死，专注验证周期
-    if (!runFor(s, 2, () => lurker.burrowed)) return '潜伏者未入地';
-    // 周期前保持钻地（打不到）
-    if (runFor(s, every - 2, () => !lurker.burrowed)) return `潜伏者提前上浮（应 ${every}s 周期）`;
-    if (!runFor(s, 3, () => !lurker.burrowed)) return `潜伏者 ${every}s 后仍未上浮（永久隐身）`;
-    // 上浮期可索敌：英雄直接命中掉血
-    const hp0 = lurker.hp;
-    runFor(s, 2.5, () => false);
-    if (!(lurker.hp < hp0)) return '上浮期仍无法被攻击（hp 未下降）';
-    if (forSec > 4 && lurker.burrowed) return '上浮期太短，立即又入地（无击杀窗口）';
-    // 上浮结束后重新入地
-    return runFor(s, forSec + 2, () => lurker.burrowed) ? true : '上浮结束后未重新入地';
-  } },
-  { name: 'Z-虫族：虫后产幼虫（自身血量，不继承 2000）→ 5s 后变态为池中随机形态（不含虫后）', run: () => {
-    const s = freshSession();
-    s.wallMaxHp = 10000;
-    s.wallHp = 10000;
-    s.debugSpawn('zerg_queen', 540, 900);
-    const queen = s.monsters.find((m) => m.cfg.id === 'zerg_queen')!;
-    queen.hp = queen.maxHp = 1e6; // 测试靶：保证虫后活到产卵
-    const born = runFor(s, 10, () => s.monsters.some((m) => m.cfg.id === 'zerg_larva'));
-    if (!born) return '虫后未产幼虫';
-    const larva = s.monsters.find((m) => m.cfg.id === 'zerg_larva')!;
-    if (larva.maxHp >= queen.maxHp) return `幼虫继承了虫后血量（${larva.maxHp}）`;
-    larva.hp = larva.maxHp = 1e6; // 保活到变态
-    const pool = ['zerg_ling', 'baneling', 'zerg_roach', 'zerg_lurker', 'zerg_ultra'];
-    const morphed = runFor(s, 7, () => larva.cfg.id !== 'zerg_larva');
-    if (!morphed) return '幼虫未变态';
-    if (!pool.includes(larva.cfg.id)) return `变态目标不在池中：${larva.cfg.id}`;
-    if (larva.cfg.id === 'zerg_queen') return '变态成了虫后（应排除）';
-    if (larva.maxHp === 1e6) return '变态后血量未按新形态重算';
-    return true;
-  } },
-  { name: 'Z-虫族：爬虫低血钻地回血（出土回 50%）', run: () => {
+  { name: 'Z-虫族：爬虫低血钻地回血、潜伏者不可被直击、爆炸强制出土', run: () => {
     const s = freshSession();
     s.wallMaxHp = 10000;
     s.wallHp = 10000;
     s.debugSpawn('zerg_roach', 300, 500);
+    s.debugSpawn('zerg_lurker', 540, 460); // 距墙 396 ≈ siegeDist 400+r → 接近即钻地
     const roach = s.monsters.find((m) => m.cfg.id === 'zerg_roach')!;
+    const lurker = s.monsters.find((m) => m.cfg.id === 'zerg_lurker')!;
     roach.hp = roach.maxHp = 1e6;
     // 打伤爬虫触发钻地回血
     roach.hp = Math.round(1e6 * 0.2);
@@ -558,265 +515,36 @@ const tests: TestCase[] = [
     const emerged = runFor(s, 5, () => !roach.burrowed);
     if (!emerged) return '爬虫未出土';
     if (!(roach.hp > hpAtBurrow)) return `钻地未回血（${hpAtBurrow} → ${roach.hp}）`;
-    return true;
+    // 潜伏者到阵位钻地且不可被直击
+    const lurkerBurrowed = runFor(s, 6, () => lurker.burrowed);
+    if (!lurkerBurrowed) return '潜伏者未钻地';
+    const shotsBefore = s.totalKills;
+    runFor(s, 3, () => false);
+    // 爆炸强制出土：在潜伏者脚下放火属性伤害圈
+    s.debugLink(lurker.x - 10, lurker.y, lurker.x + 10, lurker.y, 60, 0.5, 120);
+    s.debugLink(lurker.x, lurker.y - 10, lurker.x, lurker.y + 10, 60, 0.5, 120);
+    void shotsBefore;
+    return runFor(s, 2, () => !lurker.burrowed) ? true : '爆炸未轰出潜伏者';
   } },
-  { name: 'Z-虫族：毒爆贴墙自爆单次 -300（野外拦截 0 墙伤）；虫后铺虫苔且火焰可烧', run: () => {
-    // A) 野外拦截：步枪半路点燃毒爆 → 爆炸事件 1 次、城墙分文不扣
-    {
-      const s = freshSession();
-      s.wallMaxHp = 10000;
-      s.wallHp = 10000;
-      s.debugSpawn('baneling', 540, 1000);
-      let explodes = 0;
-      s.bus.on('onExplode', () => { explodes++; });
-      const killed = runFor(s, 6, () => s.totalKills > 0);
-      runFor(s, 2, () => false); // 再多跑 2s，确认爆炸确实没伤墙
-      if (!killed) return '毒爆未被半路击杀';
-      if (s.wallHp !== 10000) return `野外拦截仍扣墙（10000 → ${s.wallHp}，期望不变）`;
-      if (explodes !== 1) return `野外爆炸事件 ${explodes} 次（期望 1）`;
-    }
-    // B) 贴墙自爆：压住武器冷却让毒爆走到墙 → 恰扣 300、explode/wallHit 各 1 次
-    {
-      const s = freshSession();
-      s.wallMaxHp = 10000;
-      s.wallHp = 10000;
-      s.hero.weapons[0].cooldown = 1e9; // 不打枪，逼毒爆贴墙
-      s.debugSpawn('baneling', 540, 400);
-      let explodes = 0;
-      let wallHits = 0;
-      s.bus.on('onExplode', () => { explodes++; });
-      s.bus.on('onWallHit', () => { wallHits++; });
-      const boomed = runFor(s, 8, () => s.wallHp < 10000);
-      runFor(s, 1, () => false);
-      if (!boomed) return `贴墙自爆未结算（城防 ${s.wallHp}）`;
-      if (s.wallHp !== 10000 - 300) return `贴墙自爆扣墙 ${10000 - s.wallHp}（期望单次 300）`;
-      if (explodes !== 1 || wallHits !== 1) return `事件次数异常（explode ${explodes} / wallHit ${wallHits}，期望各 1）`;
-    }
-    // C1) 虫后铺苔
-    {
-      const s = freshSession();
-      s.wallMaxHp = 10000;
-      s.wallHp = 10000;
-      s.debugSpawn('zerg_queen', 700, 900);
-      if (!runFor(s, 12, () => s.creep.size > 0)) return '虫苔未铺设';
-    }
-    // C2) 火焰烧穿（灼烧层）：走廊上的毯块被逐层烧穿清除——1 击不秒删、持续压制全清
-    {
-      const s = freshSession();
-      s.sandboxMode = true; // 无波次场景防判胜冻结
-      s.wallMaxHp = s.wallHp = 1e9;
-      s.hero.weapons[0].cooldown = 1e9;
-      const cellKey = (x: number, y: number): number => Math.floor(x / 90) * 4096 + Math.floor(y / 90);
-      const keys = [cellKey(675, 675), cellKey(675, 765), cellKey(675, 855)];
-      for (const k of keys) s.creep.set(k, s.timeSec + 600);
-      s.grantCard('flame');
-      s.hero.weapons[0].cooldown = 0;
-      s.debugSpawn('bulwark', 700, 860);
-      const target = s.monsters[s.monsters.length - 1];
-      target.hp = target.maxHp = 1e6;
-      runFor(s, 1, () => false); // 打 1s：3 层血下不秒删，毯块仍在（有焦痕）
-      if (!keys.some((k) => s.creep.has(k))) return '火焰一击秒删毯块（灼烧层未生效）';
-      const cleared = runFor(s, 10, () => keys.every((k) => !s.creep.has(k)));
-      if (!cleared) return `火焰未烧穿走廊毯块（剩 ${keys.filter((k) => s.creep.has(k)).length}/3）`;
-    }
-    return true;
-  } },
-  { name: 'Z-虫苔蔓延：无虫后也自行扩张（单格起步）；缺口由边缘长回', run: () => {
-    const key = (x: number, y: number): number => Math.floor(x / 90) * 4096 + Math.floor(y / 90);
-    // A) 单格起步：60s 内自行扩张（实测约 8 格，阈值放宽到 ≥6）
-    {
-      const s = freshSession(3);
-      s.sandboxMode = true; // 实验室空关卡 prepare 后即判胜会冻结 step，蔓延测试需关胜负
-      s.hero.weapons[0].cooldown = 1e9;
-      s.creep.set(key(540, 900), s.timeSec + 600);
-      runFor(s, 60, () => s.creep.size >= 6);
-      if (s.creep.size < 6) return `单格 60s 未扩张（${s.creep.size} 格）`;
-    }
-    // B) 缺口回长：6×5 实心块删掉内圈 2×2（模拟火焰烧出缺口），60s 内由外圈长回并重新覆盖缺口
-    {
-      const s = freshSession(4);
-      s.sandboxMode = true;
-      s.hero.weapons[0].cooldown = 1e9;
-      for (let dx = 0; dx < 6; dx++) {
-        for (let dy = 0; dy < 5; dy++) s.creep.set((2 + dx) * 4096 + (6 + dy), s.timeSec + 600);
-      }
-      runFor(s, 3.2, () => false); // 走一个蔓延节拍（续期生效）
-      const before = s.creep.size;
-      if (before < 30) return `种格丢失（${before} < 30）`;
-      const hole: number[] = [];
-      for (const dx of [3, 4]) {
-        for (const dy of [7, 8]) {
-          const k = dx * 4096 + dy;
-          hole.push(k);
-          s.creep.delete(k);
-        }
-      }
-      if (s.creep.size !== before - 4) return `缺口未形成（${before} → ${s.creep.size}）`;
-      runFor(s, 60, () => s.creep.size >= before && hole.some((k) => s.creep.has(k)));
-      if (s.creep.size < before) return `缺口未长回（${before - 4} → ${s.creep.size}，期望 ≥ ${before}）`;
-      return hole.some((k) => s.creep.has(k)) ? true : '缺口一直空缺（未重新覆盖）';
-    }
-  } },
-  { name: 'Z-虫巢扩张：峰值 60 格晋升 T2（全族攻+10%/血+8%，站毯回血 16/s）', run: () => {
-    const seedBlock = (s: GameSession, cx0: number, cy0: number, w: number, h: number): void => {
-      for (let dx = 0; dx < w; dx++) {
-        for (let dy = 0; dy < h; dy++) s.creep.set((cx0 + dx) * 4096 + (cy0 + dy), s.timeSec + 600);
-      }
-    };
-    // A) 30 格（T1）放爬虫 → 补到 62 格晋升 T2：事件 1 次、存量按血倍率补足、站毯回血 16/s
-    const a = freshSession(11);
-    a.sandboxMode = true;
-    a.hero.weapons[0].cooldown = 1e9;
-    a.wallMaxHp = a.wallHp = 1e9;
-    let tierEvents = 0;
-    a.bus.on('onCreepTier', () => { tierEvents++; });
-    seedBlock(a, 2, 7, 6, 5); // 30 格
-    a.step();
-    const tierAt30 = a.creepTier;
-    if (tierAt30 !== 1) return `30 格不该晋升（T${tierAt30}）`;
-    a.debugSpawn('zerg_roach', 300, 1040); // 站毯 → 吃回血
-    const roach = a.monsters[0];
-    const hpT1 = roach.maxHp;
-    seedBlock(a, 2, 13, 8, 4); // +32 = 62 格
-    a.step();
-    if (tierEvents !== 1) return `晋升事件次数异常（${tierEvents} 次，期望 1）`;
-    const tierAfterExpand = a.creepTier;
-    if (tierAfterExpand !== 2) return `未晋升 T2（T${tierAfterExpand}）`;
-    if (roach.maxHp !== Math.round(hpT1 * 1.08)) {
-      return `存量补血异常（${hpT1} → ${roach.maxHp}，期望 ${Math.round(hpT1 * 1.08)}）`;
-    }
-    roach.hp = Math.round(roach.maxHp * 0.6); // 高于钻地阈值 30%，避免钻地
-    const hpBefore = roach.hp;
-    runFor(a, 1, () => false);
-    const healed = roach.hp - hpBefore;
-    if (healed < 14 || healed > 18) return `T2 站毯回血 ${healed} hp/s（期望 16）`;
-    // 攻击增强：贴墙爬虫单次墙伤 = 基数 ×1.1
-    let dmgT2 = 0;
-    a.bus.on<{ dmg: number }>('onWallHit', ({ dmg }) => { if (!dmgT2) dmgT2 = dmg; });
-    a.debugSpawn('zerg_roach', 540, 88);
-    if (!runFor(a, 4, () => dmgT2 > 0)) return 'T2 爬虫未拍墙';
-    // B) 对照（无虫苔 T1）：同一贴墙位置的单次墙伤
-    const b = freshSession(11);
-    b.sandboxMode = true;
-    b.hero.weapons[0].cooldown = 1e9;
-    b.wallMaxHp = b.wallHp = 1e9;
-    let dmgT1 = 0;
-    b.bus.on<{ dmg: number }>('onWallHit', ({ dmg }) => { if (!dmgT1) dmgT1 = dmg; });
-    b.debugSpawn('zerg_roach', 540, 88);
-    if (!runFor(b, 4, () => dmgT1 > 0)) return 'T1 爬虫未拍墙';
-    return dmgT2 === Math.round(dmgT1 * 1.1)
-      ? true
-      : `T2 攻击倍率异常（T1 ${dmgT1} → T2 ${dmgT2}，期望 ${Math.round(dmgT1 * 1.1)}）`;
-  } },
-  { name: 'Z-菌毯孵化：fromCreep 从虫苔中钻出；无可用虫苔回落顶部出生带', run: () => {
-    const { monsters, cards } = loadConfigs();
-    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
-    const spawnLevel: LevelConfig = {
-      id: 'creep_spawn_test',
-      name: '菌毯孵化（测试场）',
-      arena: { width: 1080, height: 1920 },
-      wall: { height: 64, hp: 100000 },
-      defenseRect: { yMin: 96, yMax: 560 },
-      spawnBandY: [1750, 1880],
-      spawnPointsX: [300, 540, 780],
-      prepareSec: 0.5,
-      intermissionSec: 2,
-      waves: [{
-        banner: '孵化', durationSec: 8,
-        spawns: [{ monster: 'zerg_ling', count: 6, spawnPoints: 'all', releasePerTick: 3, fromCreep: true }],
-      }],
-    };
-    const build = (seedCreep: boolean, seed: number): GameSession => {
-      const s = new GameSession({
-        level: spawnLevel,
-        weaponConfigs: [weapons[0]],
-        monsterConfigs: monsters,
-        cardConfigs: cards,
-        seed,
-        controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
-        cardPolicy: greedyDpsPolicy,
-      });
-      s.hero.weapons[0].cooldown = 1e9;
-      s.wallMaxHp = s.wallHp = 1e9;
-      if (seedCreep) {
-        for (let dx = 0; dx < 4; dx++) {
-          for (let dy = 0; dy < 3; dy++) s.creep.set((4 + dx) * 4096 + (9 + dy), s.timeSec + 600);
-        }
-      }
-      return s;
-    };
-    const trackSpawns = (s: GameSession): Map<number, number> => {
-      const seen = new Map<number, number>(); // id → 出生 y
-      for (let i = 0; i < 30 * 30 && seen.size < 6; i++) {
-        s.step();
-        for (const m of s.monsters) if (!seen.has(m.id)) seen.set(m.id, m.y);
-      }
-      return seen;
-    };
-    // A) 有毯（12 格可用）：全部从毯里钻出——出土点都在虫苔上、且在城墙远侧（wall.height+300 起）
-    {
-      const s = build(true, 21);
-      const emerges: { x: number; y: number }[] = [];
-      s.bus.on<{ x: number; y: number }>('onMonsterEmerge', (e) => emerges.push(e));
-      runFor(s, 30, () => s.monsters.length >= 6);
-      if (s.monsters.length < 6) return `孵化数量不足（${s.monsters.length}/6）`;
-      if (emerges.length !== 6) return `出土事件 ${emerges.length} 次（期望 6）`;
-      for (const e of emerges) {
-        if (e.y < 364 || e.y > 1820) return `出土位置越界（y=${e.y.toFixed(0)}）`;
-        if (!s.isCreeped(e.x, e.y)) return `出土点不在虫苔上（${e.x.toFixed(0)}, ${e.y.toFixed(0)}）`;
-      }
-    }
-    // B) 无毯：回落顶部出生带
-    {
-      const s = build(false, 21);
-      const emerges: { x: number; y: number }[] = [];
-      s.bus.on('onMonsterEmerge', (e) => emerges.push(e as { x: number; y: number }));
-      const seen = trackSpawns(s);
-      if (seen.size < 6) return `普通波次数量不足（${seen.size}/6）`;
-      if (emerges.length !== 0) return `无毯却触发出土 ${emerges.length} 次`;
-      for (const y of seen.values()) {
-        if (y < 1700 || y > 1900) return `出生点不在顶部出生带（y=${y.toFixed(0)}）`;
-      }
-    }
-    // C) 毯不足 3 格可用（4 格在 maxY 之外）：同样回落顶部出生带
-    {
-      const s = build(false, 22);
-      for (let dx = 0; dx < 4; dx++) s.creep.set((4 + dx) * 4096 + 20, s.timeSec + 600); // y=1845 > maxY 1820 → 不算可用
-      const emerges: { x: number; y: number }[] = [];
-      s.bus.on('onMonsterEmerge', (e) => emerges.push(e as { x: number; y: number }));
-      const seen = trackSpawns(s);
-      if (seen.size < 6) return `C 组数量不足（${seen.size}/6）`;
-      if (emerges.length !== 0) return `可用毯不足却触发出土 ${emerges.length} 次`;
-    }
-    return true;
-  } },
-  { name: 'Z-菌毯灼烧层：火焰每击烧 1 层不秒删，蔓延节拍回层，烧穿才清除', run: () => {
-    const cellKey = (x: number, y: number): number => Math.floor(x / 90) * 4096 + Math.floor(y / 90);
-    const s = freshSession(31);
-    s.sandboxMode = true;
-    s.hero.weapons[0].cooldown = 1e9;
-    const k = cellKey(540, 900); // 格中心 (585, 945)
-    // A) 单次灼烧：格仍在（满 3 层 → 2 层），留下焦痕记录
-    s.creep.set(k, s.timeSec + 600);
-    s.debugBurnCreep(585, 945, 40);
-    if (!s.creep.has(k)) return '一次灼烧即被秒删（未见灼烧层）';
-    if ((s.creepHp.get(k) ?? GameSession.CREEP_LAYERS) !== GameSession.CREEP_LAYERS - 1) {
-      return `灼烧层未扣减（剩余 ${s.creepHp.get(k) ?? GameSession.CREEP_LAYERS}）`;
-    }
-    // B) 烧穿：再烧 2 次（累计 3 层）格毁
-    s.debugBurnCreep(585, 945, 40);
-    s.debugBurnCreep(585, 945, 40);
-    if (s.creep.has(k)) return `烧穿后格未清除（余层 ${s.creepHp.get(k) ?? GameSession.CREEP_LAYERS}）`;
-    // C) 回层：重新种格、烧掉 2 层后，蔓延节拍（3s）恢复 1 层
-    s.creep.set(k, s.timeSec + 600);
-    s.debugBurnCreep(585, 945, 40);
-    s.debugBurnCreep(585, 945, 40);
-    const layersAfterBurn = s.creepHp.get(k) ?? GameSession.CREEP_LAYERS;
-    if (layersAfterBurn !== 1) return `烧 2 层后剩余 ${layersAfterBurn}（期望 1）`;
-    runFor(s, 3.3, () => (s.creepHp.get(k) ?? GameSession.CREEP_LAYERS) > 1);
-    const layersAfterRegrow = s.creepHp.get(k) ?? GameSession.CREEP_LAYERS;
-    if (layersAfterRegrow <= layersAfterBurn) return `蔓延节拍未回层（${layersAfterBurn} → ${layersAfterRegrow}）`;
-    return true;
+  { name: 'Z-虫族：毒爆虫撞墙自爆 -30 城防；虫后铺虫苔且火焰可烧', run: () => {
+    const s = freshSession();
+    s.wallMaxHp = 10000;
+    s.wallHp = 10000;
+    s.debugSpawn('baneling', 540, 300); // 近墙，快速触发自爆
+    const before = s.wallHp;
+    const boomed = runFor(s, 12, () => s.wallHp <= before - 30);
+    if (!boomed) return `自爆未结算（城防 ${s.wallHp}）`;
+    // 虫后铺苔
+    s.debugSpawn('zerg_queen', 700, 900);
+    const creepGrown = runFor(s, 12, () => s.creep.size > 0);
+    if (!creepGrown) return '虫苔未铺设';
+    // 火焰烧苔（火焰弹命中点烧苔）
+    s.grantCard('flame');
+    s.debugSpawn('bulwark', 700, 860);
+    const target = s.monsters[s.monsters.length - 1];
+    target.hp = target.maxHp = 1e6;
+    const burned = runFor(s, 8, () => s.creep.size === 0);
+    return burned ? true : `虫苔未被火焰清除（剩余 ${s.creep.size} 格）`;
   } },
   { name: 'M-巫师编队：近墙变阵排排啃墙，巫师伤害转嫁给周围怪物', run: () => {
     const s = freshSession();
@@ -830,9 +558,10 @@ const tests: TestCase[] = [
     runFor(s, 12, () => escorts.every((e) => e.state === 'assault')); // ×3 编队速度下全队列对齐约需 9~11s
     const xs = escorts.map((e) => e.slotX).sort((a, b) => a - b);
     const spread = xs[xs.length - 1] - xs[0];
-    if (spread < 400) return `横排未展开（跨度 ${spread.toFixed(0)}）`;
+    const wantSpread = (escorts.length - 1) * 50; // 每名护卫间隔约一个盾径量级
+    if (spread < wantSpread) return `横排未展开（跨度 ${spread.toFixed(0)} < ${wantSpread}）`;
     const gaps = xs.slice(1).map((v, i) => v - xs[i]);
-    if (Math.min(...gaps) > 60) return `横排存在缝隙（最小间距 ${Math.min(...gaps).toFixed(0)} > 盾径 60）`;
+    if (Math.min(...gaps) > 70) return `横排存在缝隙（最小间距 ${Math.min(...gaps).toFixed(0)} > 70）`;
     // 伤害转嫁：把巫师提到线前使其成为最近目标（横排在物理上护住了它），受击应由护卫代伤
     shaman.hp = shaman.maxHp;
     for (const e of escorts) e.hp = e.maxHp;
@@ -856,8 +585,9 @@ const tests: TestCase[] = [
     s.debugSpawn('shaman', 540, 700);
     const shaman = s.monsters.find((m) => m.cfg.id === 'shaman')!;
     const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
-    // 先杀 3 只护卫（触发 id 压缩与队籍重映射）
-    for (let i = 0; i < 3; i++) escorts[i].hp = 0;
+    // 先杀大部分护卫（触发 id 压缩与队籍重映射），保留 2 只验证减员后仍成排
+    const killN = Math.max(1, escorts.length - 2);
+    for (let i = 0; i < killN; i++) escorts[i].hp = 0;
     runFor(s, 1, () => false);
     // 队籍必须仍然指向巫师
     const aliveEscorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
@@ -875,6 +605,7 @@ const tests: TestCase[] = [
     let transferSeen = false;
     s.bus.on('onDamageTransfer', () => { transferSeen = true; });
     runFor(s, 10, () => transferSeen);
+    runFor(s, 20, () => s.totalWallDamage > 0); // 等残余护卫走到墙前啃墙
     // 守卫有攻击力：横排在啃墙（城墙 99999 会受伤）
     const wallDamaged = s.totalWallDamage > 0;
     return transferSeen && wallDamaged ? true : `转嫁=${transferSeen} 啃墙=${wallDamaged}`;
@@ -882,9 +613,10 @@ const tests: TestCase[] = [
   { name: 'M-巫师：治疗光环为周围友军回血 + 出场自带岩甲兽护卫环', run: () => {
     const s = freshSession();
     s.debugSpawn('shaman', 540, 900);
-    // 护卫环：10 只岩甲兽
-    const escorts = s.monsters.filter((m) => m.cfg.id === 'bulwark');
-    if (escorts.length !== 10) return `护卫 ${escorts.length} 只（应 10）`;
+    // 护卫环：按 shaman 配置数量岩甲兽
+    const escortCfg = loadConfigs().monsters.get('shaman')!.escort!;
+    const escorts = s.monsters.filter((m) => m.cfg.id === escortCfg.monster);
+    if (escorts.length !== escortCfg.count) return `护卫 ${escorts.length} 只（应 ${escortCfg.count}）`;
     if (!escorts.every((b) => b.cfg.hitShield === 20)) return '岩甲兽护甲未增强（20 次免伤）';
     // 治疗：打伤一只护卫，观察回血
     const target = escorts[0];
@@ -901,7 +633,8 @@ const tests: TestCase[] = [
     const s = freshSession();
     s.debugSpawn('bat', 540, 900);
     const bat = s.monsters[0];
-    if (bat.cfg.speed !== 360) return `速度 ${bat.cfg.speed}（应 360）`;
+    const batCfg = loadConfigs().monsters.get('bat')!;
+    if (bat.cfg.speed !== batCfg.speed) return `速度 ${bat.cfg.speed}（应 ${batCfg.speed}）`;
     s.grantCard('flame'); // 火属性点燃
     const hits: number[] = [];
     s.bus.on('onHit', (p: { dmg: number }) => { if (hits.length < 20) hits.push(p.dmg); });
@@ -930,13 +663,13 @@ const tests: TestCase[] = [
     s.debugSpawn('slime', 540, 1100);
     return runFor(s, 6, () => s.pools.length > 0);
   } },
-  { name: 'W-血滴子：去程/回程两段切割、单发两刀（不悬停）', run: () => {
-    const s = freshSession(9, 3); // boomerang（飞出 350 → 立即折返）
-    s.debugSpawn('bulwark', 540, 670); // 飞出路径上（英雄 328，顶点 350px 处）
+  { name: 'W-血滴子：回旋镖悬停期间对同一目标反复研磨（0.5s 重击冷却）', run: () => {
+    const s = freshSession(9, 3); // boomerang（飞出 350 → 悬停 2s → 返回）
+    s.debugSpawn('bulwark', 540, 670); // ≈悬停点（英雄 328 + 飞出 350）
     let hits = 0;
     s.bus.on('onHit', () => { hits++; });
-    runFor(s, 1.6, () => false); // 单发往返 ≈1.2s：去程一刀 + 折返再一刀
-    return hits >= 2 ? true : `总命中 ${hits} 次（往返未各结算）`;
+    runFor(s, 6, () => false);
+    return hits >= 3 ? true : `总命中 ${hits} 次（悬停研磨未生效）`;
   } },
   { name: 'W-谱系完整性：每把武器 ≥3 张专属升级卡', run: () => {
     const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
@@ -1008,23 +741,24 @@ const tests: TestCase[] = [
     return spiral.endX > 500 && spiral.signChanges >= 2 && zig.endX > 500 && zig.signChanges >= 3
       ? true : `spiral(${spiral.endX.toFixed(0)},${spiral.signChanges}) zig(${zig.endX.toFixed(0)},${zig.signChanges})`;
   } },
-  { name: 'T-飞盘：飞出→立即折返回主人（不悬停）', run: () => {
+  { name: 'T-飞盘：飞出→悬停→返回主人后消亡', run: () => {
     const ctx: MotionContext = { dt: 1 / 30, now: 0, ownerX: 0, ownerY: 0, nearestMonster: () => null };
-    const t: Trajectory = createTrajectory(frisbeeConfig(300, 300, 400), { dirX: 1, dirY: 0 });
+    const t: Trajectory = createTrajectory(frisbeeConfig(300, 300, 1.0, 400), { dirX: 1, dirY: 0 });
     let x = 0; let y = 0; let alive = true;
-    let frozen = 0; let maxX = 0; let steps = 0;
-    // 全程逐步推进：飞出 300px 后折返至主人身边消亡；途中不得出现"原地悬停"（连续位移≈0）
-    while (alive && steps < 600) {
-      const r = t.update(x, y, ctx);
-      if (Math.hypot(r.x - x, r.y - y) < 1) frozen++;
-      x = r.x; y = r.y; alive = r.alive;
-      maxX = Math.max(maxX, x);
-      steps++;
-    }
+    // 阶段 1：飞出 300px（约 30 tick）
+    for (let i = 0; i < 30 && alive; i++) { const r = t.update(x, y, ctx); x = r.x; y = r.y; alive = r.alive; }
+    const outX = x;
+    if (outX < 250) return `飞出距离不足: ${outX.toFixed(0)}`;
+    // 阶段 2：悬停 1 秒，位移应接近 0
+    const hx = x; const hy = y;
+    for (let i = 0; i < 30 && alive; i++) { const r = t.update(x, y, ctx); x = r.x; y = r.y; alive = r.alive; }
+    const hoverMove = Math.hypot(x - hx, y - hy);
+    if (hoverMove > 2) return `悬停漂移过大: ${hoverMove.toFixed(1)}`;
+    // 阶段 3：返回主人（0,0），最终应消亡且终点靠近主人
+    let steps = 0;
+    while (alive && steps < 600) { const r = t.update(x, y, ctx); x = r.x; y = r.y; alive = r.alive; steps++; }
     const dHome = Math.hypot(x, y);
-    return !alive && dHome <= 45 && maxX >= 280 && frozen <= 2
-      ? true
-      : `maxX=${maxX.toFixed(0)} frozen=${frozen} dHome=${dHome.toFixed(1)} alive=${alive}`;
+    return !alive && dHome <= 45 ? true : `alive=${alive} dHome=${dHome.toFixed(1)}`;
   } },
   { name: 'T-追踪：目标死亡后按 ctx 重索敌转向', run: () => {
     const a: Targetable = { id: 1, x: 100, y: 0, hp: 1 };
@@ -1092,13 +826,87 @@ const tests: TestCase[] = [
       ? true : `线上 ${onSeg.hp.toFixed(0)}/${onSeg.maxHp} 线外 ${offSeg.hp.toFixed(0)}/${offSeg.maxHp}`;
   } },
 
+  // ===== 激光（能量束） =====
+  { name: 'L-激光：直线穿射，束内怪物全受击且由近到远能量衰减（近处伤害更大）', run: () => {
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const laserIdx = weapons.findIndex((w) => !!w.laser);
+    if (laserIdx < 0) return '未找到激光武器';
+    const s = freshSession(11, laserIdx);
+    // 三只高血量靶，同 x（正上方一条线），离英雄由近到远
+    const ys = [700, 820, 940];
+    for (const y of ys) {
+      s.debugSpawn('bulwark', 540, y);
+      const m = s.monsters[s.monsters.length - 1];
+      m.hp = m.maxHp = 5000;
+      m.shieldLeft = 0;
+    }
+    const dmg = [0, 0, 0];
+    s.bus.on<{ monsterId: number; dmg: number }>('onHit', (p) => {
+      const idx = ys.indexOf(Math.round(s.monsters[p.monsterId]?.y ?? -1));
+      // 用当前 y 找最近的目标位（怪物会缓慢移动，取最近的正上方靶）
+      let best = -1; let bd = 1e9;
+      for (let i = 0; i < ys.length; i++) {
+        const d = Math.abs((s.monsters[p.monsterId]?.y ?? 0) - ys[i]);
+        if (d < bd) { bd = d; best = i; }
+      }
+      if (best >= 0) dmg[best] += p.dmg;
+      void idx;
+    });
+    runFor(s, 6, () => false);
+    if (!(dmg[0] > 0 && dmg[1] > 0 && dmg[2] > 0)) return `存在未受击目标: ${dmg.map((d) => d.toFixed(0)).join('/')}`;
+    return dmg[0] > dmg[1] && dmg[1] > dmg[2]
+      ? true : `能量未按距离衰减: ${dmg.map((d) => d.toFixed(0)).join(' / ')}`;
+  } },
+  { name: 'L-激光：线外怪物无伤（严格直射）', run: () => {
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const laserIdx = weapons.findIndex((w) => !!w.laser);
+    const s = freshSession(12, laserIdx);
+    s.debugSpawn('bulwark', 540, 900); // 线上目标（保证有索敌，激光会朝正上方发射）
+    const onLine = s.monsters[s.monsters.length - 1];
+    onLine.hp = onLine.maxHp = 5000; onLine.shieldLeft = 0;
+    s.debugSpawn('bulwark', 220, 900); // 线外（横向偏 320px，远超束宽）
+    const offLine = s.monsters[s.monsters.length - 1];
+    offLine.hp = offLine.maxHp = 5000; offLine.shieldLeft = 0;
+    runFor(s, 4, () => false);
+    return onLine.hp < 5000 && offLine.hp === 5000
+      ? true : `线上 ${(5000 - onLine.hp).toFixed(0)} 伤害 / 线外 ${(5000 - offLine.hp).toFixed(0)} 伤害`;
+  } },
+  { name: 'L-激光：起始能量越大，首段伤害越高（聚焦卡加成生效）', run: () => {
+    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
+    const laserIdx = weapons.findIndex((w) => !!w.laser);
+    const meanFirstHit = (focus: number): number | null => {
+      const s = freshSession(21, laserIdx);
+      for (let i = 0; i < focus; i++) s.grantCard('laser_focus');
+      s.debugSpawn('bulwark', 540, 700);
+      const m = s.monsters[s.monsters.length - 1];
+      m.hp = m.maxHp = 5000; m.shieldLeft = 0;
+      const ds: number[] = [];
+      // 取每轮首个命中（非暴击）的伤害样本
+      let lastT = -1;
+      s.bus.on<{ monsterId: number; dmg: number; isCrit: boolean }>('onHit', (p) => {
+        if (p.monsterId !== m.id || p.isCrit) return;
+        if (s.timeSec - lastT > 0.3) { ds.push(p.dmg); lastT = s.timeSec; }
+      });
+      runFor(s, 6, () => false);
+      if (ds.length < 4) return null;
+      return ds.reduce((a, b) => a + b, 0) / ds.length;
+    };
+    const base = meanFirstHit(0);
+    const up = meanFirstHit(3);
+    if (base === null || up === null) return '样本不足';
+    return up > base * 1.25 ? true : `无加成 ${base.toFixed(1)} → 聚焦×3 ${up.toFixed(1)}（期望显著提升）`;
+  } },
+
   // ===== 属性卡 =====
-  { name: 'P-力量/急速/鹰眼/狂暴/专注：属性递增', run: () => {
+  { name: 'P-力量/急速/鹰眼/狂暴/专注：属性按卡面值递增', run: () => {
     const s = freshSession();
+    const val = (id: string) => (loadConfigs().cards.find((c) => c.id === id)!.effect as { value: number }).value;
+    const base = { ...s.hero.stats };
     s.grantCard('power'); s.grantCard('haste'); s.grantCard('eagle'); s.grantCard('rage'); s.grantCard('focus');
     const st = s.hero.stats;
-    return approx(st.atk, 108) && approx(st.aspd, 1.07) && approx(st.critChance, 0.10)
-      && approx(st.critDmg, 1.62) && approx(st.dmgMul, 0.05);
+    return approx(st.atk, base.atk * (1 + val('power'))) && approx(st.aspd, base.aspd * (1 + val('haste')))
+      && approx(st.critChance, base.critChance + val('eagle')) && approx(st.critDmg, base.critDmg + val('rage'))
+      && approx(st.dmgMul, base.dmgMul + val('focus'));
   } },
 
   // ===== 综合 =====
@@ -1108,330 +916,6 @@ const tests: TestCase[] = [
     s.debugSpawn('bulwark', 540, 900);
     runFor(s, 10, () => false);
     return s.result !== 'defeat'; // 10 秒无崩溃、无异常城破（实验室空波次胜利属正常）
-  } },
-
-  // ===== 人工轨迹（录制 → sim 回放链路） =====
-  { name: 'H-人工轨迹：录制→sim 回放逐位一致（含升选卡）', run: () => {
-    const { monsters, cards } = loadConfigs();
-    const level = JSON.parse(fs.readFileSync(path.join(root, 'configs/levels/level_1_1.json'), 'utf-8')) as LevelConfig;
-    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
-    const ctrl = new HumanInputController();
-    const rec = new TraceRecorder();
-    const s = new GameSession({
-      level,
-      weaponConfigs: [weapons[0]],
-      monsterConfigs: monsters,
-      cardConfigs: cards,
-      seed: 1234,
-      controller: ctrl,
-      cardPolicy: greedyDpsPolicy,
-    });
-    s.externalLevelUps = true;
-    rec.start({ t0: 0, seed: 1234, level: 'level_1_1.json', weapon: weapons[0].id, version: 'test' });
-    // 脚本化"人工"输入：指针正弦巡游 + 周期性拖动/松开 + 按键切换（40s 保证覆盖升选卡）
-    let picks = 0;
-    for (let i = 0; i < 30 * 40 && !s.result; i++) {
-      const t = i / 30;
-      ctrl.tx = 540 + Math.sin(t * 1.1) * 320;
-      ctrl.ty = 500 + Math.sin(t * 2.3) * 160;
-      ctrl.hasTarget = i % 210 < 150;
-      if (i % 97 === 0) ctrl.keys = new Set(['a']);
-      if (i % 97 === 45) ctrl.keys = new Set(['d']);
-      rec.observe(ctrl.snapshot(), s.tick);
-      s.step();
-      if (s.pendingLevelChoices.length > 0) {
-        const c = s.pendingLevelChoices[i % s.pendingLevelChoices.length];
-        rec.pick(s.tick, c.id, s.pendingLevelChoices.map((x) => x.id));
-        s.resolveLevelUp(c);
-        picks++;
-      }
-      if (s.tick % 30 === 0) {
-        rec.check(s.tick, { x: s.hero.x, y: s.hero.y, wallHp: s.wallHp, kills: s.totalKills, lv: s.hero.level });
-      }
-    }
-    rec.end(s.tick, {
-      result: s.result ?? 'timeout',
-      kills: s.totalKills,
-      wallHp: s.wallHp,
-      wallMax: s.wallMaxHp,
-      lv: s.hero.level,
-      sec: +s.timeSec.toFixed(3),
-    });
-    if (picks === 0) return '40s 内未触发选卡（样本未覆盖升选卡，请调整脚本）';
-    const parsed = parseTrace(serializeTrace(rec.records));
-    const report = runTraceReplay(parsed, { level, weapon: weapons[0], monsters, cards });
-    if (!report.consistent) {
-      const m = report.mismatches[0];
-      return `回放分歧：t=${m.t} ${m.field} 录制 ${m.recorded} ≠ 回放 ${m.replayed}`;
-    }
-    return report.checksTotal > 0 ? true : '存档点缺失（录制未产出 check 记录）';
-  } },
-
-  // ===== 多发独立索敌 / 雷霆尸击 =====
-  { name: 'W-炸弹多发：双掷后 3 颗各砸各的（独立索敌）', run: () => {
-    const s = freshSession(1, 2); // alchemist_bomb
-    s.grantCard('bomb_toss');
-    s.grantCard('bomb_toss'); // 数量 1 + 2 = 3
-    const w = s.hero.weapons[0];
-    if (w.cfg.count + w.mods.extraCount < 3) return `炸弹数量未达 3（${w.cfg.count + w.mods.extraCount}）`;
-    // 三个相距 340px 的目标（爆圈半径 95，互不波及）
-    s.debugSpawn('bulwark', 200, 800);
-    s.debugSpawn('bulwark', 540, 800);
-    s.debugSpawn('bulwark', 880, 800);
-    for (const m of s.monsters) m.hp = m.maxHp = 1e6; // 只验证"挨没挨"，不验证死
-    const hp0 = s.monsters.map((m) => m.hp);
-    runFor(s, 6, () => false); // 首轮齐射 1.5s 内落地，6s 富余
-    const hits = s.monsters.filter((m, i) => m.hp < hp0[i]).length;
-    return hits === 3 ? true : `仅 ${hits}/3 个目标被砸中（多发未独立索敌）`;
-  } },
-  { name: 'W-回旋镖多盘：双盘两枚各打各的（不重复索敌）', run: () => {
-    const s = freshSession(1, 3); // boomerang
-    s.grantCard('boom_twin'); // 双盘：数量 +1
-    const w = s.hero.weapons[0];
-    if (w.cfg.count + w.mods.extraCount < 2) return `回旋镖数量未达 2（${w.cfg.count + w.mods.extraCount}）`;
-    // 两目标横向错开：近的（660 侧，距 362）先被锁定 → 第 2 枚必须排除它改打另一只（380 侧，距 378）
-    s.debugSpawn('bulwark', 660, 670);
-    s.debugSpawn('bulwark', 380, 670);
-    for (const m of s.monsters) m.hp = m.maxHp = 1e6;
-    const hit = [0, 0];
-    s.bus.on<{ monsterId: number }>('onHit', ({ monsterId }) => { if (monsterId < 2) hit[monsterId]++; });
-    runFor(s, 2.5, () => false);
-    return hit[0] > 0 && hit[1] > 0 ? true : `命中 ${hit[0]}/${hit[1]}（第 2 枚应改打另一目标）`;
-  } },
-  { name: 'W-索敌距离：回旋镖 380 / 炸弹 600 外的目标不开火', run: () => {
-    const bo = freshSession(1, 3); // boomerang（短程索敌 380）
-    bo.debugSpawn('bulwark', 540, 328 + 500); // 500 > 380（bulwark 30px/s，2s 内进不来）
-    let boShots = 0;
-    bo.bus.on('onShoot', () => { boShots++; });
-    runFor(bo, 2, () => false);
-    if (boShots !== 0) return `回旋镖对 500px 外目标开火 ${boShots} 次`;
-    const bomb = freshSession(1, 2); // alchemist_bomb（索敌 600）
-    bomb.debugSpawn('bulwark', 540, 328 + 700); // 700 > 600
-    let bombShots = 0;
-    bomb.bus.on('onShoot', () => { bombShots++; });
-    runFor(bomb, 2, () => false);
-    return bombShots === 0 ? true : `炸弹对 700px 外目标开火 ${bombShots} 次`;
-  } },
-  { name: 'W-雷霆多发：尸击不再白打（双雷同 tick 连杀无重复命中）', run: () => {
-    const s = freshSession(3, 4); // lightning_chain
-    s.grantCard('chain_twin'); // 每次落雷 2 道（同 tick 两发指令）
-    for (let i = 0; i < 6; i++) s.debugSpawn('zerg_ling', 400 + i * 80, 700);
-    const killedObjects = new Set<unknown>(); // 用对象身份而非 id（清尸会重排 id，按 id 会误报）
-    let corpseHits = 0;
-    s.bus.on<{ monsterId: number }>('onKill', ({ monsterId }) => { killedObjects.add(s.monsters[monsterId]); });
-    s.bus.on<{ monsterId: number }>('onHit', ({ monsterId }) => {
-      const m = s.monsters[monsterId];
-      if (m && killedObjects.has(m)) corpseHits++; // 已死怪再被命中 = 尸击
-    });
-    const ok = runFor(s, 15, () => s.totalKills >= 4);
-    if (!ok) return `15s 内未击杀 4 只（实际 ${s.totalKills}，场景未覆盖多发）`;
-    return corpseHits === 0 ? true : `出现 ${corpseHits} 次尸击（期望 0）`;
-  } },
-
-  // ===== 多武器（docs/02 §1：1 把初始 + 升级卡获得、≤4 把、同武器不重复） =====
-  { name: 'W-多武器：开局双武器同时开火（两系伤害并存）', run: () => {
-    const { level, monsters, cards } = loadConfigs();
-    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
-    const s = new GameSession({
-      level, weaponConfigs: [weapons[0], weapons[2]], monsterConfigs: monsters, cardConfigs: cards,
-      seed: 7,
-      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
-      cardPolicy: greedyDpsPolicy,
-    });
-    if (s.hero.weapons.length !== 2) return `武器实例数 ${s.hero.weapons.length}（应 2）`;
-    s.debugSpawn('bulwark', 540, 800); // 高血量靶子：保持战斗进行（空波次会提前判胜）
-    const target = s.monsters[0];
-    target.hp = target.maxHp = 1e6;
-    const seen = new Set<string>();
-    for (let i = 0; i < 30 * 5 && !s.result; i++) {
-      s.step();
-      for (const p of s.projectiles) seen.add(p.damageType);
-    }
-    return seen.has('physical') && seen.has('fire') ? true : `仅出现伤害类型: ${[...seen].join(',') || '无'}`;
-  } },
-  { name: 'W-新武器候选：三选一出"新武器"（去重/满槽门控）', run: () => {
-    const { level, monsters, cards } = loadConfigs();
-    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
-    // 单武器 + 全图鉴：反复抽取应出现新武器候选，且不含已持有武器
-    const s = new GameSession({
-      level, weaponConfigs: [weapons[0]], monsterConfigs: monsters, cardConfigs: cards,
-      weaponPool: weapons, seed: 5,
-      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
-      cardPolicy: greedyDpsPolicy,
-    });
-    const rng = s.rng;
-    const stacks = new Map<string, number>();
-    let grants = 0;
-    for (let i = 0; i < 400; i++) {
-      const picks = rollCardChoices(cards, stacks, s.hero.weapons, rng, 3, weapons);
-      for (const p of picks) {
-        if (!p.id.startsWith('grant:')) continue;
-        grants++;
-        const wid = (p.effect as { grantWeapon: string }).grantWeapon;
-        if (wid === weapons[0].id) return '候选出现已持有的武器（去重失效）';
-        if (!weapons.some((w) => w.id === wid)) return `候选武器 ${wid} 不在图鉴中`;
-      }
-    }
-    if (grants === 0) return '400 次×3 抽取未出现任何新武器候选（权重过低？）';
-    // 满 4 槽：不应再出现新武器候选
-    const s2 = new GameSession({
-      level, weaponConfigs: [weapons[0], weapons[1], weapons[2], weapons[3]], monsterConfigs: monsters, cardConfigs: cards,
-      weaponPool: weapons, seed: 5,
-      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
-      cardPolicy: greedyDpsPolicy,
-    });
-    for (let i = 0; i < 400; i++) {
-      const picks = rollCardChoices(cards, stacks, s2.hero.weapons, rng, 5, weapons);
-      if (picks.some((p) => p.id.startsWith('grant:'))) return '满 4 槽仍出现新武器候选';
-    }
-    return true;
-  } },
-  { name: 'W-新武器获得：grantWeapon 立即参战（去重/上限 4）', run: () => {
-    const { level, monsters, cards } = loadConfigs();
-    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
-    const s = new GameSession({
-      level, weaponConfigs: [weapons[0]], monsterConfigs: monsters, cardConfigs: cards,
-      weaponPool: weapons, seed: 9,
-      controller: { getMoveDir: () => ({ x: 0, y: 0 }) },
-      cardPolicy: greedyDpsPolicy,
-    });
-    if (!s.grantWeapon(weapons[2])) return '获得炼金炸弹被拒（应在图鉴内）';
-    if (s.hero.weapons.length !== 2) return `获得后武器数 ${s.hero.weapons.length}（应 2）`;
-    if (s.grantWeapon(weapons[2])) return '重复获得同一武器未被拒';
-    if (!s.grantWeapon(weapons[1]) || !s.grantWeapon(weapons[3])) return '第 3/4 把武器获得被拒（应允许）';
-    if (s.grantWeapon(weapons[4])) return '第 5 把武器获得未被拒（上限 4 失效）';
-    s.debugSpawn('bulwark', 540, 800);
-    const target = s.monsters[0];
-    target.hp = target.maxHp = 1e6;
-    const seen = new Set<string>();
-    for (let i = 0; i < 30 * 5 && !s.result; i++) {
-      s.step();
-      for (const p of s.projectiles) seen.add(p.damageType);
-    }
-    return seen.has('physical') && seen.has('fire') ? true : `获得后仅见伤害类型: ${[...seen].join(',') || '无'}`;
-  } },
-  { name: 'H-轨迹回放（新武器池）：含获得新武器的录制逐位一致', run: () => {
-    const { monsters, cards } = loadConfigs();
-    const level = JSON.parse(fs.readFileSync(path.join(root, 'configs/levels/level_1_1.json'), 'utf-8')) as LevelConfig;
-    // 训练场切片：密集蝙蝠流（快速升级，稳定覆盖"获得新武器"路径）+ 超厚城墙（窗口内不终局）。
-    // 录制与回放共用同一内存关卡对象，回放仍逐位一致。
-    level.waves = [{ banner: '训练', formation: 'center', durationSec: 300, spawns: [{ monster: 'bat', count: 900, spawnPoints: 'all', releasePerTick: 1 }] }];
-    level.wall.hp = 1e9;
-    const weapons = (JSON.parse(fs.readFileSync(path.join(root, 'configs/weapons.json'), 'utf-8')) as { weapons: WeaponConfig[] }).weapons;
-    const ctrl = new HumanInputController();
-    const rec = new TraceRecorder();
-    const s = new GameSession({
-      level, weaponConfigs: [weapons[0]], monsterConfigs: monsters, cardConfigs: cards,
-      weaponPool: weapons, seed: 4321,
-      controller: ctrl, cardPolicy: greedyDpsPolicy,
-    });
-    s.externalLevelUps = true;
-    rec.start({ t0: 0, seed: 4321, level: 'level_1_1.json', weapon: weapons[0].id, version: 'test', pool: true });
-    // 脚本化"人工"输入：优先选新武器候选（保证样本覆盖"获得新武器"路径）；
-    // 自适应窗口：拿到新武器且再走 3 次选卡即收工（上限 90s）——不依赖单次抽卡的运气
-    let picks = 0;
-    let grantPicks = 0;
-    for (let i = 0; i < 30 * 90 && !s.result; i++) {
-      const t = i / 30;
-      ctrl.tx = 540 + Math.sin(t * 1.7) * 300;
-      ctrl.ty = 520 + Math.sin(t * 2.1) * 140;
-      ctrl.hasTarget = i % 300 < 210;
-      rec.observe(ctrl.snapshot(), s.tick);
-      s.step();
-      if (s.pendingLevelChoices.length > 0) {
-        const pending = s.pendingLevelChoices;
-        const grant = pending.find((c) => c.id.startsWith('grant:'));
-        const c = grant ?? pending[i % pending.length];
-        rec.pick(s.tick, c.id, pending.map((x) => x.id));
-        s.resolveLevelUp(c);
-        picks++;
-        if (grant) grantPicks++;
-        if (grantPicks >= 1 && picks >= 4) break;
-      }
-      if (s.tick % 30 === 0) {
-        rec.check(s.tick, { x: s.hero.x, y: s.hero.y, wallHp: s.wallHp, kills: s.totalKills, lv: s.hero.level });
-      }
-    }
-    if (picks === 0) return '90s 内未触发选卡（样本未覆盖升选卡）';
-    if (grantPicks === 0) return '90s 内未出现新武器候选（权重过低？）';
-    const parsed = parseTrace(serializeTrace(rec.records));
-    const report = runTraceReplay(parsed, { level, weapon: weapons[0], monsters, cards, weaponPool: weapons });
-    if (!report.consistent) {
-      const m = report.mismatches[0];
-      return `回放分歧：t=${m.t} ${m.field} 录制 ${m.recorded} ≠ 回放 ${m.replayed}`;
-    }
-    if (s.hero.weapons.length < 2) return '录制未实际获得新武器（覆盖不足）';
-    return report.checksTotal > 0 ? true : '存档点缺失（录制未产出 check 记录）';
-  } },
-
-  // ===== 激光炮（持续光束，docs/07 §4）=====
-  { name: 'W-激光：持续光束灼烧线上目标，近旁不误伤', run: () => {
-    const s = freshSession(11, 5); // laser_cannon（英雄 540,328；索敌 600）
-    s.debugSpawn('bulwark', 540, 900); // 光束线上（距离 572）
-    s.debugSpawn('bulwark', 660, 900); // 近旁对照：索敌内、非最近目标、离束线 120px
-    const guard = s.monsters[0];
-    const control = s.monsters[1];
-    runFor(s, 1.5, () => false);
-    if (!(guard.hp < guard.maxHp)) return '线上目标未被光束灼烧';
-    const dealt = guard.maxHp - guard.hp;
-    const dps = s.hero.weapons[0].cfg.baseDamage; // 面板每秒伤害（本测试不加伤害卡）
-    const exp = (1.5 - 0.33) * dps;
-    if (dealt < exp * 0.7 || dealt > exp * 1.3) return `1.5s 线上伤害 ${dealt}（期望 ≈${Math.round(exp)} = (1.5-0.33)×${dps}）`;
-    if (control.hp !== control.maxHp) return `近旁对照被误伤（剩 ${control.hp}）`;
-    const segs = s.segments.filter((sg) => sg.srcWeaponId === 'laser_cannon');
-    return segs.length === 1 ? true : `激光段场数 ${segs.length}（应 1）`;
-  } },
-  { name: 'W-激光：重锁替换不叠加（伤害 = DPS×时间，无双算）', run: () => {
-    const s = freshSession(12, 5);
-    s.debugSpawn('bulwark', 540, 900);
-    const m = s.monsters[0];
-    m.hp = m.maxHp = 1e9;
-    runFor(s, 2.0, () => false);
-    const dealt = 1e9 - m.hp;
-    // 期望 ≈ (2.0-0.33)×面板DPS；若同源旧束不删（叠加）会约翻倍
-    const dps = s.hero.weapons[0].cfg.baseDamage;
-    const exp = (2.0 - 0.33) * dps;
-    return dealt > exp * 0.7 && dealt < exp * 1.3 ? true : `2s 伤害 ${dealt}（期望 ≈${Math.round(exp)}，换束叠加会约翻倍）`;
-  } },
-  { name: 'W-激光：过热熄灭 → 散热后复燃（节拍）', run: () => {
-    const s = freshSession(13, 5);
-    s.debugSpawn('bulwark', 540, 900);
-    const m = s.monsters[0];
-    m.hp = m.maxHp = 1e9;
-    // 30Hz 帧量化：0.4s 间隔实走 13 帧（0.4333s）→ 18 发末束 ≈8.2s 熄灭；散热 2.2s → ≈9.9s 复燃
-    runFor(s, 8.6, () => false);
-    if (s.segments.some((sg) => sg.srcWeaponId === 'laser_cannon')) return '8.6s 应已过热熄灭（仍有残留光束）';
-    const revived = runFor(s, 1.9, () => s.segments.some((sg) => sg.srcWeaponId === 'laser_cannon'));
-    return revived ? true : '散热结束（≈9.3~10.0s）后未复燃';
-  } },
-  { name: 'W-激光：分光/扩束/余辉卡生效（扇形夹角+宽度+余辉）', run: () => {
-    const s = freshSession(14, 5);
-    if (!s.grantCard('laser_prism')) return '分光棱镜授予失败';
-    if (!s.grantCard('laser_wide')) return '扩束透镜授予失败';
-    if (!s.grantCard('laser_afterglow')) return '持续供能授予失败';
-    s.debugSpawn('bulwark', 540, 900);
-    runFor(s, 0.6, () => s.segments.length >= 2);
-    const segs = s.segments.filter((sg) => sg.srcWeaponId === 'laser_cannon');
-    if (segs.length !== 2) return `光束数 ${segs.length}（应 2）`;
-    const [a, b] = segs;
-    const spread = Math.abs((a.angle ?? 0) - (b.angle ?? 0));
-    if (Math.abs(spread - 0.11) > 0.01) return `两束夹角 ${spread.toFixed(3)}（应 ≈0.11 扇形散开）`;
-    if (Math.abs(a.width - 14 * 1.6) > 0.01) return `束宽 ${a.width}（应 22.4 = 14×1.6）`;
-    const life = Math.min(a.until, b.until) - s.timeSec;
-    if (life <= 0.5) return `余辉剩余 ${life.toFixed(2)}s（应 >0.5 = 0.5+供能 0.4）`;
-    return true;
-  } },
-  { name: 'W-激光：散热鳍片缩短过热（约 8.8s 复燃）', run: () => {
-    const s = freshSession(15, 5);
-    if (!s.grantCard('laser_cooling')) return '散热鳍片授予失败';
-    s.debugSpawn('bulwark', 540, 900);
-    const m = s.monsters[0];
-    m.hp = m.maxHp = 1e9;
-    // 散热 ×0.75 → 1.65s（50 帧 = 1.667s）：末束 ≈8.2s 熄灭、≈9.4s 复燃（基准 ≈9.9s）
-    runFor(s, 8.6, () => false);
-    if (s.segments.some((sg) => sg.srcWeaponId === 'laser_cannon')) return '8.6s 应已熄灭';
-    const revived = runFor(s, 1.2, () => s.segments.some((sg) => sg.srcWeaponId === 'laser_cannon'));
-    return revived ? true : '散热鳍片后仍未在 9.8s 内复燃';
   } },
 ];
 

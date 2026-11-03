@@ -38,21 +38,24 @@ function validateWeapons(weapons: WeaponConfig[]): void {
     ids.add(w.id);
     need(isNum(w.baseDamage) && w.baseDamage > 0, where, 'baseDamage 必须为正数');
     need(isNum(w.interval) && w.interval > 0, where, 'interval 必须为正数');
-    // 落雷武器（chainBase≥1）无弹体，弹速可为 0
+    // 落雷/激光武器无弹体，弹速可为 0
     need(
-      isNum(w.projectileSpeed) && (w.projectileSpeed > 0 || (w.chainBase ?? 0) > 0 || !!w.beamBase),
-      where, 'projectileSpeed 必须为正数（落雷/光束武器除外）',
+      isNum(w.projectileSpeed) && (w.projectileSpeed > 0 || (w.chainBase ?? 0) > 0 || !!w.laser),
+      where, 'projectileSpeed 必须为正数（落雷/激光武器除外）',
     );
+    if (w.laser !== undefined) {
+      need(!!w.laser && typeof w.laser === 'object', where, 'laser 配置必须为对象');
+      if (w.laser) {
+        if (w.laser.transfer !== undefined) {
+          need(isNum(w.laser.transfer) && w.laser.transfer > 0 && w.laser.transfer <= 1, where, 'laser.transfer 必须在 (0,1] 内');
+        }
+        if (w.laser.width !== undefined) need(isNum(w.laser.width) && w.laser.width > 0, where, 'laser.width 必须为正数');
+        if (w.laser.length !== undefined) need(isNum(w.laser.length) && w.laser.length > 0, where, 'laser.length 必须为正数');
+        if (w.laser.life !== undefined) need(isNum(w.laser.life) && w.laser.life > 0, where, 'laser.life 必须为正数');
+      }
+    }
     if ((w.chainBase ?? 0) > 0) {
       need(isNum(w.chainBase) && (w.chainBase as number) >= 1, where, 'chainBase 必须 ≥ 1');
-    }
-    if (w.beamBase) {
-      need(isNum(w.beamBase.width) && w.beamBase.width > 0, where, 'beamBase.width 必须为正数');
-      need(isNum(w.beamBase.duration) && w.beamBase.duration > 0, where, 'beamBase.duration 必须为正数');
-      need(
-        w.beamBase.length === undefined || (isNum(w.beamBase.length) && w.beamBase.length > 0),
-        where, 'beamBase.length 必须为正数（缺省 = 场景对角线）',
-      );
     }
     if (w.blastBase) {
       need(isNum(w.blastBase.radius) && w.blastBase.radius > 0, where, 'blastBase.radius 必须为正数');
@@ -60,7 +63,7 @@ function validateWeapons(weapons: WeaponConfig[]): void {
       need(isNum(w.blastBase.poolSec) && w.blastBase.poolSec >= 0, where, 'blastBase.poolSec 必须 ≥ 0');
     }
     if (w.shape !== undefined) {
-      need(['dot', 'arrow', 'bomb', 'gear', 'crescent', 'beam'].includes(w.shape), where, `未知子弹形态: ${w.shape}`);
+      need(['dot', 'arrow', 'bomb', 'gear', 'crescent'].includes(w.shape), where, `未知子弹形态: ${w.shape}`);
     }
     if (w.spread !== undefined) {
       need(isNum(w.spread) && w.spread > 0 && w.spread < 1, where, 'spread 必须在 (0,1) rad 内');
@@ -141,7 +144,7 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
 function validateCards(cards: CardConfig[]): void {
   const ids = new Set<string>();
   const passiveStats = ['atk', 'aspd', 'moveSpeed', 'critChance', 'critDmg', 'dmgMul'];
-  const bulletStats = ['count', 'burst', 'projSpeed', 'damage', 'range', 'pierce', 'interval', 'width', 'beamLife', 'heatCool'];
+  const bulletStats = ['count', 'burst', 'projSpeed', 'damage', 'range', 'pierce'];
   const wallStats = ['wallMax', 'wallRepair'];
   const formIds = ['homing', 'bounce', 'split', 'shred', 'blast', 'chain'];
   const damageTypes = ['physical', 'fire', 'frost', 'lightning', 'poison'];

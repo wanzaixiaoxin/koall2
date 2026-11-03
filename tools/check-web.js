@@ -3,8 +3,8 @@
 const fs = require('fs');
 
 const checks = [
-  ['web/bundle.js', ['drawMonster', 'drawProjectile', 'drawHealPulse', 'drawTransfer', 'pushFloat']],
-  ['web/lab.js', ['drawMonster', 'drawProjectile', 'drawHealPulse', 'drawTransfer', 'pushFloat']],
+  ['web/bundle.js', ['SceneRenderer', 'drawMonster', 'drawHero', 'drawProjectile', 'drawPool', 'pushFloat']],
+  ['web/lab.js', ['SceneRenderer', 'drawMonster', 'drawHero', 'drawProjectile', 'drawPool', 'pushFloat']],
 ];
 
 let failed = false;

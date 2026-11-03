@@ -3,14 +3,14 @@
     {
       "id": "slime",
       "name": "史莱姆",
-      "hp": 180,
+      "hp": 18,
       "def": 0,
-      "speed": 70,
+      "speed": 55,
       "radius": 20,
-      "atk": 40,
-      "attackInterval": 1,
+      "atk": 4,
+      "attackInterval": 1.0,
       "behavior": "march",
-      "xp": 20,
+      "xp": 2,
       "weak": [
         "fire"
       ],
@@ -19,28 +19,28 @@
     {
       "id": "wolf",
       "name": "野狼",
-      "hp": 140,
+      "hp": 14,
       "def": 0,
-      "speed": 150,
+      "speed": 115,
       "radius": 16,
-      "atk": 60,
+      "atk": 6,
       "attackInterval": 0.8,
       "behavior": "dash",
-      "xp": 30,
+      "xp": 3,
       "shape": "wolf"
     },
     {
       "id": "thrower",
       "name": "哥布林投矛手",
-      "hp": 200,
+      "hp": 20,
       "def": 2,
-      "speed": 60,
+      "speed": 50,
       "radius": 18,
-      "atk": 60,
+      "atk": 6,
       "attackInterval": 1.6,
       "behavior": "ranged",
       "rangedDist": 260,
-      "xp": 40,
+      "xp": 4,
       "resist": [
         "fire"
       ],
@@ -49,41 +49,41 @@
     {
       "id": "catapult",
       "name": "哥布林投石车",
-      "hp": 600,
+      "hp": 60,
       "def": 4,
-      "speed": 25,
+      "speed": 24,
       "radius": 26,
-      "atk": 120,
-      "attackInterval": 2.5,
+      "atk": 14,
+      "attackInterval": 2.2,
       "behavior": "ranged",
-      "rangedDist": 600,
-      "xp": 80,
+      "rangedDist": 460,
+      "xp": 8,
       "shape": "thrower"
     },
     {
       "id": "charger",
       "name": "冲锋鼠",
-      "hp": 100,
+      "hp": 10,
       "def": 0,
-      "speed": 260,
+      "speed": 175,
       "radius": 14,
-      "atk": 50,
+      "atk": 5,
       "attackInterval": 0.9,
       "behavior": "fast_rush",
-      "xp": 20,
+      "xp": 2,
       "shape": "charger"
     },
     {
       "id": "bulwark",
       "name": "岩甲兽",
-      "hp": 1500,
+      "hp": 130,
       "def": 10,
       "speed": 30,
       "radius": 30,
-      "atk": 100,
+      "atk": 10,
       "attackInterval": 1.2,
       "behavior": "march",
-      "xp": 100,
+      "xp": 10,
       "weak": [
         "fire"
       ],
@@ -93,14 +93,14 @@
     {
       "id": "bulwark_king",
       "name": "岩甲魔王",
-      "hp": 11000,
+      "hp": 340,
       "def": 10,
       "speed": 22,
       "radius": 48,
-      "atk": 180,
+      "atk": 18,
       "attackInterval": 1.4,
       "behavior": "march",
-      "xp": 1200,
+      "xp": 120,
       "weak": [
         "fire"
       ],
@@ -109,14 +109,14 @@
     {
       "id": "boss_treant",
       "name": "腐化树人",
-      "hp": 28000,
+      "hp": 1300,
       "def": 6,
       "speed": 18,
       "radius": 62,
-      "atk": 300,
+      "atk": 30,
       "attackInterval": 1.8,
       "behavior": "march",
-      "xp": 2500,
+      "xp": 250,
       "weak": [
         "fire"
       ],
@@ -125,19 +125,18 @@
     {
       "id": "split_shroom",
       "name": "分裂菇",
-      "hp": 600,
+      "hp": 60,
       "def": 0,
       "speed": 65,
       "radius": 20,
-      "atk": 40,
-      "attackInterval": 1,
+      "atk": 4,
+      "attackInterval": 1.0,
       "behavior": "splitter",
-      "xp": 40,
+      "xp": 4,
       "shape": "shroom",
       "splitTimer": {
         "interval": 6,
-        "baby": "shroom_baby",
-        "inheritHp": true
+        "baby": "shroom_baby"
       },
       "deathSplit": {
         "count": 2,
@@ -147,14 +146,14 @@
     {
       "id": "bat",
       "name": "夜行蝙蝠",
-      "hp": 120,
+      "hp": 12,
       "def": 0,
-      "speed": 360,
+      "speed": 180,
       "radius": 14,
-      "atk": 30,
+      "atk": 3,
       "attackInterval": 0.7,
       "behavior": "zigzag",
-      "xp": 30,
+      "xp": 3,
       "shape": "bat",
       "hitShield": 10,
       "burnImmune": true
@@ -162,23 +161,23 @@
     {
       "id": "shaman",
       "name": "地精巫师",
-      "hp": 3000,
+      "hp": 200,
       "def": 0,
       "speed": 30,
       "radius": 22,
-      "atk": 50,
+      "atk": 5,
       "attackInterval": 1.5,
       "behavior": "march",
-      "xp": 150,
+      "xp": 15,
       "shape": "shaman",
       "healAura": {
         "radius": 280,
-        "amount": 300,
-        "interval": 2
+        "amount": 30,
+        "interval": 2.0
       },
       "escort": {
         "monster": "bulwark",
-        "count": 10,
+        "count": 5,
         "radius": 150
       },
       "transferAura": {
@@ -189,41 +188,41 @@
     {
       "id": "shroom_baby",
       "name": "分裂菇幼体",
-      "hp": 600,
+      "hp": 60,
       "def": 0,
       "speed": 95,
       "radius": 16,
-      "atk": 30,
-      "attackInterval": 1,
+      "atk": 3,
+      "attackInterval": 1.0,
       "behavior": "march",
-      "xp": 20,
+      "xp": 2,
       "shape": "shroom"
     },
     {
       "id": "zerg_ling",
       "name": "幼虫群",
-      "hp": 80,
+      "hp": 8,
       "def": 0,
-      "speed": 240,
+      "speed": 120,
       "radius": 10,
-      "atk": 30,
-      "attackInterval": 1,
+      "atk": 3,
+      "attackInterval": 1.0,
       "behavior": "march",
-      "xp": 10,
+      "xp": 1,
       "creepBenefit": true,
       "shape": "larva"
     },
     {
       "id": "zerg_roach",
       "name": "爬虫",
-      "hp": 600,
+      "hp": 60,
       "def": 2,
       "speed": 70,
       "radius": 22,
-      "atk": 60,
+      "atk": 6,
       "attackInterval": 1.1,
       "behavior": "burrow_regen",
-      "xp": 50,
+      "xp": 5,
       "creepBenefit": true,
       "shape": "roach",
       "burrowRegen": {
@@ -235,62 +234,38 @@
     {
       "id": "zerg_lurker",
       "name": "潜伏者",
-      "hp": 500,
+      "hp": 50,
       "def": 0,
       "speed": 65,
       "radius": 20,
-      "atk": 80,
-      "attackInterval": 1,
+      "atk": 8,
+      "attackInterval": 1.0,
       "behavior": "burrow_siege",
-      "xp": 60,
+      "xp": 6,
       "creepBenefit": true,
       "shape": "lurker",
       "burrowSiege": {
         "dist": 400,
-        "surfaceEvery": 10,
-        "surfaceFor": 10
-      }
-    },
-    {
-      "id": "zerg_larva",
-      "name": "幼虫",
-      "hp": 140,
-      "def": 0,
-      "speed": 60,
-      "radius": 12,
-      "atk": 15,
-      "attackInterval": 1.2,
-      "behavior": "march",
-      "xp": 12,
-      "creepBenefit": true,
-      "shape": "larva",
-      "morph": {
-        "delay": 5,
-        "pool": [
-          { "id": "zerg_ling", "weight": 35 },
-          { "id": "baneling", "weight": 20 },
-          { "id": "zerg_roach", "weight": 25 },
-          { "id": "zerg_lurker", "weight": 15 },
-          { "id": "zerg_ultra", "weight": 5 }
-        ]
+        "buriedSec": 2.4,
+        "surfaceSec": 2.4
       }
     },
     {
       "id": "zerg_queen",
       "name": "虫后",
-      "hp": 2000,
+      "hp": 150,
       "def": 0,
       "speed": 35,
       "radius": 26,
-      "atk": 50,
+      "atk": 5,
       "attackInterval": 1.5,
       "behavior": "march",
-      "xp": 200,
+      "xp": 20,
       "creepBenefit": true,
       "shape": "zqueen",
       "healAura": {
         "radius": 300,
-        "amount": 200,
+        "amount": 20,
         "interval": 2.5
       },
       "creepTrail": {
@@ -298,43 +273,43 @@
       },
       "splitTimer": {
         "interval": 8,
-        "baby": "zerg_larva"
+        "baby": "zerg_ling"
       }
     },
     {
       "id": "baneling",
       "name": "毒爆虫",
-      "hp": 150,
+      "hp": 15,
       "def": 0,
-      "speed": 110,
+      "speed": 85,
       "radius": 16,
-      "atk": 30,
-      "attackInterval": 1,
+      "atk": 3,
+      "attackInterval": 1.0,
       "behavior": "march",
-      "xp": 30,
+      "xp": 3,
       "creepBenefit": true,
       "shape": "baneling",
       "detonate": {
-        "wallDamage": 300
+        "wallDamage": 30
       }
     },
     {
       "id": "zerg_ultra",
       "name": "雷兽",
-      "hp": 5500,
+      "hp": 400,
       "def": 6,
-      "speed": 40,
+      "speed": 36,
       "radius": 46,
-      "atk": 150,
+      "atk": 15,
       "attackInterval": 1.4,
       "behavior": "burrow_charge",
-      "xp": 800,
+      "xp": 80,
       "creepBenefit": true,
       "shape": "ultra",
       "burrowCharge": {
         "interval": 9,
         "duration": 2,
-        "dmg": 400
+        "dmg": 40
       },
       "weak": [
         "fire"

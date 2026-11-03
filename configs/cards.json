@@ -99,7 +99,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.18
+        "value": 0.25
       },
       "maxStack": 3,
       "desc": "弩箭伤害 +18%"
@@ -153,11 +153,11 @@
         "value": 1
       },
       "maxStack": 2,
-      "desc": "每次投掷 +1 枚炸弹（自动分打不同目标）"
+      "desc": "每次投掷 +1 枚炸弹（扇形散布）"
     },
     {
-      "id": "bomb_rapid",
-      "name": "速掷",
+      "id": "bomb_powder",
+      "name": "大装药",
       "rarity": "common",
       "type": "bullet",
       "target": {
@@ -165,12 +165,46 @@
         "weaponType": "alchemist_bomb"
       },
       "effect": {
-        "bullet": "interval",
+        "bullet": "damage",
         "op": "mul",
-        "value": -0.12
+        "value": 0.25
       },
       "maxStack": 3,
-      "desc": "炸弹投掷间隔 -12%（伤害频率提升）"
+      "desc": "炸弹伤害 +20%"
+    },
+    {
+      "id": "bomb_lob",
+      "name": "远投",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "bullet": "range",
+        "op": "mul",
+        "value": 0.15
+      },
+      "maxStack": 3,
+      "desc": "炸弹投掷距离 +15%"
+    },
+    {
+      "id": "bomb_fuse",
+      "name": "速燃",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "bullet": "projSpeed",
+        "op": "mul",
+        "value": 0.15
+      },
+      "maxStack": 3,
+      "desc": "炸弹飞行速度 +15%（更快落地轰击）"
     },
     {
       "id": "boom_edge",
@@ -184,7 +218,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.12
+        "value": 0.25
       },
       "maxStack": 5,
       "desc": "回旋镖伤害 +12%"
@@ -221,7 +255,7 @@
         "value": 1
       },
       "maxStack": 2,
-      "desc": "同时掷出 +1 枚回旋镖（独立索敌，不打同一目标）"
+      "desc": "同时掷出 +1 枚回旋镖"
     },
     {
       "id": "boom_range",
@@ -251,7 +285,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.15
+        "value": 0.25
       },
       "maxStack": 5,
       "desc": "所有武器子弹伤害 +15%"
@@ -283,10 +317,10 @@
       "effect": {
         "wall": "wallRepair",
         "op": "add",
-        "value": 3000
+        "value": 300
       },
       "maxStack": 99,
-      "desc": "立即修复 3000 城防"
+      "desc": "立即修复 300 城防"
     },
     {
       "id": "homing",
@@ -319,6 +353,22 @@
       },
       "maxStack": 3,
       "desc": "弩箭命中后弹向附近敌人（贯穿系武器特性）"
+    },
+    {
+      "id": "split",
+      "name": "弹片",
+      "rarity": "rare",
+      "type": "form",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "alchemist_bomb"
+      },
+      "effect": {
+        "form": "split",
+        "value": 1
+      },
+      "maxStack": 2,
+      "desc": "炸弹击杀时迸射 2 枚弹片（爆破系武器特性）"
     },
     {
       "id": "shred",
@@ -364,7 +414,7 @@
       "effect": {
         "bullet": "damage",
         "op": "mul",
-        "value": 0.18
+        "value": 0.25
       },
       "maxStack": 3,
       "desc": "闪电伤害 +18%"
@@ -490,7 +540,7 @@
       "effect": {
         "stat": "atk",
         "op": "mul",
-        "value": 0.08
+        "value": 0.12
       },
       "maxStack": 5,
       "desc": "攻击 +8%（全局，含所有武器）"
@@ -506,7 +556,7 @@
       "effect": {
         "stat": "aspd",
         "op": "mul",
-        "value": 0.07
+        "value": 0.1
       },
       "maxStack": 5,
       "desc": "攻速 +7%（所有武器）"
@@ -522,7 +572,7 @@
       "effect": {
         "stat": "critChance",
         "op": "add",
-        "value": 0.05
+        "value": 0.06
       },
       "maxStack": 5,
       "desc": "暴击率 +5%"
@@ -538,7 +588,7 @@
       "effect": {
         "stat": "critDmg",
         "op": "add",
-        "value": 0.12
+        "value": 0.2
       },
       "maxStack": 5,
       "desc": "暴击伤害 +12%"
@@ -554,36 +604,53 @@
       "effect": {
         "stat": "dmgMul",
         "op": "add",
-        "value": 0.05
+        "value": 0.08
       },
       "maxStack": 5,
       "desc": "全伤害 +5%"
     },
     {
       "id": "laser_focus",
-      "name": "聚焦透镜",
-      "rarity": "common",
-      "type": "bullet",
-      "target": {
-        "kind": "weapon",
-        "weaponType": "laser_cannon"
-      },
-      "effect": {
-        "bullet": "damage",
-        "op": "mul",
-        "value": 0.18
-      },
-      "maxStack": 3,
-      "desc": "光束伤害 +18%"
-    },
-    {
-      "id": "laser_prism",
-      "name": "分光棱镜",
+      "name": "棱镜聚焦",
       "rarity": "rare",
       "type": "bullet",
       "target": {
         "kind": "weapon",
-        "weaponType": "laser_cannon"
+        "weaponType": "arc_laser"
+      },
+      "effect": {
+        "bullet": "damage",
+        "op": "add",
+        "value": 0.3
+      },
+      "maxStack": 3,
+      "desc": "棱镜激光起始能量 +18%（首段伤害与穿射深度同步提升）"
+    },
+    {
+      "id": "laser_beam",
+      "name": "光束延伸",
+      "rarity": "common",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "arc_laser"
+      },
+      "effect": {
+        "bullet": "range",
+        "op": "add",
+        "value": 0.25
+      },
+      "maxStack": 3,
+      "desc": "棱镜激光射程（束长）+25%"
+    },
+    {
+      "id": "laser_wide",
+      "name": "扩束棱镜",
+      "rarity": "epic",
+      "type": "bullet",
+      "target": {
+        "kind": "weapon",
+        "weaponType": "arc_laser"
       },
       "effect": {
         "bullet": "count",
@@ -591,59 +658,7 @@
         "value": 1
       },
       "maxStack": 2,
-      "weight": 0.7,
-      "desc": "每次发射 +1 道光束，扇形散开（主束对准目标）"
-    },
-    {
-      "id": "laser_afterglow",
-      "name": "持续供能",
-      "rarity": "rare",
-      "type": "bullet",
-      "target": {
-        "kind": "weapon",
-        "weaponType": "laser_cannon"
-      },
-      "effect": {
-        "bullet": "beamLife",
-        "op": "add",
-        "value": 0.4
-      },
-      "maxStack": 3,
-      "desc": "光束熄火后仍持续灼烧 +0.4 秒（覆盖散热前段）"
-    },
-    {
-      "id": "laser_wide",
-      "name": "扩束透镜",
-      "rarity": "common",
-      "type": "bullet",
-      "target": {
-        "kind": "weapon",
-        "weaponType": "laser_cannon"
-      },
-      "effect": {
-        "bullet": "width",
-        "op": "mul",
-        "value": 0.6
-      },
-      "maxStack": 3,
-      "desc": "光束宽度 +60%"
-    },
-    {
-      "id": "laser_cooling",
-      "name": "散热鳍片",
-      "rarity": "common",
-      "type": "bullet",
-      "target": {
-        "kind": "weapon",
-        "weaponType": "laser_cannon"
-      },
-      "effect": {
-        "bullet": "heatCool",
-        "op": "mul",
-        "value": -0.25
-      },
-      "maxStack": 2,
-      "desc": "过热冷却时间 -25%"
+      "desc": "棱镜激光额外并列一道光束（副束略偏，覆盖更宽）"
     }
   ]
 }

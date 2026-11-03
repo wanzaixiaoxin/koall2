@@ -12,5 +12,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/gamecore/**/*", "src/adapter/web/**/*", "tools/**/*"]
+  "include": ["src/gamecore/**/*", "src/adapter/web/**/*", "src/adapter/web3d/**/*", "tools/**/*"]
 }

@@ -5,9 +5,9 @@
       "name": "符文步枪",
       "role": "速射系 · 弹幕雨",
       "damageType": "physical",
-      "baseDamage": 70,
-      "interval": 0.55,
-      "count": 1,
+      "baseDamage": 12,
+      "interval": 0.5,
+      "count": 2,
       "projectileSpeed": 950,
       "projectileRange": 850,
       "projectileRadius": 5,
@@ -19,20 +19,21 @@
         "shots": 16,
         "cooldown": 2.2
       },
-      "bulletLife": 3
+      "bulletLife": 3,
+      "spread": 0.12
     },
     {
       "id": "crossbow_pierce",
       "name": "穿透弩",
       "role": "贯穿系 · 重狙穿线",
       "damageType": "physical",
-      "baseDamage": 240,
-      "interval": 1.6,
-      "count": 1,
+      "baseDamage": 44,
+      "interval": 1.15,
+      "count": 2,
       "projectileSpeed": 1200,
       "projectileRange": 1100,
       "projectileRadius": 4,
-      "pierce": 3,
+      "pierce": 4,
       "pierceFalloff": 0.18,
       "targeting": "nearest",
       "trajectory": "straight",
@@ -41,18 +42,19 @@
         "shots": 8,
         "cooldown": 2.2
       },
-      "bulletLife": 2.2
+      "bulletLife": 2.2,
+      "spread": 0.06
     },
     {
       "id": "alchemist_bomb",
       "name": "炼金炸弹",
       "role": "爆破系 · 抛物轰击",
       "damageType": "fire",
-      "baseDamage": 195,
-      "interval": 1.5,
+      "baseDamage": 30,
+      "interval": 1.4,
       "count": 1,
       "projectileSpeed": 700,
-      "projectileRange": 600,
+      "projectileRange": 950,
       "projectileRadius": 8,
       "pierce": 0,
       "targeting": "nearest",
@@ -64,9 +66,9 @@
         "peak": 160
       },
       "blastBase": {
-        "radius": 95,
-        "dmgMul": 0.25,
-        "poolDpsMul": 0.5,
+        "radius": 105,
+        "dmgMul": 0.6,
+        "poolDpsMul": 0.7,
         "poolSec": 3
       },
       "shape": "bomb",
@@ -82,11 +84,11 @@
       "name": "回旋镖",
       "role": "回旋系 · 血滴子",
       "damageType": "physical",
-      "baseDamage": 105,
-      "interval": 1.2,
+      "baseDamage": 24,
+      "interval": 0.85,
       "count": 1,
       "projectileSpeed": 550,
-      "projectileRange": 380,
+      "projectileRange": 600,
       "projectileRadius": 7,
       "pierce": 99,
       "targeting": "nearest",
@@ -107,10 +109,19 @@
           },
           {
             "motion": {
+              "type": "hover"
+            },
+            "until": {
+              "kind": "duration",
+              "value": 2
+            }
+          },
+          {
+            "motion": {
               "type": "homing",
-              "speed": 700,
+              "speed": 550,
               "range": 99999,
-              "turnRate": 2160,
+              "turnRate": 720,
               "duration": 99,
               "retarget": false,
               "home": true
@@ -125,8 +136,6 @@
       "shape": "gear",
       "spread": 0.3,
       "pierceFalloff": 0,
-      "rehitSec": 0.25,
-      "splitAim": true,
       "heat": {
         "shots": 10,
         "cooldown": 2.2
@@ -137,8 +146,8 @@
       "name": "雷电权杖",
       "role": "雷霆系 · 连锁落雷",
       "damageType": "lightning",
-      "baseDamage": 140,
-      "interval": 1.1,
+      "baseDamage": 16,
+      "interval": 1.05,
       "count": 1,
       "projectileSpeed": 0,
       "projectileRange": 900,
@@ -154,29 +163,30 @@
       }
     },
     {
-      "id": "laser_cannon",
-      "name": "聚能激光炮",
-      "role": "能量系 · 持续光束",
+      "id": "arc_laser",
+      "name": "棱镜激光",
+      "role": "光束系 · 穿射衰减",
       "damageType": "lightning",
-      "baseDamage": 210,
-      "interval": 0.4,
+      "baseDamage": 58,
+      "interval": 0.8,
       "count": 1,
       "projectileSpeed": 0,
-      "projectileRange": 600,
+      "projectileRange": 1000,
       "projectileRadius": 0,
       "pierce": 0,
       "targeting": "nearest",
       "trajectory": "straight",
-      "beamBase": {
-        "width": 14,
-        "duration": 0.5
+      "shape": "dot",
+      "laser": {
+        "transfer": 0.8,
+        "width": 16,
+        "length": 1400,
+        "life": 0.18
       },
       "heat": {
-        "shots": 18,
+        "shots": 10,
         "cooldown": 2.2
-      },
-      "shape": "beam",
-      "spread": 0.11
+      }
     }
   ]
 }

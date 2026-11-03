@@ -25,6 +25,8 @@ export function updateMonster(
   onWallHit: (dmg: number, m: MonsterRuntime) => void,
   onRangedShot: (m: MonsterRuntime) => void,
   isCreeped?: (x: number, y: number) => boolean,
+  /** 远程怪最大停驻高度（由 session 依据我方武器射程给出，保证永远可被击杀） */
+  maxHoldY?: number,
 ): void {
   const r = m.cfg.radius;
 
@@ -39,28 +41,29 @@ export function updateMonster(
       m.burrowed = false;
       m.y = wallTopY + r;
       onWallHit(m.cfg.burrowCharge!.dmg, m);
-    } else if (m.cfg.burrowSiege && m.burrowTimer <= 0) {
-      // 上浮（docs/08 潜伏刺击）：不能永久隐身——每 surfaceEvery 秒浮出地面 surfaceFor 秒，可被索敌击杀
-      m.burrowed = false;
-      m.surfaceLeft = m.cfg.burrowSiege.surfaceFor ?? 6;
-      m.state = 'march';
-      m.attackTimer = 0; // 出土立即行动
     }
-    // burrow_siege：地下持续刺击城墙（上浮后停止，等待再次入地）
-    if (m.burrowed && m.cfg.burrowSiege) {
+    // burrow_siege：潜入阶段刺击城墙，计时结束浮出（浮出后走本函数下方 assault 分支，可被任意武器命中）
+    if (m.cfg.burrowSiege) {
       m.attackTimer -= dt;
       if (m.attackTimer <= 0) {
         m.attackTimer += m.cfg.attackInterval;
         onWallHit(m.cfg.atk, m);
       }
+      if (m.burrowed) {
+        m.burrowTimer -= dt;
+        if (m.burrowTimer <= 0) {
+          // 浮出：变为可击杀状态，停留 surfaceSec 后再潜入
+          m.burrowed = false;
+          m.burrowTimer = m.cfg.burrowSiege.surfaceSec ?? 2.2;
+        }
+      }
     }
     return;
   }
 
-  // 上浮计时：期间即使走到入地位也不重新钻地（给玩家击杀窗口）
-  if (m.surfaceLeft > 0) m.surfaceLeft = Math.max(0, m.surfaceLeft - dt);
-
-  const holdY = wallTopY + (m.cfg.behavior === 'ranged' ? (m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE) : 0) + r;
+  let holdY = wallTopY + (m.cfg.behavior === 'ranged' ? (m.cfg.rangedDist ?? RANGED_HOLD_DISTANCE) : 0) + r;
+  // 安全闸：远程怪停驻点不得高于「我方最大可及高度」，否则玩家永远打不到它（避免不可击杀 bug）
+  if (m.cfg.behavior === 'ranged' && maxHoldY !== undefined) holdY = Math.min(holdY, maxHoldY);
 
   if (m.state === 'march') {
     let speed = m.cfg.speed;
@@ -87,7 +90,16 @@ export function updateMonster(
 
     m.y -= speed * dt;
 
-    // 钻地触发：爬虫低血入地回血；雷兽周期冲锋入地（潜伏者见函数末：行军/近墙都适用）
+    // 钻地触发：潜伏者到阵位进入「潜入/浮出」循环（不再永久潜地）
+    if (m.cfg.burrowSiege && m.y <= wallTopY + m.cfg.burrowSiege.dist + r) {
+      m.y = wallTopY + m.cfg.burrowSiege.dist + r;
+      m.state = 'assault';
+      m.sieged = true;
+      m.burrowed = true;
+      m.burrowTimer = m.cfg.burrowSiege.buriedSec ?? 2.5;
+      m.attackTimer = m.cfg.attackInterval;
+      return;
+    }
     if (m.cfg.burrowRegen && m.hp < m.maxHp * m.cfg.burrowRegen.threshold) {
       m.burrowed = true;
       m.burrowTimer = m.cfg.burrowRegen.duration;
@@ -119,12 +131,13 @@ export function updateMonster(
         onWallHit(m.cfg.atk, m);
       }
     }
-  }
-
-  // 潜伏者入地判定（行军/近墙都适用；上浮期内不入地）：上浮结束后即使已在墙前也会重新钻地
-  if (m.cfg.burrowSiege && m.surfaceLeft <= 0 && m.y <= wallTopY + m.cfg.burrowSiege.dist + r) {
-    m.burrowed = true;
-    m.burrowTimer = m.cfg.burrowSiege.surfaceEvery ?? Infinity;
-    m.y = Math.min(m.y, wallTopY + m.cfg.burrowSiege.dist + r); // 上浮后原地再潜（不传送回远处阵位）
+    // 潜伏者浮出阶段：倒计时结束后重新潜入（浮出期间可被任意武器击杀）
+    if (m.cfg.burrowSiege && m.sieged && m.burrowTimer > 0) {
+      m.burrowTimer -= dt;
+      if (m.burrowTimer <= 0) {
+        m.burrowed = true;
+        m.burrowTimer = m.cfg.burrowSiege.buriedSec ?? 2.5;
+      }
+    }
   }
 }

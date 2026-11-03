@@ -2,11 +2,10 @@ import { EventBus } from './core/events';
 import { Rng } from './core/rng';
 import { SpatialHash } from './core/spatial-hash';
 import { clamp, Vec2 } from './core/math';
-import { calcDamage, DamageType } from './damage';
+import { calcDamage } from './damage';
 import { createTrajectory, MotionContext, TrajectoryConfig } from './trajectory';
 import {
   createHero,
-  createWeaponInstance,
   heroAttackerSnapshot,
   updateWeapons,
   applyStat,
@@ -15,7 +14,6 @@ import {
   FireCommand,
   xpNeed,
   BASE_ATK,
-  MAX_WEAPONS,
   rollCardChoices,
   CardPolicy,
 } from './hero';
@@ -24,6 +22,7 @@ import {
   BlastSpec,
   CardConfig,
   DamagePool,
+  LaserBeam,
   HeroRuntime,
   LevelConfig,
   MonsterConfig,
@@ -64,11 +63,6 @@ export interface SessionOptions {
   seed: number;
   controller: HeroController;
   cardPolicy: CardPolicy;
-  /**
-   * 武器图鉴（可选）：开启"升级三选一获得新武器"（合成候选）与 grantWeapon 查找。
-   * 缺省 = 关闭（旧行为：卡池里没有新武器候选，回放旧轨迹保持一致）。
-   */
-  weaponPool?: readonly WeaponConfig[];
 }
 
 type DirectorState = 'prepare' | 'spawning' | 'clearing' | 'intermission' | 'done';
@@ -76,8 +70,6 @@ type DirectorState = 'prepare' | 'spawning' | 'clearing' | 'intermission' | 'don
 interface SpawnItem {
   monsterKey: string;
   spawnX: number;
-  /** 从菌毯中孵化出生（docs/08 §2.5）：由 session 在放行时刻从当前虫苔里选点钻出 */
-  fromCreep?: boolean;
 }
 
 /** 带放行时刻的出怪条目（t = 波内相对秒数） */
@@ -201,7 +193,7 @@ class WaveDirector {
               break;
           }
           const at = s * segInterval + (i / Math.max(1, cnt)) * windowSec + this.rng.range(0, 0.4);
-          out.push({ at, item: { monsterKey: spawn.monster, spawnX: x, fromCreep: spawn.fromCreep } });
+          out.push({ at, item: { monsterKey: spawn.monster, spawnX: x } });
         }
       }
     }
@@ -222,33 +214,11 @@ export class GameSession {
   monsterShots: MonsterShot[] = []; // 怪物远程弹（可见弹道，落点结算对墙伤害）
   pools: DamagePool[] = [];
   segments: SegmentField[] = []; // 光束/连线伤害场（docs/07 §4）
+  lasers: LaserBeam[] = []; // 激光能量束（瞬时结算，仅渲染快照，见 doLaser）
   /** 虫苔地块（docs/08）：cellKey = cx*4096+cy（90px 网格）→ 消退时间 */
   creep = new Map<number, number>();
-  /** 菌毯灼烧层（docs/08 §2.2）：仅记录受损格 → 剩余层数（缺失 = 满层）；
-   *  火焰每命中烧 1 层，烧到 0 格毁并被火焰清除；蔓延节拍给受损格回层。 */
-  creepHp = new Map<number, number>();
-  /** 虫苔版本号（任一次增删/烧伤 +1；web 渲染层据此重建离屏缓存） */
-  creepVersion = 0;
-  /** 最近新生虫苔（渲染层蔓延光环用）：坐标 + 发生时刻，短名单自动裁剪 */
-  creepGlow: { x: number; y: number; t: number }[] = [];
-  /** 历史峰值覆盖格数（扩张等级按峰值只升不降） */
-  creepPeak = 0;
-  private creepSpreadAcc = 0;
-  private creepTierCurrent = 1;
   private static readonly CREEP_CELL = 90;
   private static readonly CREEP_LIFE = 60;
-  /** 虫苔蔓延：每 interval 秒每个地块尝试向外扩一格（概率 chance；成功则向随机邻格生长并续期自身） */
-  private static readonly CREEP_SPREAD_INTERVAL = 3;
-  private static readonly CREEP_SPREAD_CHANCE = 0.12;
-  /** 菌毯灼烧层（docs/08 §2.2）：每格 3 层"血量"，火焰每命中一次烧 1 层，烧穿才格毁；
-   *  蔓延节拍会给受损格回 1 层（持续火压制仍能清毯，零星火焰烧不穿）。 */
-  static readonly CREEP_LAYERS = 3;
-  /** 虫巢扩张等级：按历史峰值覆盖格数分档（T1 起始，T2/T3/T4 阈值，docs/08 §2.4） */
-  private static readonly CREEP_TIER_CELLS = [60, 120, 190];
-  /** 各等级全族增益：攻击倍率 / 血量倍率 / 站毯每秒回血（docs/08 §2.4） */
-  private static readonly CREEP_ATK_MUL = [1, 1.1, 1.2, 1.3];
-  private static readonly CREEP_HP_MUL = [1, 1.08, 1.16, 1.25];
-  private static readonly CREEP_REGEN = [10, 16, 24, 36];
 
   wallHp: number;
   wallMaxHp: number; // 可被 B 类卡（加固城墙）提升
@@ -265,7 +235,6 @@ export class GameSession {
 
   private monsterCfgs: ReadonlyMap<string, MonsterConfig>;
   private cardConfigs: CardConfig[];
-  private weaponPool: readonly WeaponConfig[];
   private controller: HeroController;
   private cardPolicy: CardPolicy;
   private director: WaveDirector;
@@ -283,7 +252,6 @@ export class GameSession {
   totalCrits = 0;
   totalKills = 0;
   totalWallDamage = 0;
-  totalSpawned = 0; // 实际出场怪数（含分裂/产卵/护卫，> 配置怪池）
   maxMonsters = 0;
   maxProjectiles = 0;
   cardPickLog: string[] = [];
@@ -296,7 +264,6 @@ export class GameSession {
     this.rng = new Rng(opts.seed);
     this.monsterCfgs = opts.monsterConfigs;
     this.cardConfigs = opts.cardConfigs;
-    this.weaponPool = opts.weaponPool ?? [];
     this.controller = opts.controller;
     this.cardPolicy = opts.cardPolicy;
 
@@ -314,11 +281,6 @@ export class GameSession {
     return this.tick * TICK_DT;
   }
 
-  /** 当前波次序号（0 起；-1 = 准备阶段尚未开波）——供报表/AI 工具读取"玩到第几波"。 */
-  get currentWaveIndex(): number {
-    return this.director.waveIndex;
-  }
-
   /** 推进一个固定逻辑帧。 */
   step(): void {
     if (this.result) return;
@@ -330,10 +292,7 @@ export class GameSession {
 
     // 1) 导演刷怪
     const spawned = this.director.update(this, dt);
-    for (const item of spawned) {
-      if (item.fromCreep && this.trySpawnFromCreep(item)) continue; // 从菌毯中孵化（docs/08 §2.5）
-      this.spawnMonster(item.monsterKey, item.spawnX);
-    }
+    for (const item of spawned) this.spawnMonster(item.monsterKey, item.spawnX);
 
     // 2) 英雄移动（控制器给方向，session 位移 + 钳制在防守区域）
     const move = this.controller.getMoveDir(this);
@@ -357,10 +316,10 @@ export class GameSession {
     }
     updateWeapons(this.hero, this.targetableScratch, this.hash, this.rng, this.fireCommands);
     for (const cmd of this.fireCommands) {
-      if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
+      if (cmd.weapon.cfg.laser) {
+        this.doLaser(cmd);
+      } else if ((cmd.weapon.cfg.chainBase ?? 0) > 0 || cmd.weapon.affixes.chain > 0) {
         this.doLightning(cmd);
-      } else if (cmd.weapon.cfg.beamBase) {
-        this.doBeam(cmd); // 激光炮：非子弹，生成持续光束
       } else {
         this.spawnProjectile(cmd);
         // 连射（A 类卡 burst）：后续子弹间隔 0.12s
@@ -373,8 +332,8 @@ export class GameSession {
       const b = this.burstQueue[i];
       b.timer -= dt;
       if (b.timer <= 0) {
-        if ((b.cmd.weapon.cfg.chainBase ?? 0) > 0 || b.cmd.weapon.affixes.chain > 0) this.doLightning(b.cmd);
-        else if (b.cmd.weapon.cfg.beamBase) this.doBeam(b.cmd);
+        if (b.cmd.weapon.cfg.laser) this.doLaser(b.cmd);
+        else if ((b.cmd.weapon.cfg.chainBase ?? 0) > 0 || b.cmd.weapon.affixes.chain > 0) this.doLightning(b.cmd);
         else this.spawnProjectile(b.cmd);
         this.burstQueue.splice(i, 1);
       }
@@ -400,7 +359,7 @@ export class GameSession {
         this.killProjectile(p);
         continue;
       }
-      if (p.ghost) continue; // 幽灵弹不碰撞（纯范围武器直飞落点）
+      if (p.weapon.cfg.ghost) continue; // 幽灵弹不碰撞（纯范围武器直飞落点）
       this.collideProjectile(p);
     }
 
@@ -412,23 +371,17 @@ export class GameSession {
       if (m.burrowed) {
         // 钻地：免疫 DoT/状态，仅由 updateMonster 地下分支结算（回血/刺墙/冲锋出土）
         updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
-          const d = Math.round(dmg * this.creepAtkMulFor(src)); // 虫巢扩张：全族攻击随等级增强（docs/08 §2.4）
-          this.wallHp = Math.max(0, this.wallHp - d);
-          this.totalWallDamage += d;
-          this.waveWallDamage += d;
-          this.bus.emit('onWallHit', { dmg: d, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+          this.wallHp = Math.max(0, this.wallHp - dmg);
+          this.totalWallDamage += dmg;
+          this.waveWallDamage += dmg;
+          this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
         }, (src) => {
           this.spawnMonsterShot(src);
-        }, (x, y) => this.isCreeped(x, y));
+        }, (x, y) => this.isCreeped(x, y), this.maxSafeHoldY());
         continue;
       }
       this.tickBurns(m, dt);
       if (m.hp <= 0) continue;
-      // 变态（虫后幼虫，docs/08 §2.6）：倒计时结束随机变为池中虫形态（虫后除外）
-      if (m.cfg.morph) {
-        m.morphLeft -= dt;
-        if (m.morphLeft <= 0) this.morphMonster(m);
-      }
       if (m.cfg.creepTrail && m.state === 'march') {
         m.creepTimerLeft -= dt;
         if (m.creepTimerLeft <= 0) {
@@ -437,7 +390,7 @@ export class GameSession {
         }
       }
       if (m.cfg.creepBenefit && this.isCreeped(m.x, m.y)) {
-        m.regenAcc += GameSession.CREEP_REGEN[this.creepTier - 1] * dt;
+        m.regenAcc += 2 * dt;
         while (m.regenAcc >= 1) {
           m.regenAcc -= 1;
           m.hp = Math.min(m.maxHp, m.hp + 1);
@@ -445,35 +398,41 @@ export class GameSession {
       }
       if (this.formationMove(m, dt)) continue; // 巫师编队（变阵排排啃墙）由编队逻辑驱动
       updateMonster(m, dt, now, this.level.wall.height, (dmg, src) => {
-        const d = Math.round(dmg * this.creepAtkMulFor(src)); // 虫巢扩张：全族攻击随等级增强（docs/08 §2.4）
-        this.wallHp = Math.max(0, this.wallHp - d);
-        this.totalWallDamage += d;
-        this.waveWallDamage += d;
-        this.bus.emit('onWallHit', { dmg: d, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+        this.wallHp = Math.max(0, this.wallHp - dmg);
+        this.totalWallDamage += dmg;
+        this.waveWallDamage += dmg;
+        this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
       }, (src) => {
         this.spawnMonsterShot(src);
-      }, (x, y) => this.isCreeped(x, y));
+      }, (x, y) => this.isCreeped(x, y), this.maxSafeHoldY());
     }
 
-    // 5b) 毒爆虫：接触城墙即自爆（伤害统一在 killMonster 单点结算，避免与死亡爆炸重复扣墙）
+    // 5b) 毒爆虫：接触城墙即自爆（城防大额伤害）
     for (const m of this.monsters) {
       if (m.cfg.detonate && m.state === 'assault' && m.hp > 0) {
+        const dmg = m.cfg.detonate.wallDamage;
+        this.wallHp = Math.max(0, this.wallHp - dmg);
+        this.totalWallDamage += dmg;
+        this.waveWallDamage += dmg;
+        this.bus.emit('onExplode', { x: m.x, y: m.y, radius: 70 });
+        this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
         m.hp = 0;
-        this.killMonster(null, m, 'poison'); // 毒爆虫自爆：酸液死法
+        this.killMonster(null, m);
       }
     }
 
-    // 5c) 虫苔：蔓延 → 过期清理 → 虫巢扩张等级结算（docs/08 §2.2/§2.4）
-    this.tickCreep(dt);
+    // 5c) 虫苔过期清理
+    for (const [key, until] of this.creep) {
+      if (until <= now) this.creep.delete(key);
+    }
 
-    // 5c) 定时分裂：分裂菇周期性分出幼体（幼体血条与母体一致、速度更快、不可再分裂）；
-    //     虫后产幼虫（幼虫用自身血量，delay 后变态，docs/08 §2.6）
+    // 5c) 定时分裂：分裂菇周期性分出幼体（幼体血条与母体一致、速度更快、不可再分裂）
     for (const m of this.monsters) {
       if (!m.cfg.splitTimer || m.hp <= 0) continue;
       m.splitTimerLeft -= dt;
       if (m.splitTimerLeft > 0) continue;
       m.splitTimerLeft += m.cfg.splitTimer.interval;
-      this.spawnBaby(m, m.cfg.splitTimer.baby, 1, m.cfg.splitTimer.inheritHp ?? false);
+      this.spawnBaby(m, m.cfg.splitTimer.baby, 1);
     }
 
     // 5d) 巫师编队：领队近墙激活变阵（护卫排一排啃墙、巫师居中）；编队成员由 formationMove 驱动
@@ -527,20 +486,14 @@ export class GameSession {
       s.height = Math.sin(s.t * Math.PI) * (s.kind === 'rock' ? 140 : 40);
     }
 
-    // 6) 落地范围伤害圈（0.5s 节奏跳伤，与灼烧同律；火焰圈：波及钻地怪强制出土 + 烧虫苔；其余圈不伤害钻地）
-    //    跳伤在过期清理之前结算：寿命终点那一跳（覆盖最后一个 0.5s 窗口）照常生效
+    // 6) 落地范围伤害圈（火焰圈：波及钻地怪强制出土 + 烧虫苔；其余圈不伤害钻地）
     for (let i = this.pools.length - 1; i >= 0; i--) {
       const pool = this.pools[i];
-      const tick = now >= pool.nextTick;
-      let dmg = 0;
-      if (tick) {
-        pool.nextTick = now + 0.5;
-        // 火焰圈跟随 0.5s 跳伤节拍烧毯（不是每帧）：灼烧层机制下持续踩圈才烧穿（docs/08 §2.2）
-        if (pool.damageType === 'fire') this.burnCreep(pool.x, pool.y, pool.radius);
-        pool.acc += pool.dps * 0.5;
-        dmg = Math.floor(pool.acc); // 整数结算，零头结转下一跳（总伤 = dps×时长，取整不丢）
-        pool.acc -= dmg;
+      if (now >= pool.until) {
+        this.pools.splice(i, 1);
+        continue;
       }
+      if (pool.damageType === 'fire') this.burnCreep(pool.x, pool.y, pool.radius); // 火焰烧虫苔
       this.hash.queryCircle(pool.x, pool.y, pool.radius, this.scratch);
       for (const mid of this.scratch) {
         const m = this.monsters[mid];
@@ -553,16 +506,17 @@ export class GameSession {
         const dx = m.x - pool.x;
         const dy = m.y - pool.y;
         if (dx * dx + dy * dy > rr * rr) continue;
-        if (!tick || dmg <= 0) continue; // 出土判定逐帧生效，伤害按节奏结算
+        const dmg = Math.max(1, Math.round(pool.dps * dt)); // 整数结算
         m.hp -= dmg;
         this.totalDamage += dmg;
         this.bus.emit('onPoolTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg }); // 弹坑跳字
-        if (m.hp <= 0) this.killMonster(pool.src, m, pool.damageType); // 弹坑击杀带来源弹体：触发"弹片"击杀分裂
+        if (m.hp <= 0) this.killMonster(null, m);
       }
-      if (now >= pool.until) {
-        this.pools.splice(i, 1);
-        continue;
-      }
+    }
+
+    // 6a) 激光：仅清理过期视觉快照（伤害在开火瞬间已结算）
+    for (let i = this.lasers.length - 1; i >= 0; i--) {
+      if (now >= this.lasers[i].until) this.lasers.splice(i, 1);
     }
 
     // 6b) 光束/连线伤害场（线段胶囊体持续 dps；followOwner 的光束锚定英雄朝向）
@@ -587,7 +541,7 @@ export class GameSession {
         const dmg = Math.max(1, Math.round(seg.dps * dt)); // 整数结算
         m.hp -= dmg;
         this.totalDamage += dmg;
-        if (m.hp <= 0) this.killMonster(null, m, seg.damageType); // 光束/连线：死法按光束元素
+        if (m.hp <= 0) this.killMonster(null, m);
       }
     }
 
@@ -595,6 +549,9 @@ export class GameSession {
     while (this.hero.xp >= xpNeed(this.hero.level)) {
       this.hero.xp -= xpNeed(this.hero.level);
       this.hero.level++;
+      // 等级自身成长（docs/01 §3）：每级 ATK +8% —— 让"升级"本身即可感知地变强，
+      // 而不是只靠三选一；与波次 HP 曲线（+7%/波）对齐，避免后期数值崩坏。
+      this.hero.stats.atk *= 1.08;
       this.pendingLevels++;
     }
     if (this.sandboxMode) {
@@ -606,7 +563,7 @@ export class GameSession {
       if (this.externalLevelUps) {
         // 人类输入适配器（Web/Cocos）：暂停内部结算，等外部点选 resolveLevelUp
         if (this.pendingLevelChoices.length === 0) {
-          this.pendingLevelChoices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng, 3, this.weaponPool);
+          this.pendingLevelChoices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng);
           if (this.pendingLevelChoices.length === 0) {
             this.pendingLevels = 0;
             break;
@@ -616,7 +573,7 @@ export class GameSession {
         break;
       }
       this.pendingLevels--;
-      const choices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng, 3, this.weaponPool);
+      const choices = rollCardChoices(this.cardConfigs, this.cardStacks, this.hero.weapons, this.rng);
       if (choices.length === 0) break;
       const picked = this.cardPolicy(choices, this.hero, this.rng, this);
       this.applyPickedCard(picked);
@@ -663,13 +620,15 @@ export class GameSession {
   /** 远程怪发射可见弹道（投矛/投石），落点结算对墙伤害。 */
   private spawnMonsterShot(src: MonsterRuntime): void {
     const isRock = (src.cfg.rangedDist ?? 0) > 400; // 投石车类远距抛石
-    const dist = Math.hypot(src.x - src.x, src.y - this.level.wall.height);
+    const wallH = this.level.wall.height;
+    // 落点固定锁在城墙（投石车"扔炸弹远击城墙"）：不会越过城墙推进，也不会打到墙外
+    const dist = Math.hypot(src.x - src.x, src.y - wallH); // 纯竖直距离
     const speed = isRock ? 420 : 620;
     this.monsterShots.push({
       sx: src.x,
       sy: src.y,
       tx: src.x + this.rng.range(-24, 24),
-      ty: this.level.wall.height,
+      ty: wallH,
       x: src.x,
       y: src.y,
       height: 0,
@@ -683,13 +642,11 @@ export class GameSession {
   private spawnMonster(key: string, spawnX: number, spawnY?: number, skipEscort = false): void {
     const cfg = this.monsterCfgs.get(key);
     if (!cfg) throw new Error(`未知怪物配置: ${key}`);
-    this.totalSpawned++;
     const x = clamp(spawnX, 40, this.level.arena.width - 40);
     const y = spawnY ?? this.rng.range(this.level.spawnBandY[0], this.level.spawnBandY[1]);
-    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 10%×n)；虫族再乘虫巢扩张血量倍率（docs/08 §2.4）
-    const scale = 1 + 0.1 * this.director.currentWave;
-    const tier = this.creepTier;
-    const hp = Math.round(cfg.hp * scale * (cfg.creepBenefit ? GameSession.CREEP_HP_MUL[tier - 1] : 1));
+    // 波次成长（docs/04 §2）：第 n 波 HP × (1 + 7%×n)，与玩家构筑成长曲线对齐（过陡会导致后期数值崩坏）
+    const scale = 1 + 0.07 * this.director.currentWave;
+    const hp = Math.round(cfg.hp * scale);
     this.monsters.push({
       id: this.monsters.length, // tick 内密度数组约定
       cfg,
@@ -706,12 +663,9 @@ export class GameSession {
       splitTimerLeft: cfg.splitTimer ? cfg.splitTimer.interval : 0,
       burrowed: false,
       burrowTimer: 0,
-      surfaceLeft: 0,
-      morphLeft: cfg.morph ? cfg.morph.delay : 0,
-      dead: false,
+      sieged: false,
       creepTimerLeft: cfg.creepTrail ? cfg.creepTrail.interval : 0,
       regenAcc: 0,
-      creepTierApplied: tier,
       groupId: -1,
       formationActive: false,
       slotX: x,
@@ -739,52 +693,12 @@ export class GameSession {
     }
   }
 
-  /**
-   * 激光炮：生成"持续光束"（SegmentField，docs/07 §4）——非子弹、即时命中、逐帧结算。
-   * - 同源旧束在每次齐射首发（index 0）时整体替换：0.4s 重锁不叠加双倍伤害；
-   * - 长度缺省 = 场景对角线：任何朝向都贯穿到界外；
-   * - 余辉：until = now + duration + 持续供能卡加成（熄火后仍灼烧，覆盖散热前段）；
-   * - 扇形分光（count>1）：主束对准目标，附加束左右交替展开（与齐射同一套公式）。
-   */
-  private doBeam(cmd: FireCommand): void {
-    const { weapon, dirX, dirY, index } = cmd;
-    const beam = weapon.cfg.beamBase;
-    if (!beam) return;
-    if (index === 0) {
-      this.segments = this.segments.filter((s) => s.srcWeaponId !== weapon.cfg.id);
-    }
-    let fan = 0;
-    if (index > 0) {
-      const side = index % 2 === 1 ? -1 : 1;
-      const step = Math.ceil(index / 2);
-      fan = side * step * (weapon.cfg.spread ?? 0.1);
-    }
-    const rawLen = Math.hypot(dirX, dirY);
-    const angle = (rawLen > 1e-6 ? Math.atan2(dirY, dirX) : Math.PI / 2) + fan; // 目标与英雄重合时默认向上
-    const length = beam.length ?? Math.hypot(this.level.arena.width, this.level.arena.height); // 贯穿到界外
-    this.segments.push({
-      ax: this.hero.x,
-      ay: this.hero.y,
-      bx: this.hero.x + Math.cos(angle) * length,
-      by: this.hero.y + Math.sin(angle) * length,
-      width: beam.width * weapon.mods.widthMul,
-      dps: cmd.dmg, // 面板伤害即每秒伤害（baseDamage 语义为 DPS）
-      until: this.timeSec + beam.duration + weapon.mods.beamLifeAdd,
-      damageType: weapon.element,
-      followOwner: true,
-      angle,
-      length,
-      srcWeaponId: weapon.cfg.id,
-    });
-  }
-
   private spawnProjectile(cmd: FireCommand): void {
     const { weapon, fromX, fromY, dirX, dirY, speed, range, dmg, index } = cmd;
     // 齐射扇形：index 0 为主弹头——严格对准目标；从第 2 发开始一左一右交替，
     // 每侧按武器间距（spread，默认 0.1rad）均匀展开（+1 左、+2 右、+3 左 2 档、+4 右 2 档……）
     let fan = 0;
-    // 每发独立索敌的抛物弹（exactAim）不做扇形偏移：每发直指自己锁定的目标
-    if (index > 0 && !cmd.exactAim) {
+    if (index > 0) {
       const side = index % 2 === 1 ? -1 : 1;
       const step = Math.ceil(index / 2);
       fan = side * step * (weapon.cfg.spread ?? 0.1);
@@ -857,9 +771,8 @@ export class GameSession {
       homing,
       motionCfg,
       blast,
-      ghost: weapon.cfg.ghost ?? false,
     });
-    this.bus.emit('onShoot', { weaponId: weapon.cfg.id });
+    this.bus.emit('onShoot', {});
   }
 
   private collideProjectile(p: ProjectileRuntime): void {
@@ -870,7 +783,7 @@ export class GameSession {
       if (!p.alive) break;
       const m = this.monsters[mid];
       if (!m || m.hp <= 0 || m.burrowed) continue; // 钻地不可命中（子弹穿过）
-      if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < (p.weapon.cfg.rehitSec ?? 0.5)) continue; // 重击冷却（武器可调：回旋镖往返各一刀）
+      if (p.hitIds.has(m.id) && now - (p.hitIds.get(m.id) ?? 0) < 0.5) continue; // 0.5s 重击冷却
       const rr = p.radius + m.cfg.radius;
       if (distToSegment(m.x, m.y, p.px, p.py, p.x, p.y) > rr) continue;
 
@@ -896,7 +809,7 @@ export class GameSession {
       if (res.isCrit && dealt > 0) this.totalCrits++;
       this.bus.emit('onHit', {
         monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0,
-        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y, damageType: p.damageType,
+        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y,
       });
 
       // C 类词缀：灼烧（火焰骑士，附着定时跳伤不叠加；灼烧免疫怪不可被点燃）/ 冰冻 / 破甲
@@ -906,9 +819,7 @@ export class GameSession {
         if (m.burn && m.burn.dps >= dps) {
           m.burn.until = now + p.riders.burnSec; // 重复命中只刷新时长，不叠加伤害
         } else {
-          // 首次附着/强化替换：沿用既有跳伤节拍，避免强化命中把下一跳无谓推后一个周期
-          const nextTick = m.burn && m.burn.until > now ? m.burn.nextTick : now + 0.5;
-          m.burn = { dps, until: now + p.riders.burnSec, nextTick };
+          m.burn = { dps, until: now + p.riders.burnSec, nextTick: now + 0.5 };
         }
       }
       if (p.damageType === 'frost' && p.riders.slowPct > 0) {
@@ -920,7 +831,7 @@ export class GameSession {
         m.shredUntil = now + 4;
       }
 
-      if (m.hp <= 0) this.killMonster(p, m, p.damageType);
+      if (m.hp <= 0) this.killMonster(p, m);
 
       // 穿透 / 弹射 / 消亡
       if (p.pierceLeft > 0) {
@@ -937,6 +848,140 @@ export class GameSession {
   }
 
   /**
+   * 激光（docs/07 §4 特殊形态）：直线能量束，瞬时结算。
+   *
+   * 语义（策划口径）：
+   *  - 直射：从英雄炮口沿瞄准方向射出；
+   *  - 束内所有怪物都受伤害（一条线穿过去，不是单体）；
+   *  - 能量守恒衰减：起始能量 = 本次单发伤害（cmd.dmg）。按离英雄由近到远依次结算，
+   *    每只怪吸收「当前能量 × transfer」作为本次伤害；实际造成的伤害从能量池扣除，
+   *    能量归零即停止 —— 所以"越近的怪吃到的能量（伤害）越大"，且后面的怪会被前面的挡弱。
+   *  - 装甲/免伤盾会减少实际扣血，从而少消耗能量（肉盾"扛住"了光束，激光能继续往后穿）。
+   */
+  private doLaser(cmd: FireCommand): void {
+    const lz = cmd.weapon.cfg.laser!;
+    const now = this.timeSec;
+    const transfer = Math.max(0.05, Math.min(1, lz.transfer ?? 0.85));
+    const width = lz.width ?? 16;
+    const length = (lz.length ?? 1400) * cmd.weapon.mods.rangeMul;
+    const maxHits = 16;
+
+    // 方向：优先瞄准锁定目标；英雄与目标重合时兜底朝上
+    let dx = cmd.dirX;
+    let dy = cmd.dirY;
+    const dl = Math.hypot(dx, dy);
+    if (dl < 1e-6) {
+      dx = 0;
+      dy = 1;
+    } else {
+      dx /= dl;
+      dy /= dl;
+    }
+    // 齐射扇形（"扩束棱镜"副束）：与子弹一致的左右交替展开，主束严格对准目标
+    if (cmd.index > 0) {
+      const side = cmd.index % 2 === 1 ? -1 : 1;
+      const step = Math.ceil(cmd.index / 2);
+      const fan = side * step * (cmd.weapon.cfg.spread ?? 0.12);
+      const cos = Math.cos(fan);
+      const sin = Math.sin(fan);
+      const ndx = dx * cos - dy * sin;
+      const ndy = dx * sin + dy * cos;
+      dx = ndx;
+      dy = ndy;
+    }
+    const ax = cmd.fromX;
+    const ay = cmd.fromY;
+
+    // 束内候选：投影落在 [0, length]、垂直距离在 (width/2 + 半径) 内
+    const half = width / 2;
+    type Cand = { m: MonsterRuntime; t: number };
+    const cands: Cand[] = [];
+    this.hash.rebuild(this.monsters);
+    for (const m of this.monsters) {
+      if (m.hp <= 0) continue;
+      const rx = m.x - ax;
+      const ry = m.y - ay;
+      const t = rx * dx + ry * dy; // 沿束方向的投影距离
+      if (t < -m.cfg.radius || t > length + m.cfg.radius) continue;
+      const perp = Math.abs(rx * -dy + ry * dx); // 垂直距离
+      if (perp > half + m.cfg.radius) continue;
+      cands.push({ m, t: Math.max(0, t) });
+    }
+    cands.sort((a, b) => a.t - b.t); // 由近到远：先命中的吸收最多能量
+
+    const hits: LaserBeam['hits'] = [];
+    let energy = Math.max(1, cmd.dmg);
+    const energyStart = energy;
+
+    for (const { m, t } of cands) {
+      if (energy <= 0.5 || hits.length >= maxHits) break;
+      if (m.burrowed) {
+        // 激光灼烧地皮：把钻地怪轰出来（与光束/电网一致），但不消耗能量
+        this.forceEmerge(m);
+        continue;
+      }
+      const current = energy;
+      const want = Math.max(1, current * transfer); // 本目标最多吸收当前能量的比例
+      const def = Math.max(0, m.cfg.def - (now < m.shredUntil ? m.shredAmount : 0));
+      const res = calcDamage(
+        heroAttackerSnapshot(this.hero),
+        { def, level: this.director.currentWave + 1 },
+        {
+          skillMul: want / BASE_ATK,
+          damageType: cmd.weapon.element,
+          typeMul: m.cfg.weak?.includes(cmd.weapon.element) ? 1.25 : m.cfg.resist?.includes(cmd.weapon.element) ? 0.75 : 1,
+        },
+        this.rng,
+      );
+      const dealt0 = this.applyDirectHit(m, res.amount); // 免伤盾结算
+      const dealt = this.resolveTransfer(m, dealt0); // 巫师变阵：伤害转嫁
+      m.hp -= dealt;
+      this.totalDamage += dealt;
+      if (res.isCrit && dealt > 0) this.totalCrits++;
+      this.bus.emit('onHit', {
+        monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0,
+        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y,
+      });
+
+      // 元素骑士：激光同样能点燃/冰冻/破甲（与子弹一致）
+      if (cmd.weapon.element === 'fire') this.burnCreep(m.x, m.y, 60);
+      if (cmd.weapon.element === 'fire' && cmd.weapon.riders.burnDpsMul > 0 && !m.cfg.burnImmune) {
+        const dps = want * cmd.weapon.riders.burnDpsMul;
+        if (m.burn && m.burn.dps >= dps) m.burn.until = now + cmd.weapon.riders.burnSec;
+        else m.burn = { dps, until: now + cmd.weapon.riders.burnSec, nextTick: now + 0.5 };
+      }
+      if (cmd.weapon.element === 'frost' && cmd.weapon.riders.slowPct > 0) {
+        m.slowFactor = Math.max(0.35, 1 - cmd.weapon.riders.slowPct);
+        m.slowUntil = now + cmd.weapon.riders.slowSec;
+      }
+      if (cmd.weapon.affixes.shred > 0) {
+        m.shredAmount = 3 * cmd.weapon.affixes.shred;
+        m.shredUntil = now + 4;
+      }
+
+      hits.push({ x: m.x, y: m.y, dmg: dealt, energy: current });
+      // 消耗能量 = 实际造成的伤害（被装甲/护盾抵消的部分不消耗，光束可继续穿）
+      energy -= Math.max(dealt0, 0);
+
+      if (m.hp <= 0) this.killMonster(null, m); // 激光无弹体：不触发击杀分裂
+    }
+
+    // 视觉快照：束长到最后一个命中点（没有命中则打到满射程末端）
+    const lastHit = hits.length > 0 ? hits[hits.length - 1] : null;
+    const bx = lastHit ? lastHit.x : ax + dx * length;
+    const by = lastHit ? lastHit.y : ay + dy * length;
+    this.lasers.push({
+      ax, ay, bx, by,
+      width,
+      energy: energyStart,
+      hits,
+      until: now + (lz.life ?? 0.18),
+      damageType: cmd.weapon.element,
+    });
+    this.bus.emit('onLaser', { hits: hits.length, energy: Math.max(0, energy) });
+  }
+
+  /**
    * 连锁闪电（docs/07 §3）：不是子弹——索敌后从炮口直接劈向目标，
    * 再瞬时跳跃至附近未命中目标（1+chain 击，×0.8/跳），发 onChain{points} 供渲染折线。
    */
@@ -945,10 +990,6 @@ export class GameSession {
     const path: number[][] = [[cmd.fromX, cmd.fromY]];
     const hit = new Set<number>();
     let cur: MonsterRuntime | null = (cmd.target as MonsterRuntime | null) ?? null;
-    if (cur && cur.hp <= 0) {
-      // 多发齐射（如双雷）的第 2+ 发：原目标已被先前的雷击杀——重新索敌，不白打尸体
-      cur = this.nearestMonsterRuntime(cmd.fromX, cmd.fromY, Math.max(1, cmd.range), new Set<number>());
-    }
     let mul = 1;
     // 打击数 = 武器基础（chainBase）+ 连锁长度卡（affixes.chain）
     let strikesLeft = (cmd.weapon.cfg.chainBase ?? 0) + cmd.weapon.affixes.chain;
@@ -970,8 +1011,8 @@ export class GameSession {
       cur.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
-      this.bus.emit('onHit', { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, mitigated: dealt === 0 ? 0 : res.mitigated, x: cur.x, y: cur.y, damageType: 'lightning' });
-      if (cur.hp <= 0) this.killMonster(null, cur, 'lightning'); // 闪电不触发分裂（无弹体）
+      this.bus.emit('onHit', { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, mitigated: dealt === 0 ? 0 : res.mitigated, x: cur.x, y: cur.y });
+      if (cur.hp <= 0) this.killMonster(null, cur); // 闪电不触发分裂（无弹体）
       path.push([cur.x, cur.y]);
       strikesLeft--;
       mul *= 0.8;
@@ -1017,7 +1058,36 @@ export class GameSession {
     return this.nearestMonsterRuntime(x, y, radius, exclude);
   }
 
-  // ---------- 虫苔 / 虫巢扩张（docs/08 §2.2 §2.4 §2.5） ----------
+  // ---------- 虫苔（docs/08） ----------
+  /**
+   * 远程怪停驻点的安全上限：保证任何怪物都不会停在我方所有武器都够不到的"死角"里。
+   * 取所有武器「索敌距离」与「实际飞行/作用距离」的较小者的最小值；英雄最远可站到 defenseRect.yMax，
+   * 故 maxHoldY = yMax + minReach - 余量。
+   */
+  private maxSafeHoldY(): number {
+    const margin = 40;
+    const yMax = this.level.defenseRect.yMax;
+    let minReach = Infinity;
+    for (const w of this.hero.weapons) {
+      const target = w.cfg.projectileRange * w.mods.rangeMul;
+      const rMul = w.mods.rangeMul;
+      let flight = target;
+      if (w.cfg.laser) {
+        flight = (w.cfg.laser.length ?? 1400) * rMul;
+      } else if (w.cfg.motion?.type === 'phased') {
+        const first = w.cfg.motion.phases.find((ph) => ph.until.kind === 'distance');
+        flight = first && first.until.kind === 'distance' ? first.until.value * rMul : target;
+      } else if (w.cfg.motion?.type === 'parabola') {
+        flight = w.cfg.motion.range * rMul;
+      } else {
+        flight = (w.cfg.projectileSpeed * w.mods.projSpeedMul) * (w.cfg.bulletLife ?? 2.5);
+      }
+      minReach = Math.min(minReach, target, flight);
+    }
+    if (!Number.isFinite(minReach)) minReach = 600;
+    return yMax + Math.max(120, minReach - margin);
+  }
+
   private creepKey(x: number, y: number): number {
     const c = GameSession.CREEP_CELL;
     return Math.floor(x / c) * 4096 + Math.floor(y / c);
@@ -1028,125 +1098,11 @@ export class GameSession {
     return until !== undefined && until > this.timeSec;
   }
 
-  /**
-   * 当前虫巢扩张等级（1-4）：按历史峰值覆盖格数分档，只升不降。
-   * 火焰清苔只会拖慢下一档到来的速度，不会让已扩张的等级回退。
-   */
-  get creepTier(): number {
-    let tier = 1;
-    for (const threshold of GameSession.CREEP_TIER_CELLS) {
-      if (this.creepPeak >= threshold) tier++;
-    }
-    return tier;
-  }
-
-  /** 虫族攻击随扩张等级的倍率（非虫族恒为 1）。 */
-  private creepAtkMulFor(m: MonsterRuntime): number {
-    return m.cfg.creepBenefit ? GameSession.CREEP_ATK_MUL[this.creepTier - 1] : 1;
-  }
-
-  /** 每帧虫苔结算：蔓延（每 3s 一次）→ 过期清理 → 峰值统计 → 等级晋升（全族一次性补血）。 */
-  private tickCreep(dt: number): void {
-    const now = this.timeSec;
-    this.creepSpreadAcc += dt;
-    while (this.creepSpreadAcc >= GameSession.CREEP_SPREAD_INTERVAL) {
-      this.creepSpreadAcc -= GameSession.CREEP_SPREAD_INTERVAL;
-      this.spreadCreepOnce();
-    }
-    for (const [key, until] of this.creep) {
-      if (until <= now) {
-        this.creep.delete(key);
-        this.creepHp.delete(key);
-        this.creepVersion++;
-      }
-    }
-    if (this.creep.size > this.creepPeak) this.creepPeak = this.creep.size;
-
-    const tier = this.creepTier;
-    if (tier <= this.creepTierCurrent) return;
-    // 晋升：场上所有虫族按倍率差额补血（新兵在出生时已按当前等级结算过）
-    for (const m of this.monsters) {
-      if (m.hp <= 0 || !m.cfg.creepBenefit || m.creepTierApplied >= tier) continue;
-      const ratio = GameSession.CREEP_HP_MUL[tier - 1] / GameSession.CREEP_HP_MUL[m.creepTierApplied - 1];
-      m.maxHp = Math.round(m.maxHp * ratio);
-      m.hp = Math.min(m.maxHp, Math.round(m.hp * ratio));
-      m.creepTierApplied = tier;
-    }
-    this.creepTierCurrent = tier;
-    this.bus.emit('onCreepTier', { tier, cells: this.creep.size });
-  }
-
-  /** 蔓延结算：每个地块尝试向随机邻格生长（成功则铺新块并续期自身——领土只积不退）。 */
-  private spreadCreepOnce(): void {
-    if (this.creep.size === 0) return;
-    const c = GameSession.CREEP_CELL;
-    const maxCx = Math.floor((this.level.arena.width - 1) / c);
-    const maxCy = Math.floor((this.level.arena.height - 1) / c);
-    const minCy = Math.ceil(this.level.wall.height / c);
-    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-    for (const key of [...this.creep.keys()]) {
-      const cx = Math.floor(key / 4096);
-      const cy = key % 4096;
-      const [dx, dy] = dirs[this.rng.int(0, 3)];
-      const nx = cx + dx;
-      const ny = cy + dy;
-      if (nx >= 0 && nx <= maxCx && ny >= minCy && ny <= maxCy
-        && this.rng.next() < GameSession.CREEP_SPREAD_CHANCE) {
-        this.dropCreep(nx * c + c / 2, ny * c + c / 2);
-      }
-      this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE); // 续期：虫苔是活领土，只被火焰清除
-      this.regrowCreepLayer(key); // 蔓延节拍回层：受损格每节拍恢复 1 层焦痕
-    }
-  }
-
-  /** 恢复 1 层灼烧层（上限满层；满层时清掉记录）。 */
-  private regrowCreepLayer(key: number): void {
-    const layers = this.creepHp.get(key);
-    if (layers === undefined) return; // 已是满层
-    const next = layers + 1;
-    if (next >= GameSession.CREEP_LAYERS) this.creepHp.delete(key);
-    else this.creepHp.set(key, next);
-    this.creepVersion++; // 焦痕视觉变化，重绘缓存
-  }
-
   private dropCreep(x: number, y: number): void {
-    const c = GameSession.CREEP_CELL;
-    const key = this.creepKey(x, y);
-    if (this.creep.has(key)) {
-      this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE); // 已有格：续期
-      this.regrowCreepLayer(key); // 虫后在本格持续铺毯 → 焦痕回层
-      return;
-    }
-    this.creepGlow.push({ x: Math.floor(x / c) * c + c / 2, y: Math.floor(y / c) * c + c / 2, t: this.timeSec });
-    if (this.creepGlow.length > 64) this.creepGlow.shift();
-    this.creep.set(key, this.timeSec + GameSession.CREEP_LIFE);
-    this.creepVersion++;
+    this.creep.set(this.creepKey(x, y), this.timeSec + GameSession.CREEP_LIFE);
   }
 
-  /**
-   * 从菌毯中孵化（docs/08 §2.5）：放行时刻从当前虫苔里随机挑一格钻出（避开城墙贴脸，留一点反应窗口）；
-   * 可用虫苔不足 3 格时返回 false，落回顶部出生带（前期没地盘时与普通波次表现一致）。
-   */
-  private trySpawnFromCreep(item: SpawnItem): boolean {
-    const c = GameSession.CREEP_CELL;
-    const minY = this.level.wall.height + 300;
-    const maxY = this.level.arena.height - 100;
-    const candidates: number[] = [];
-    for (const key of this.creep.keys()) {
-      const y = (key % 4096) * c + c / 2;
-      if (y >= minY && y <= maxY) candidates.push(key);
-    }
-    if (candidates.length < 3) return false;
-    const key = candidates[this.rng.int(0, candidates.length - 1)];
-    const x = clamp(Math.floor(key / 4096) * c + c / 2 + this.rng.range(-25, 25), 40, this.level.arena.width - 40);
-    const y = (key % 4096) * c + c / 2 + this.rng.range(-20, 20);
-    this.spawnMonster(item.monsterKey, x, y);
-    this.bus.emit('onMonsterEmerge', { x, y });
-    return true;
-  }
-
-  /** 火焰灼烧虫苔（docs/08 §2.2）：半径内每格烧掉 1 层灼烧层；烧穿（0 层）才清除该格，
-   *  焦痕随蔓延节拍/虫后铺毯回层——零星火焰烧不穿整片毯，持续火压制才能清出走廊。 */
+  /** 火焰清除虫苔：清除以 (x,y) 半径 r 内所有虫苔格。 */
   private burnCreep(x: number, y: number, r: number): void {
     const c = GameSession.CREEP_CELL;
     const minCx = Math.floor((x - r) / c);
@@ -1155,31 +1111,16 @@ export class GameSession {
     const maxCy = Math.floor((y + r) / c);
     for (let cx = minCx; cx <= maxCx; cx++) {
       for (let cy = minCy; cy <= maxCy; cy++) {
-        const key = cx * 4096 + cy;
-        if (!this.creep.has(key)) continue;
-        const layers = (this.creepHp.get(key) ?? GameSession.CREEP_LAYERS) - 1;
-        if (layers <= 0) {
-          this.creep.delete(key);
-          this.creepHp.delete(key);
-        } else {
-          this.creepHp.set(key, layers);
-        }
-        this.creepVersion++;
+        this.creep.delete(cx * 4096 + cy);
       }
     }
   }
 
-  /** 测试入口：火焰灼烧虫苔（与火焰命中同一条 burnCreep 路径）。 */
-  debugBurnCreep(x: number, y: number, r: number): void {
-    this.burnCreep(x, y, r);
-  }
-
-  /** 强制出土：钻地怪被爆炸/火焰波及立即出土（同样给足上浮窗口，否则一帧后又会缩回地下）。 */
+  /** 强制出土：钻地怪被爆炸/火焰波及立即出土。 */
   private forceEmerge(m: MonsterRuntime): void {
     if (m.burrowed) {
       m.burrowed = false;
       m.burrowTimer = 0;
-      m.surfaceLeft = Math.max(m.surfaceLeft, m.cfg.burrowSiege?.surfaceFor ?? 0);
     }
   }
 
@@ -1225,11 +1166,7 @@ export class GameSession {
       m.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
-      this.bus.emit('onHit', {
-        monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0,
-        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y, damageType: p.damageType,
-      });
-      if (m.hp <= 0) this.killMonster(p, m, p.damageType); // 爆炸击杀带弹体：触发"弹片"击杀分裂
+      if (m.hp <= 0) this.killMonster(null, m);
     }
     if (p.damageType === 'fire') this.burnCreep(p.x, p.y, radius); // 火焰爆炸烧虫苔
     // 持续伤害圈
@@ -1240,9 +1177,6 @@ export class GameSession {
       dps: p.dmg * poolDpsMul,
       until: now + poolSec,
       damageType: p.damageType,
-      nextTick: now + 0.5,
-      acc: 0,
-      src: p, // 弹坑击杀同样可触发"弹片"分裂
     });
     this.bus.emit('onExplode', { x: p.x, y: p.y, radius });
   }
@@ -1310,7 +1244,7 @@ export class GameSession {
     m.attackTimer -= dt;
     if (m.attackTimer <= 0) {
       m.attackTimer += m.cfg.attackInterval;
-      const dmg = Math.round(m.cfg.atk * this.creepAtkMulFor(m));
+      const dmg = m.cfg.atk;
       this.wallHp = Math.max(0, this.wallHp - dmg);
       this.totalWallDamage += dmg;
       this.waveWallDamage += dmg;
@@ -1351,7 +1285,7 @@ export class GameSession {
       m.hp -= dmg;
       this.totalDamage += dmg;
       this.bus.emit('onBurnTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
-      if (m.hp <= 0) this.killMonster(null, m, 'fire'); // 灼烧跳伤致死：火焰死法
+      if (m.hp <= 0) this.killMonster(null, m);
     }
   }
 
@@ -1375,17 +1309,6 @@ export class GameSession {
     this.applyPickedCard(card);
   }
 
-  /**
-   * 获得新武器（升级卡"新武器"候选的落地入口，docs/02 §1：1 把初始 + 升级卡获得）。
-   * 规则：同武器不可重复、武器位上限 MAX_WEAPONS；获得后以 Lv1 立即与现有武器同时开火。
-   */
-  grantWeapon(cfg: WeaponConfig): boolean {
-    if (this.hero.weapons.length >= MAX_WEAPONS) return false;
-    if (this.hero.weapons.some((w) => w.cfg.id === cfg.id)) return false;
-    this.hero.weapons.push(createWeaponInstance(cfg));
-    return true;
-  }
-
   // ---------- 测试入口（tools/lab 与 web/lab.html 用，不影响正常对局） ----------
 
   /** 直接授予一张卡（跳过升级流程），不适用/达上限/id 不存在时返回 false。 */
@@ -1401,14 +1324,6 @@ export class GameSession {
   /** 卡牌适用性（与 rollCardChoices 同一套门控规则；实验室/UI 可查询）。 */
   isCardApplicable(card: CardConfig): boolean {
     const e = card.effect;
-    if ('grantWeapon' in e) {
-      // 新武器候选：未持有 + 武器位未满 + 图鉴中存在
-      return (
-        this.hero.weapons.length < MAX_WEAPONS &&
-        !this.hero.weapons.some((w) => w.cfg.id === e.grantWeapon) &&
-        this.weaponPool.some((c) => c.id === e.grantWeapon)
-      );
-    }
     if ('grantElement' in e) {
       // 元素互斥：武器已被赋予过元素（≠ 默认元素）则不可再赋予；
       // 落雷武器（chainBase）伤害类型硬编码 lightning 且不结算骑士效果，不可赋予
@@ -1473,10 +1388,6 @@ export class GameSession {
       this.bus.emit('onWallHeal', { wallHp: this.wallHp, wallMaxHp: this.wallMaxHp });
     } else if ('form' in e) {
       for (const w of targets) applyForm(w.affixes, e.form, e.value);
-    } else if ('grantWeapon' in e) {
-      // 新武器获得：候选为合成卡（不在 cards.json），从武器图鉴取配置落地
-      const cfg = this.weaponPool.find((c) => c.id === e.grantWeapon);
-      if (cfg) this.grantWeapon(cfg);
     } else if ('grantElement' in e) {
       // 元素赋予：武器改属该元素，并解锁基础骑士效果（火→灼烧，冰→减速）
       for (const w of this.hero.weapons) {
@@ -1506,8 +1417,8 @@ export class GameSession {
     this.bus.emit('onLevelUp', { level: this.hero.level, picked: picked.id });
   }
 
-  /** 分裂幼体：inheritHp = 血条与母体一致（分裂菇）；速度取幼体配置（更快），不可再分裂。 */
-  private spawnBaby(parent: MonsterRuntime, babyKey: string, count: number, inheritHp = true): void {
+  /** 分裂幼体：血条与母体一致（maxHp 覆盖），速度取幼体配置（更快），不可再分裂。 */
+  private spawnBaby(parent: MonsterRuntime, babyKey: string, count: number): void {
     for (let i = 0; i < count; i++) {
       const ang = this.rng.range(0, Math.PI * 2);
       const bx = clamp(parent.x + Math.cos(ang) * (parent.cfg.radius + 20), 40, this.level.arena.width - 40);
@@ -1515,84 +1426,31 @@ export class GameSession {
       const before = this.monsters.length;
       this.spawnMonster(babyKey, bx, by);
       const baby = this.monsters[this.monsters.length - 1];
-      if (this.monsters.length > before && inheritHp) {
+      if (this.monsters.length > before) {
         baby.hp = baby.maxHp = parent.maxHp; // 血条一样
       }
     }
   }
 
-  /**
-   * 变态（docs/08 §2.6 虫后幼虫）：按权重随机变为池中虫形态（虫后除外），
-   * 新形态血量按波次成长 + 虫巢扩张倍率重算（与 spawnMonster 同式），并播出土烟尘。
-   */
-  private morphMonster(m: MonsterRuntime): void {
-    const morph = m.cfg.morph;
-    m.morphLeft = 0;
-    if (!morph || morph.pool.length === 0) return;
-    let total = 0;
-    for (const e of morph.pool) total += e.weight;
-    let roll = this.rng.range(0, total);
-    let pick = morph.pool[morph.pool.length - 1].id;
-    for (const e of morph.pool) {
-      roll -= e.weight;
-      if (roll <= 0) { pick = e.id; break; }
-    }
-    const cfg = this.monsterCfgs.get(pick);
-    if (!cfg) return;
-    const scale = 1 + 0.1 * this.director.currentWave;
-    const tier = this.creepTier;
-    const hp = Math.round(cfg.hp * scale * (cfg.creepBenefit ? GameSession.CREEP_HP_MUL[tier - 1] : 1));
-    m.cfg = cfg;
-    m.hp = hp;
-    m.maxHp = hp;
-    m.state = 'march';
-    m.attackTimer = cfg.attackInterval;
-    m.burrowed = false;
-    m.burrowTimer = 0;
-    m.surfaceLeft = 0;
-    m.splitTimerLeft = cfg.splitTimer ? cfg.splitTimer.interval : 0;
-    m.healTimer = cfg.healAura ? cfg.healAura.interval : 0;
-    m.creepTimerLeft = cfg.creepTrail ? cfg.creepTrail.interval : 0;
-    m.regenAcc = 0;
-    this.bus.emit('onMonsterEmerge', { x: m.x, y: m.y }); // 蜕变烟尘（复用菌毯孵化出土视觉）
-  }
-
-  /**
-   * 击杀结算（单点收口：同 tick 多伤害源只计一次）。
-   * dmgType = 致命一击的伤害类型，仅供渲染层做「死法配色」，不参与任何数值。
-   * onKill 携带位置/半径/形态：渲染层据此播放该怪物专属的死亡表现（docs/06 铁律 5）。
-   */
-  private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime, dmgType?: DamageType): void {
-    if (m.dead) return; // 同 tick 多伤害源（连锁跳数/灼烧/弹坑）守护：击杀只结算一次
-    m.dead = true;
+  private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime): void {
     this.totalKills++;
     this.waveKills++;
     this.hero.xp += m.cfg.xp; // 经验自动吸收（击杀即入账，无拾取环节）
-    this.bus.emit('onKill', {
-      monsterId: m.id,
-      key: m.cfg.id,
-      shape: m.cfg.shape,
-      x: m.x,
-      y: m.y,
-      radius: m.cfg.radius,
-      damageType: dmgType ?? null,
-    });
+    this.bus.emit('onKill', { monsterId: m.id, key: m.cfg.id });
 
     // 死亡分裂：splitter 死亡裂为 N 只幼体（不可再分裂）
     if (m.cfg.deathSplit) {
-      this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count, true);
+      this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
     }
 
-    // 自爆（毒爆虫）：仅贴墙爆炸才伤城墙（docs/08"逼玩家中途拦截"——野外点燃拦截则爆炸波及不到墙）
+    // 自爆（毒爆虫）：死亡同样爆炸（docs/08）
     if (m.cfg.detonate) {
+      const dmg = m.cfg.detonate.wallDamage;
+      this.wallHp = Math.max(0, this.wallHp - dmg);
+      this.totalWallDamage += dmg;
+      this.waveWallDamage += dmg;
       this.bus.emit('onExplode', { x: m.x, y: m.y, radius: 70 });
-      if (m.state === 'assault') {
-        const dmg = Math.round(m.cfg.detonate.wallDamage * this.creepAtkMulFor(m)); // 扩张等级放大自爆（docs/08）
-        this.wallHp = Math.max(0, this.wallHp - dmg);
-        this.totalWallDamage += dmg;
-        this.waveWallDamage += dmg;
-        this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
-      }
+      this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: m.x, y: this.level.wall.height + 26 });
     }
 
     // C 类词缀：击杀分裂（子弹继承追踪/火/冰/破甲，但不继承分裂/弹射/爆破，防指数爆炸）
@@ -1641,7 +1499,6 @@ export class GameSession {
           homing: childHoming,
           motionCfg: childCfg,
           blast: null,
-          ghost: false, // 弹片是可碰撞实体弹（即使母体是幽灵弹）
         });
       }
     }

@@ -22,10 +22,6 @@ export interface WeaponConfig {
   pierce: number;          // 穿透目标数（0=命中即消失）
   /** 穿透伤害衰减率（每穿透一个目标，伤害 ×(1-衰减率)）；破甲每级削减 5%，最低 0（docs/02 §2） */
   pierceFalloff?: number;
-  /** 同一发弹体对同一目标的再次命中冷却（秒，默认 0.5）：回旋镖"往返各一刀"设小值 */
-  rehitSec?: number;
-  /** 多发齐射时每发独立索敌、不重复锁定同一目标（回旋镖多盘；炸弹由抛物线自动启用） */
-  splitAim?: boolean;
   targeting: TargetingRule;
   /** 运动形态（docs/07 弹道行为库）；缺省 straight。homing 可被"追踪弹"词缀附加 */
   trajectory: 'straight' | 'homing';
@@ -37,11 +33,15 @@ export interface WeaponConfig {
   /** ≥1 = 落雷武器：开火不产生子弹，直接以"1+连锁等级"次打击落雷（连锁闪电武器本体） */
   chainBase?: number;
   /**
-   * 光束武器（docs/07 §4）：开火不产生子弹，生成"持续光束"（SegmentField 线段伤害场）。
-   * dps = 面板伤害（baseDamage 语义为每秒伤害）；width 初始宽度；duration 断供后余辉（秒）；
-   * 长度缺省 = 场景对角线（任何朝向贯穿到界外）。逐帧整数结算，同火池/连线：不吃免伤盾、不结算防御与克制。
+   * 激光武器本体（直线能量束）：开火不产生子弹，沿瞄准方向发射一束"能量"。
+   * 束内怪物按离英雄由近到远依次受击，每命中一只按当前能量结算伤害并消耗能量，
+   * 能量衰减到 0 即止 —— 越近的怪吃到的能量（伤害）越大。起始能量 = 开火时的单发伤害（cmd.dmg）。
+   *   transfer：每个目标最多吸收当前能量的比例（0~1，默认 0.85）
+   *   width：束宽（px，默认 16）
+   *   length：束长（px，默认 1400；受射程卡 rangeMul 缩放）
+   *   life：视觉停留时长（秒，默认 0.18；纯表现，伤害在开火瞬间结算）
    */
-  beamBase?: { width: number; duration: number; length?: number };
+  laser?: { transfer?: number; width?: number; length?: number; life?: number };
     /** 子弹视觉形态（docs/06）：dot 光点 / arrow 箭矢 / bomb 抛物弹 / gear 齿轮圆盘 */
   shape?: string;
   /** 齐射扇形间距（rad/档，默认 0.1）；大型弹体（齿轮盘）建议加大以拉开间距 */
@@ -75,9 +75,8 @@ export interface MonsterConfig {
   burnImmune?: boolean;
   /** 治疗光环：每 interval 秒为半径内友军回血 amount（不可超过上限） */
   healAura?: { radius: number; amount: number; interval: number };
-  /** 定时分裂：每 interval 秒在身旁分裂 1 只 splitBaby（幼体不可再分裂）
-   *  inheritHp：幼体血条与母体一致（分裂菇专用；虫后幼虫用自身血量） */
-  splitTimer?: { interval: number; baby: string; inheritHp?: boolean };
+  /** 定时分裂：每 interval 秒在身旁分裂 1 只 splitBaby（幼体不可再分裂） */
+  splitTimer?: { interval: number; baby: string };
   /** 死亡分裂：死亡时分裂为 count 只 splitBaby（splitter 行为） */
   deathSplit?: { count: number; baby: string };
   /** 出场护卫：生成时在自身周围 radius 半径部署 count 只 escort 怪（环形站位） */
@@ -88,21 +87,20 @@ export interface MonsterConfig {
   formationDist?: number;
   /** 钻地回血（爬虫）：血量低于 maxHp×threshold 时钻地 duration 秒，出土回复 maxHp×heal */
   burrowRegen?: { threshold: number; duration: number; heal: number };
-  /** 钻地攻墙（潜伏者）：行进到距墙 dist 时钻地，以 attackInterval/atk 刺击城墙；
-   *  每 surfaceEvery 秒上浮 surfaceFor 秒（可索敌/可击杀，不再永久隐身），爆炸/火焰可提前轰出 */
-  burrowSiege?: { dist: number; surfaceEvery?: number; surfaceFor?: number };
-  /** 变态（虫后幼虫）：delay 秒后随机变为 pool 中某形态（按权重；虫后除外），新形态按波次/扩张重算血量 */
-  morph?: { delay: number; pool: { id: string; weight: number }[] };
+  /**
+   * 钻地攻墙（潜伏者）：行进到距墙 dist 后循环「潜入（持续刺击城墙）↔ 浮出（可被任何武器击杀）」。
+   * 浮出窗口保证任何构筑都打得到它（避免"物理武器永远杀不掉潜伏者"的恶性 bug）。
+   *   buriedSec：每次潜入持续秒数（默认 2.5）
+   *   surfaceSec：每次浮出可被攻击的秒数（默认 2.2）
+   */
+  burrowSiege?: { dist: number; buriedSec?: number; surfaceSec?: number };
   /** 钻地冲锋（雷兽）：每 interval 秒钻地 duration 秒，出现在墙前并重击城墙 dmg */
   burrowCharge?: { interval: number; duration: number; dmg: number };
   /** 自爆（毒爆虫）：接触城墙或死亡时爆炸，造成 wallDamage 城防伤害 */
   detonate?: { wallDamage: number };
   /** 虫族：经过时按 interval 秒铺设虫苔（加速/回血地形，火焰可烧） */
   creepTrail?: { interval: number };
-  /**
-   * 虫族标记（docs/08）：受虫巢扩张等级加成——攻击/血量随扩张等级全族增强；
-   * 站在虫苔上移速 ×1.25 且按等级回血（火焰可烧虫苔压制）。
-   */
+  /** 虫族：站在虫苔上移速 ×1.25 且每秒回 2 血 */
   creepBenefit?: boolean;
   xp: number;              // 经验（击杀自动吸收）
   /** 伤害类型弱点：受到该类型 ×1.25（docs/01 §2.1） */
@@ -120,13 +118,11 @@ export type CardRarity = 'common' | 'rare' | 'epic' | 'legendary';
 // - bullet：武器弹道参数（可声明武器专属）
 // - wall：城墙
 // - form：形态机制词缀（通用）
-// - element / grantElement / boostElement：元素赋予与元素加持（见 CardTarget 门控）
-// - weapon：新武器获得候选（合成卡，不落在 cards.json；见 rollCardChoices grantPool）
-export type CardType = 'passive' | 'bullet' | 'wall' | 'form' | 'element' | 'weapon';
+// - grantElement / boostElement：元素赋予与元素加持（见 CardTarget 门控）
+export type CardType = 'passive' | 'bullet' | 'wall' | 'form' | 'element';
 
 export type PassiveStat = 'atk' | 'aspd' | 'moveSpeed' | 'critChance' | 'critDmg' | 'dmgMul';
-export type BulletStat = 'count' | 'burst' | 'projSpeed' | 'damage' | 'range' | 'pierce' | 'interval'
-  | 'width' | 'beamLife' | 'heatCool'; // 光束武器扩展（宽度/余辉/散热）：其余武器无对应弹体，天然忽略
+export type BulletStat = 'count' | 'burst' | 'projSpeed' | 'damage' | 'range' | 'pierce';
 export type WallStat = 'wallMax' | 'wallRepair';
 export type FormId =
   | 'homing' | 'bounce' | 'split' | 'shred' | 'blast' | 'chain';
@@ -137,8 +133,7 @@ export type CardEffect =
   | { wall: WallStat; op: 'add' | 'mul'; value: number }           // wall
   | { form: FormId; value: number }                                // form 形态词缀
   | { grantElement: DamageType }                                   // 元素赋予（改武器元素 + 基础骑士效果）
-  | { boostElement: DamageType; value: number }                    // 元素加持（需武器已携带该元素）
-  | { grantWeapon: string };                                       // 新武器获得（武器 id；docs/02 §1 多武器）
+  | { boostElement: DamageType; value: number };                   // 元素加持（需武器已携带该元素）
 
 /**
  * 卡牌适用目标（统一门控，docs/03 §2.2）：
@@ -171,8 +166,6 @@ export interface WaveSpawnConfig {
   count: number;
   spawnPoints: number[] | 'all';
   releasePerTick: number;  // 每逻辑帧放出数量（控制进场节奏）
-  /** 从菌毯中孵化出生（docs/08 §2.5）：放行时刻从当前虫苔里选点钻出；无可用虫苔时回落顶部出生带 */
-  fromCreep?: boolean;
 }
 
 export type WaveFormation = 'stream' | 'line' | 'pincer' | 'center';
@@ -220,10 +213,6 @@ export interface WeaponMods {
   damageMul: number;     // 伤害倍率
   rangeMul: number;      // 射程倍率
   pierceAdd: number;     // 穿透 +N（贯穿卡）
-  intervalMul: number;   // 攻击间隔倍率（频率卡：<1 为加速）
-  widthMul: number;      // 光束宽度倍率（扩束透镜；光束武器专用）
-  beamLifeAdd: number;   // 光束余辉加成秒数（持续供能；光束武器专用）
-  heatCoolMul: number;   // 过热冷却倍率（散热鳍片；<1 为缩短）
 }
 
 /** 形态机制词缀（C 类卡，挂在武器实例上，发射时快照到投射物） */
@@ -296,18 +285,13 @@ export interface MonsterRuntime {
   shieldLeft: number;      // 剩余免伤层数（hitShield）
   healTimer: number;       // 治疗光环计时（healAura）
   splitTimerLeft: number;  // 定时分裂计时（splitTimer）
-  /** 钻地状态（docs/08）：不可索敌/不可命中/免疫DoT；burrowTimer 为地下倒计时 */
+  /** 钻地状态（docs/08）：不可索敌/不可命中/免疫DoT；burrowTimer 为当前阶段倒计时 */
   burrowed: boolean;
   burrowTimer: number;
-  /** 上浮剩余时间（>0 期间不重新入地；潜伏者周期上浮用） */
-  surfaceLeft: number;
-  /** 变态倒计时（虫后幼虫；0 = 不变态/已完成） */
-  morphLeft: number;
-  /** 本 tick 已结算击杀（防止连锁/DoT/弹坑等多伤害源同 tick 重复计数） */
-  dead: boolean;
+  /** 潜伏者是否已抵达阵位进入「潜入/浮出」循环（true 后不再前进） */
+  sieged: boolean;
   creepTimerLeft: number;  // 虫苔铺设计时（creepTrail）
   regenAcc: number;        // 虫苔回血整数累计
-  creepTierApplied: number; // 已按此虫巢扩张等级应用血量加成（升级时按差值补血）
   /** 队籍：护卫=领队巫师运行时 id；无编队为 -1（变阵系统用） */
   groupId: number;
   /** 领队：近墙变阵是否激活（护卫排一排啃墙、巫师居中） */
@@ -360,8 +344,6 @@ export interface ProjectileRuntime {
   homing: boolean;        // 发射时是否追踪（重定向/衍生弹必须继承，否则弹射/分裂会让追踪失效）
   motionCfg: TrajectoryConfig; // 运动配置快照（弹射/分裂重定向时按配置重建，保证词缀继承）
   blast: BlastSpec | null;
-  /** 幽灵弹快照：不碰撞直飞落点（纯范围武器）。分裂衍生的弹片强制为 false——弹片是可碰撞实体弹 */
-  ghost: boolean;
 }
 
 /** 落地范围伤害圈（持续 DoT 区域） */
@@ -372,12 +354,6 @@ export interface DamagePool {
   dps: number;
   until: number;
   damageType: DamageType;
-  /** 下一次跳伤时刻（0.5s 节奏，与灼烧同律——逐帧结算会让取整保底失真且飘字刷屏） */
-  nextTick: number;
-  /** 伤害零头结转：每跳 floor(dps×0.5)、余数入 acc，保证池总伤贴合 dps×时长（整数伤害无小数） */
-  acc: number;
-  /** 来源弹体（弹坑击杀触发"弹片"击杀分裂用；衍生弹 blast 已清零，不会连锁爆炸） */
-  src: ProjectileRuntime | null;
 }
 
 /**
@@ -387,8 +363,6 @@ export interface DamagePool {
  * 否则两端固定（电网连线/多点固定连接）。
  */
 export interface SegmentField {
-  /** 来源武器 id（光束武器用：同源旧束在重锁时整体替换，避免叠加双倍伤害） */
-  srcWeaponId?: string;
   ax: number;
   ay: number;
   bx: number;
@@ -400,4 +374,24 @@ export interface SegmentField {
   followOwner?: boolean;
   angle?: number;
   length?: number;
+}
+
+/**
+ * 激光能量束（visual snapshot，docs/07 §4 特殊形态）：
+ * 伤害在开火瞬间一次性结算，本结构只承载渲染所需的几何与能量信息（纯表现，不参与逻辑）。
+ * hits 记录每个被击中怪物在束上的位置与结算伤害，供渲染层做衰减亮度/命中爆点。
+ */
+export interface LaserBeam {
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  width: number;
+  /** 起始能量（= 单发伤害），用于渲染能量衰减渐变 */
+  energy: number;
+  /** 命中点（按离英雄由近到远） */
+  hits: { x: number; y: number; dmg: number; energy: number }[];
+  /** 视觉存活到的时刻（秒，session.timeSec 基准） */
+  until: number;
+  damageType: DamageType;
 }
