@@ -8,6 +8,7 @@
  * 同屏 150 怪 + 满屏弹幕时也不会掉帧。
  */
 import { glowSprite, rgba, hash01 } from './style';
+import { CHUNK_TO_KIND, lookOf, SIZE_SCALE } from './identity';
 
 export type ParticleKind = 'spark' | 'shard' | 'ember' | 'smoke' | 'dust' | 'star';
 
@@ -238,8 +239,131 @@ export class EffectsLayer {
     });
   }
 
-  /** 爆炸：火球闪 + 冲击环 + 火星 + 烟。 */
-  explosion(x: number, y: number, radius: number, coreColor = '#FFD54F', edgeColor = '#FF5A3C'): void {
+  /**
+   * 身份化击杀（identity.ts 的 death 配方 → 本层粒子/环/电弧）。
+   * 与通用 deathBurst 的区别：碎块材质、数量、速度、颜色、冲击环、尘烟、专属符号
+   * 全部按「怪物 id」取配方，所以 19 只怪死法各不相同；未知 id 回落通用碎裂。
+   * 只做观感，不读逻辑，不影响确定性。
+   */
+  deathFor(key: string | undefined, shape: string | undefined, x: number, y: number, radius: number, fallbackColor: string): void {
+    const look = lookOf(key, shape);
+    // 未登记 id/shape → 沿用通用碎裂（"好 > 无 > 有"）
+    if (!key && !shape) {
+      this.deathBurst(x, y, fallbackColor, radius);
+      return;
+    }
+    const r = look.death;
+    const scale = SIZE_SCALE[look.size] * Math.min(1.7, Math.max(0.75, radius / 20));
+    const isSmall = look.size === 'small';
+
+    // 1) 碎块：材质 → 本层的粒子 kind
+    const chunkKind = CHUNK_TO_KIND[r.chunks];
+    const count = Math.min(28, Math.round(r.count * (scale > 1.3 ? 1.3 : 1)));
+    for (let i = 0; i < count; i++) {
+      const a = this.range(0, Math.PI * 2);
+      const sp = this.range(r.speed[0], r.speed[1]) * (0.7 + 0.35 * scale);
+      this.add({
+        kind: chunkKind,
+        x: x + this.range(-radius * 0.3, radius * 0.3),
+        y: y + this.range(-radius * 0.3, radius * 0.3),
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        grav: -r.gravity,
+        drag: r.chunks === 'goo' || r.chunks === 'bubble' ? 1.6 : 0.8,
+        life: this.range(0.34, 0.34 + 0.5),
+        size: this.range(r.size[0], r.size[1]) * Math.min(1.6, scale),
+        color: r.color2 && this.rand() < 0.4 ? r.color2 : r.color,
+        rot: a,
+        spin: r.spin ? this.range(-9, 9) : this.range(-2, 2),
+        shrink: 1,
+      });
+    }
+
+    // 2) 冲击环（击杀重音）
+    if (r.ring) {
+      this.rings.push({
+        x, y, r0: radius * 0.4, r1: r.ring.r1 * scale,
+        life: r.ring.dur, maxLife: r.ring.dur, color: r.ring.color, width: r.ring.width, filled: false,
+      });
+    }
+    // 3) 地面残留：本层无 decal 通道，用一圈低矮尘烟/斑痕近似
+    if (r.decal) {
+      for (let i = 0; i < 5; i++) {
+        const a = this.range(0, Math.PI * 2);
+        this.add({
+          kind: 'dust',
+          x: x + Math.cos(a) * r.decal.radius * scale * 0.5,
+          y: y + Math.sin(a) * r.decal.radius * scale * 0.25,
+          vx: Math.cos(a) * 12,
+          vy: Math.sin(a) * 10,
+          grav: -4,
+          drag: 2.4,
+          life: 0.9,
+          size: r.decal.radius * scale * 0.5,
+          color: r.decal.color,
+          rot: a,
+          spin: 0,
+          shrink: 1,
+        });
+      }
+    }
+    // 4) 尘烟
+    if (r.smoke) {
+      const n = Math.round(r.smoke.count * Math.min(1.6, scale));
+      for (let i = 0; i < n; i++) {
+        const a = this.range(0, Math.PI * 2);
+        this.add({
+          kind: 'smoke',
+          x: x + this.range(-radius * 0.4, radius * 0.4),
+          y: y + this.range(-radius * 0.4, radius * 0.4),
+          vx: Math.cos(a) * this.range(10, 34),
+          vy: Math.sin(a) * this.range(10, 34) + 10,
+          grav: 0,
+          drag: 1.4,
+          life: this.range(0.5, 0.95),
+          size: (9 + this.rand() * 12) * Math.min(1.5, scale),
+          color: r.smoke.color,
+          rot: 0,
+          spin: 0,
+          shrink: 0,
+        });
+      }
+    }
+    // 5) 专属符号（近似映射到本层能力：斩痕/地刺/掉落→火花或碎片；魂火→上升星点；电弧→bolt；碎裂→环；裂纹→尘）
+    if (r.glyphs) {
+      for (const g of r.glyphs) {
+        for (let i = 0; i < g.count; i++) {
+          const a = this.range(0, Math.PI * 2);
+          const sz = this.range(g.size[0], g.size[1]) * Math.min(1.5, scale);
+          if (g.kind === 'arc') {
+            // 电弧：一小段折线
+            const ex = x + Math.cos(a) * 40;
+            const ey = y + Math.sin(a) * 40;
+            const mx = (x + ex) / 2 + this.range(-10, 10);
+            const my = (y + ey) / 2 + this.range(-10, 10);
+            if (this.bolts.length < MAX_BOLTS) {
+              this.bolts.push({ pts: [[x, y], [mx, my], [ex, ey]], life: g.dur, maxLife: g.dur, color: g.color, width: 2.5 });
+            }
+          } else if (g.kind === 'wisp') {
+            this.add({ kind: 'star', x, y, vx: this.range(-20, 20), vy: this.range(40, 90), grav: -20, drag: 1.0, life: g.dur, size: sz * 0.5, color: g.color, rot: 0.6, spin: 2, shrink: 1 });
+          } else if (g.kind === 'shatter') {
+            this.rings.push({ x, y, r0: sz * 1.5, r1: sz * 4, life: g.dur, maxLife: g.dur, color: g.color, width: 2, filled: false });
+          } else if (g.kind === 'crack') {
+            this.add({ kind: 'dust', x: x + Math.cos(a) * sz, y: y + Math.sin(a) * sz * 0.5, vx: Math.cos(a) * 30, vy: Math.sin(a) * 20, grav: -30, drag: 2, life: g.dur, size: sz * 0.6, color: g.color, rot: a, spin: 0, shrink: 1 });
+          } else {
+            // slash / drop / spike / split：碎片或火星向外飞
+            this.add({ kind: g.kind === 'split' ? 'star' : 'shard', x, y, vx: Math.cos(a) * this.range(90, 200), vy: Math.sin(a) * this.range(90, 200), grav: -260, drag: 1.2, life: g.dur, size: sz * 0.5, color: g.color, rot: a, spin: this.range(-8, 8), shrink: 1 });
+          }
+        }
+      }
+    }
+
+    // 6) 白闪收尾（打击确认；小怪更快）
+    this.add({ kind: 'star', x, y, vx: 0, vy: 0, grav: 0, drag: 0, life: isSmall ? 0.1 : 0.13, size: radius * 1.4, color: '#FFFFFF', rot: 0.6, spin: 3, shrink: 1 });
+    if (look.size === 'boss' || look.size === 'large') this.shake(isSmall ? 0 : look.size === 'boss' ? 7 : 3, 0.2);
+  }
+
+  /** 爆炸：火球闪 + 冲击环 + 火星 + 烟。 */  explosion(x: number, y: number, radius: number, coreColor = '#FFD54F', edgeColor = '#FF5A3C'): void {
     this.rings.push({
       x, y, r0: radius * 0.2, r1: radius * 1.15,
       life: 0.34, maxLife: 0.34, color: coreColor, width: 7, filled: true,

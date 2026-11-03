@@ -110,7 +110,8 @@ export class SceneRenderer {
       const m = session.monsters.find((x) => x.id === monsterId);
       if (!m) return;
       const color = monsterColorByKey(key);
-      eff.deathBurst(m.x, m.y, color, m.cfg.radius);
+      // 身份化死法：按怪物 id 取 identity.ts 的配方（材质/速度/环/尘烟/专属符号各不相同）
+      eff.deathFor(key, m.cfg.shape, m.x, m.y, m.cfg.radius, color);
       if (m.cfg.shape === 'boss') {
         eff.explosion(m.x, m.y, m.cfg.radius * 1.6, '#B537F2', '#FF3D71');
         eff.shake(9, 0.4);

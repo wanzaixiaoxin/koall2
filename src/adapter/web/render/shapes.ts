@@ -1944,6 +1944,8 @@ export function drawProjectile(
     case 'dot':
     default: {
       // 光弹：外辉光 + 芯线拖尾 + 白色弹芯（战场上最亮的一类，符合层级铁律）
+      // 武器身份：符文步枪的弹仍是 dot，但加一圈旋转符文菱环，与落雷衍生弹/其它光弹区隔。
+      const isRune = p.weapon.cfg.id === 'gun_rifle';
       ctx.strokeStyle = rgba(color, 0.18);
       ctx.lineWidth = 6;
       ctx.beginPath();
@@ -1965,6 +1967,32 @@ export function drawProjectile(
         ctx.fill();
       }
       drawGlow(ctx, p.x, p.y, p.radius * 4.6, color, 0.55);
+      if (isRune) {
+        // 符文弹：菱形弹体 + 旋转符文环
+        const ang = Math.atan2(uy, ux);
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(ang);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(p.radius * 2.1, 0);
+        ctx.lineTo(0, p.radius * 1.2);
+        ctx.lineTo(-p.radius * 2.1, 0);
+        ctx.lineTo(0, -p.radius * 1.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = rgba(light, 0.85);
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 2.3, t * 6, t * 6 + 2.1);
+        ctx.stroke();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        break;
+      }
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);

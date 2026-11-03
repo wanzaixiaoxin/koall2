@@ -2212,6 +2212,466 @@
     return s - Math.floor(s);
   }
 
+  // src/adapter/web/render/identity.ts
+  var MONSTER_LOOKS = {
+    slime: {
+      silhouette: "slime",
+      size: "normal",
+      accent: "#FFB199",
+      core: "#2A0F0C",
+      note: "\u6A61\u76AE\u679C\u51BB\uFF1A\u538B\u6241\u5F39\u8DF3\u524D\u8FDB\uFF0C\u6B7B\u4EA1\u644A\u6210\u4E00\u6EE9\u80F6\u8D28",
+      death: {
+        chunks: "goo",
+        count: 9,
+        speed: [70, 190],
+        size: [3, 6.5],
+        gravity: 250,
+        spin: false,
+        color: "#FF6B57",
+        color2: "#FFB199",
+        ring: { r1: 34, color: "#FF6B57", width: 3, dur: 0.3 },
+        decal: { color: "#FF6B57", radius: 30, dur: 3.6 }
+      }
+    },
+    wolf: {
+      silhouette: "wolf",
+      size: "normal",
+      accent: "#FFD9B0",
+      core: "#FF3D71",
+      note: "\u75BE\u884C\u730E\u624B\uFF1A\u51B2\u523A\u62C9\u4F38 + \u524D\u6447\u9884\u8B66\u7EBF\uFF0C\u6B7B\u4EA1\u70B8\u6210\u6BDB\u56E2\u4E0E\u4E24\u9053\u65A9\u75D5",
+      death: {
+        chunks: "shard",
+        count: 10,
+        speed: [130, 280],
+        size: [3, 6],
+        gravity: 240,
+        spin: true,
+        color: "#FF8357",
+        color2: "#FFD9B0",
+        ring: { r1: 40, color: "#FF8357", width: 2.5, dur: 0.26 },
+        glyphs: [{ kind: "slash", count: 2, color: "#FFE7CE", size: [26, 34], speed: [0, 0], dur: 0.34 }]
+      }
+    },
+    thrower: {
+      silhouette: "goblin",
+      size: "normal",
+      accent: "#FFC2A0",
+      core: "#2A0F0C",
+      note: "\u6295\u77DB\u624B\uFF1A\u68AF\u5F62\u8EAB\u677F + \u957F\u77DB\uFF0C\u63B7\u77DB\u65F6\u540E\u4EF0\uFF1B\u6B7B\u4EA1\u957F\u77DB\u8131\u624B\u63D2\u5730",
+      death: {
+        chunks: "splinter",
+        count: 8,
+        speed: [90, 220],
+        size: [2.5, 5],
+        gravity: 220,
+        spin: true,
+        color: "#FF5E7A",
+        color2: "#FFC2A0",
+        glyphs: [{ kind: "drop", count: 1, color: "#FFC2A0", size: [30, 34], speed: [40, 70], dur: 1.1 }]
+      }
+    },
+    catapult: {
+      silhouette: "catapult",
+      size: "large",
+      accent: "#C9A26B",
+      core: "#6B4A2F",
+      note: "\u6295\u77F3\u8F66\uFF1A\u6728\u67B6 + \u53CC\u8F6E + \u6295\u81C2\uFF0C\u8F6E\u5B50\u5E38\u8F6C\uFF1B\u6B7B\u4EA1\u6728\u5C51\u56DB\u6E85\u3001\u8F6E\u5B50\u6EDA\u8D70",
+      death: {
+        chunks: "splinter",
+        count: 14,
+        speed: [110, 260],
+        size: [3, 7],
+        gravity: 260,
+        spin: true,
+        color: "#A9714B",
+        color2: "#C9A26B",
+        ring: { r1: 52, color: "#C9A26B", width: 3, dur: 0.34 },
+        smoke: { color: "#8A6B4A", count: 5 },
+        glyphs: [{ kind: "drop", count: 2, color: "#8B5E3C", size: [13, 16], speed: [50, 90], dur: 1.3 }]
+      }
+    },
+    charger: {
+      silhouette: "charger",
+      size: "small",
+      accent: "#FFEBC8",
+      core: "#FF3D71",
+      note: "\u51B2\u950B\u9F20\uFF1A\u5168\u6E38\u620F\u6700\u5FEB\u7684\u52A8\u80FD\u68AD\uFF0C\u6B7B\u4EA1\u53EA\u5269\u4E00\u9053\u901F\u5EA6\u7EBF\u4E0E\u5239\u8F66\u75D5",
+      death: {
+        chunks: "spark",
+        count: 12,
+        speed: [180, 380],
+        size: [2, 4],
+        gravity: 0,
+        spin: false,
+        color: "#FFA25E",
+        color2: "#FFEBC8",
+        ring: { r1: 44, color: "#FFA25E", width: 2, dur: 0.2 },
+        glyphs: [
+          { kind: "slash", count: 3, color: "#FFEBC8", size: [22, 30], speed: [0, 0], dur: 0.26 },
+          { kind: "crack", count: 2, color: "#E0B080", size: [24, 34], speed: [20, 40], dur: 0.7 }
+        ]
+      }
+    },
+    bulwark: {
+      silhouette: "armor",
+      size: "large",
+      accent: "#C7CEE6",
+      core: "#0B0C1D",
+      note: "\u5CA9\u7532\u517D\uFF1A\u516D\u8FB9\u5F62\u91CD\u7532 + \u514D\u4F24\u76FE\uFF0C\u6B7B\u4EA1\u6574\u7247\u7532\u58F3\u5D29\u89E3\u6210\u77F3\u7247",
+      death: {
+        chunks: "plate",
+        count: 11,
+        speed: [90, 220],
+        size: [5, 10],
+        gravity: 280,
+        spin: true,
+        color: "#8A93B8",
+        color2: "#C7CEE6",
+        ring: { r1: 48, color: "#C7CEE6", width: 4, dur: 0.4 },
+        smoke: { color: "#6E7796", count: 4 },
+        decal: { color: "#6E7796", radius: 26, dur: 2.2 }
+      }
+    },
+    bulwark_king: {
+      silhouette: "king",
+      size: "boss",
+      accent: "#FFD54F",
+      core: "#0B0C1D",
+      note: "\u5CA9\u7532\u9B54\u738B\uFF1A\u540C\u65CF\u91CD\u7532\u7684\u9EC4\u91D1\u51A0\u7248\u672C\uFF0C\u53CC\u5C42\u8F6E\u5ED3\u8109\u51B2\uFF1B\u6B7B\u4EA1\u51A0\u788E\u3001\u77F3\u7532\u6210\u5C71",
+      death: {
+        chunks: "plate",
+        count: 18,
+        speed: [110, 300],
+        size: [6, 12],
+        gravity: 300,
+        spin: true,
+        color: "#8A93B8",
+        color2: "#FFD54F",
+        weight: 1.35,
+        ring: { r1: 78, color: "#FFD54F", width: 5, dur: 0.55 },
+        smoke: { color: "#6E7796", count: 7 },
+        decal: { color: "#6E7796", radius: 40, dur: 3 },
+        glyphs: [{ kind: "drop", count: 3, color: "#FFD54F", size: [8, 12], speed: [90, 150], dur: 1.4 }]
+      }
+    },
+    boss_treant: {
+      silhouette: "treant",
+      size: "boss",
+      accent: "#D9A6FF",
+      core: "#B537F2",
+      note: "\u8150\u5316\u6811\u4EBA\uFF1A\u5D4C\u5957\u5C16\u523A\u73AF + \u65CB\u8F6C\u5916\u73AF\uFF1B\u6B7B\u4EA1\u662F\u584C\u9677\u2014\u2014\u5916\u73AF\u788E\u88C2\u3001\u6728\u5C51\u6210\u96E8",
+      death: {
+        chunks: "shard",
+        count: 22,
+        speed: [80, 240],
+        size: [5, 12],
+        gravity: 260,
+        spin: true,
+        color: "#6B4A2F",
+        color2: "#B537F2",
+        weight: 1.7,
+        ring: { r1: 120, color: "#B537F2", width: 6, dur: 0.8 },
+        smoke: { color: "#5E3B6E", count: 8 },
+        decal: { color: "#B537F2", radius: 54, dur: 4 },
+        glyphs: [
+          { kind: "shatter", count: 10, color: "#D9A6FF", size: [10, 18], speed: [60, 120], dur: 1.5 },
+          { kind: "wisp", count: 8, color: "#D9A6FF", size: [2, 4], speed: [30, 70], dur: 1.2 },
+          { kind: "crack", count: 4, color: "#6B4A2F", size: [40, 70], speed: [30, 60], dur: 1.2 }
+        ]
+      }
+    },
+    split_shroom: {
+      silhouette: "mushroom",
+      size: "normal",
+      accent: "#FFD1E3",
+      core: "#3A1024",
+      note: "\u5206\u88C2\u83C7\uFF1A\u4F1E\u76D6 + \u6591\u70B9\uFF1B\u6B7B\u4EA1\u5D29\u6210\u5B62\u5B50\u4E91\uFF0C\u5E76\u88C2\u51FA\u4E24\u53EA\u5E7C\u4F53\uFF08\u5BF9\u5E94 deathSplit\uFF09",
+      death: {
+        chunks: "goo",
+        count: 10,
+        speed: [80, 200],
+        size: [3, 6],
+        gravity: 200,
+        spin: false,
+        color: "#FF6B9C",
+        color2: "#FFD1E3",
+        ring: { r1: 42, color: "#FF6B9C", width: 3, dur: 0.3 },
+        smoke: { color: "#FF9DC0", count: 5 },
+        decal: { color: "#FF6B9C", radius: 28, dur: 2.6 },
+        glyphs: [{ kind: "split", count: 2, color: "#FF9DC0", size: [9, 12], speed: [70, 110], dur: 0.85 }]
+      }
+    },
+    shroom_baby: {
+      silhouette: "mushroom",
+      size: "small",
+      accent: "#FFC9DE",
+      core: "#3A1024",
+      note: "\u5206\u88C2\u83C7\u5E7C\u4F53\uFF1A\u5C0F\u4E00\u53F7\u3001\u65E0\u6591\u70B9\uFF1B\u6B7B\u4EA1\u53EA\u6709\u4E00\u5C0F\u56E2\u5B62\u5B50\uFF0C\u4E0D\u518D\u5206\u88C2",
+      death: {
+        chunks: "goo",
+        count: 6,
+        speed: [60, 150],
+        size: [2, 4],
+        gravity: 190,
+        spin: false,
+        color: "#FF6B9C",
+        color2: "#FFC9DE",
+        smoke: { color: "#FFB3CC", count: 3 },
+        decal: { color: "#FF6B9C", radius: 16, dur: 1.8 }
+      }
+    },
+    bat: {
+      silhouette: "bat",
+      size: "small",
+      accent: "#FFB3E1",
+      core: "#2A0F20",
+      note: "\u591C\u884C\u8759\u8760\uFF1A\u53CC\u7FFC\u6251\u52A8 + \u86C7\u5F62\u8F68\u8FF9\uFF1B\u6B7B\u4EA1\u7FFC\u819C\u788E\u7247\u4E0A\u98D8\u3001\u56DE\u58F0\u73AF\u6269\u6563",
+      death: {
+        chunks: "feather",
+        count: 10,
+        speed: [90, 240],
+        size: [3, 6],
+        gravity: -40,
+        spin: true,
+        color: "#FF7EC7",
+        color2: "#FFB3E1",
+        ring: { r1: 38, color: "#FF7EC7", width: 2, dur: 0.4 },
+        glyphs: [
+          { kind: "wisp", count: 3, color: "#FFB3E1", size: [2, 3], speed: [30, 60], dur: 0.9 },
+          { kind: "arc", count: 2, color: "#FF7EC7", size: [14, 20], speed: [0, 0], dur: 0.3 }
+        ]
+      }
+    },
+    shaman: {
+      silhouette: "shaman",
+      size: "normal",
+      accent: "#F5F5FA",
+      core: "#B388FF",
+      note: "\u5730\u7CBE\u5DEB\u5E08\uFF1A\u83F1\u5F62\u6CD5\u888D + \u60AC\u6D6E\u6CD5\u7403\uFF1B\u6B7B\u4EA1\u6CD5\u888D\u584C\u843D\u3001\u9B42\u706B\u4E0A\u5347\u3001\u5730\u9762\u7559\u4E0B\u7B26\u6587\u73AF",
+      death: {
+        chunks: "shard",
+        count: 9,
+        speed: [70, 200],
+        size: [3, 6],
+        gravity: 210,
+        spin: true,
+        color: "#B388FF",
+        color2: "#F5F5FA",
+        ring: { r1: 46, color: "#B388FF", width: 3, dur: 0.5 },
+        glyphs: [
+          { kind: "wisp", count: 5, color: "#D9C2FF", size: [2.5, 4.5], speed: [40, 90], dur: 1.3 },
+          { kind: "shatter", count: 4, color: "#B388FF", size: [10, 16], speed: [30, 60], dur: 0.9 }
+        ]
+      }
+    },
+    zerg_ling: {
+      silhouette: "zergling",
+      size: "small",
+      accent: "#C5E1A5",
+      core: "#1A2410",
+      note: "\u5E7C\u866B\u7FA4\uFF1A\u4F4E\u4F0F\u8EAB\u4F4D + \u524D\u80A2\u9570\u5200\uFF0C\u8D34\u5730\u75BE\u8DD1\uFF1B\u6B7B\u4EA1\u9178\u6D46\u56DB\u6E85",
+      death: {
+        chunks: "spark",
+        count: 8,
+        speed: [120, 260],
+        size: [2, 4],
+        gravity: 160,
+        spin: false,
+        color: "#9CCC65",
+        color2: "#C5E1A5",
+        decal: { color: "#7CB342", radius: 16, dur: 1.6 },
+        glyphs: [{ kind: "slash", count: 2, color: "#C5E1A5", size: [16, 22], speed: [0, 0], dur: 0.24 }]
+      }
+    },
+    zerg_roach: {
+      silhouette: "roach",
+      size: "normal",
+      accent: "#AED581",
+      core: "#1A2410",
+      note: "\u722C\u866B\uFF1A\u692D\u5706\u7532\u58F3 + \u80CC\u810A\u5C16\u523A\uFF0C\u6B8B\u8840\u94BB\u5730\u56DE\u8840\uFF1B\u6B7B\u4EA1\u7532\u58F3\u5BF9\u534A\u88C2\u5F00",
+      death: {
+        chunks: "plate",
+        count: 9,
+        speed: [80, 200],
+        size: [4, 8],
+        gravity: 240,
+        spin: true,
+        color: "#7CB342",
+        color2: "#AED581",
+        ring: { r1: 44, color: "#7CB342", width: 3, dur: 0.34 },
+        smoke: { color: "#4A5B2A", count: 3 },
+        decal: { color: "#558B2F", radius: 24, dur: 2 }
+      }
+    },
+    zerg_lurker: {
+      silhouette: "lurker",
+      size: "normal",
+      accent: "#8BC34A",
+      core: "#1A2410",
+      note: "\u6F5C\u4F0F\u8005\uFF1A\u7AD6\u7ACB\u5C16\u523A + \u56DB\u4FA7\u5229\u722A\uFF0C\u94BB\u5730\u65F6\u53EA\u5269\u571F\u5305\u865A\u7EBF\uFF1B\u6B7B\u4EA1\u5730\u523A\u70B8\u51FA\u3001\u571F\u5757\u7FFB\u8D77",
+      death: {
+        chunks: "shard",
+        count: 8,
+        speed: [100, 240],
+        size: [4, 8],
+        gravity: 260,
+        spin: true,
+        color: "#558B2F",
+        color2: "#8BC34A",
+        glyphs: [
+          { kind: "spike", count: 6, color: "#8BC34A", size: [8, 16], speed: [100, 180], dur: 0.5 },
+          { kind: "crack", count: 3, color: "#6B4A2F", size: [26, 40], speed: [20, 50], dur: 0.8 }
+        ]
+      }
+    },
+    zerg_larva: {
+      silhouette: "grub",
+      size: "small",
+      accent: "#E6EE9C",
+      core: "#1A2410",
+      note: "\u5E7C\u866B\uFF1A\u4E09\u8282\u80A5\u8EAF + \u53D8\u6001\u56CA\uFF08\u56CA\u4F53\u968F morph \u5012\u8BA1\u65F6\u52A0\u901F\u8109\u52A8\uFF09\uFF1B\u6B7B\u4EA1\u4F53\u6DB2\u7206\u5F00",
+      death: {
+        chunks: "goo",
+        count: 7,
+        speed: [60, 170],
+        size: [2.5, 5],
+        gravity: 200,
+        spin: false,
+        color: "#9CCC65",
+        color2: "#E6EE9C",
+        decal: { color: "#8BC34A", radius: 15, dur: 1.6 }
+      }
+    },
+    zerg_queen: {
+      silhouette: "queen",
+      size: "large",
+      accent: "#FF9DE2",
+      core: "#1A2410",
+      note: '\u866B\u540E\uFF1A\u83F1\u5F62\u6BCD\u4F53 + \u6CBB\u7597\u5149\u73AF\uFF1B\u6B7B\u4EA1\u662F\u4E00\u6B21"\u5DE2\u5D29"\u2014\u2014\u7EFF\u73AF + \u5375\u7C92\u98DE\u6563 + \u96FE\u5316',
+      death: {
+        chunks: "goo",
+        count: 14,
+        speed: [90, 240],
+        size: [4, 9],
+        gravity: 220,
+        spin: false,
+        color: "#C77DFF",
+        color2: "#AEEA00",
+        weight: 1.2,
+        ring: { r1: 96, color: "#7CB342", width: 5, dur: 0.6 },
+        smoke: { color: "#7CB342", count: 6 },
+        decal: { color: "#558B2F", radius: 44, dur: 3.2 },
+        glyphs: [
+          { kind: "split", count: 6, color: "#AEEA00", size: [4, 7], speed: [60, 130], dur: 0.9 },
+          { kind: "wisp", count: 6, color: "#C77DFF", size: [2, 4], speed: [40, 80], dur: 1.1 }
+        ]
+      }
+    },
+    baneling: {
+      silhouette: "baneling",
+      size: "normal",
+      accent: "#D8FF50",
+      core: "#7CB342",
+      note: "\u6BD2\u7206\u866B\uFF1A\u8109\u52A8\u81EA\u7206\u4F53\uFF08\u5371\u9669\u5EA6\u8D8A\u9AD8\u98A4\u5F97\u8D8A\u6025\uFF09\uFF1B\u6B7B\u4EA1=\u9178\u7206\uFF0C\u7EFF\u6D46\u5916\u6E85",
+      death: {
+        chunks: "bubble",
+        count: 14,
+        speed: [120, 300],
+        size: [3, 7],
+        gravity: 150,
+        spin: false,
+        color: "#AEEA00",
+        color2: "#D8FF50",
+        ring: { r1: 60, color: "#AEEA00", width: 4, dur: 0.45 },
+        smoke: { color: "#7CB342", count: 5 },
+        decal: { color: "#7CB342", radius: 32, dur: 3.2 },
+        glyphs: [{ kind: "arc", count: 4, color: "#D8FF50", size: [16, 26], speed: [80, 140], dur: 0.4 }]
+      }
+    },
+    zerg_ultra: {
+      silhouette: "ultra",
+      size: "boss",
+      accent: "#AED581",
+      core: "#1A2410",
+      note: "\u96F7\u517D\uFF1A\u5341\u89D2\u7532\u58F3 + \u9570\u5200\u53CC\u81C2\uFF0C\u94BB\u5730\u51B2\u950B\uFF1B\u6B7B\u4EA1\u662F\u5730\u9707\u2014\u2014\u88C2\u7EB9 + \u7532\u7247\u6210\u5806",
+      death: {
+        chunks: "plate",
+        count: 16,
+        speed: [100, 280],
+        size: [6, 12],
+        gravity: 300,
+        spin: true,
+        color: "#69A83B",
+        color2: "#AED581",
+        weight: 1.45,
+        ring: { r1: 88, color: "#AED581", width: 5, dur: 0.55 },
+        smoke: { color: "#4A5B2A", count: 6 },
+        decal: { color: "#558B2F", radius: 46, dur: 3 },
+        glyphs: [
+          { kind: "crack", count: 5, color: "#6B4A2F", size: [40, 72], speed: [30, 70], dur: 1.3 },
+          { kind: "arc", count: 3, color: "#AED581", size: [20, 30], speed: [60, 120], dur: 0.45 }
+        ]
+      }
+    }
+  };
+  var SHAPE_TO_SILHOUETTE = {
+    slime: "slime",
+    wolf: "wolf",
+    charger: "charger",
+    thrower: "goblin",
+    bulwark: "armor",
+    bat: "bat",
+    shroom: "mushroom",
+    boss: "treant",
+    shaman: "shaman",
+    larva: "grub",
+    roach: "roach",
+    lurker: "lurker",
+    zqueen: "queen",
+    baneling: "baneling",
+    ultra: "ultra"
+  };
+  var FALLBACK_LOOK = {
+    silhouette: "slime",
+    size: "normal",
+    accent: "#FFB199",
+    core: "#2A0F0C",
+    note: "\u672A\u767B\u8BB0\u5F62\u6001\uFF08\u56DE\u843D\u53F2\u83B1\u59C6\uFF09",
+    death: {
+      chunks: "goo",
+      count: 6,
+      speed: [70, 160],
+      size: [3, 5],
+      gravity: 220,
+      color: "#FF6B57",
+      color2: "#FFB199",
+      decal: { color: "#FF6B57", radius: 20, dur: 2 }
+    }
+  };
+  function lookOf(key, shape) {
+    const own = key ? MONSTER_LOOKS[key] : void 0;
+    if (own) return own;
+    const fam = FALLBACK_LOOK;
+    const sil = SHAPE_TO_SILHOUETTE[shape ?? ""] ?? fam.silhouette;
+    return { ...fam, silhouette: sil };
+  }
+  var SIZE_SCALE = {
+    small: 0.78,
+    normal: 1,
+    large: 1.35,
+    boss: 1.9
+  };
+  var CHUNK_TO_KIND = {
+    goo: "star",
+    shard: "shard",
+    plate: "shard",
+    splinter: "shard",
+    feather: "star",
+    spark: "spark",
+    ember: "ember",
+    bubble: "star"
+  };
+
   // src/adapter/web/render/particles.ts
   var MAX_PARTICLES = 320;
   var MAX_FLOATS = 48;
@@ -2355,6 +2815,124 @@
         spin: 3,
         shrink: 1
       });
+    }
+    /**
+     * 身份化击杀（identity.ts 的 death 配方 → 本层粒子/环/电弧）。
+     * 与通用 deathBurst 的区别：碎块材质、数量、速度、颜色、冲击环、尘烟、专属符号
+     * 全部按「怪物 id」取配方，所以 19 只怪死法各不相同；未知 id 回落通用碎裂。
+     * 只做观感，不读逻辑，不影响确定性。
+     */
+    deathFor(key, shape, x, y, radius, fallbackColor) {
+      const look = lookOf(key, shape);
+      if (!key && !shape) {
+        this.deathBurst(x, y, fallbackColor, radius);
+        return;
+      }
+      const r = look.death;
+      const scale = SIZE_SCALE[look.size] * Math.min(1.7, Math.max(0.75, radius / 20));
+      const isSmall = look.size === "small";
+      const chunkKind = CHUNK_TO_KIND[r.chunks];
+      const count = Math.min(28, Math.round(r.count * (scale > 1.3 ? 1.3 : 1)));
+      for (let i = 0; i < count; i++) {
+        const a = this.range(0, Math.PI * 2);
+        const sp = this.range(r.speed[0], r.speed[1]) * (0.7 + 0.35 * scale);
+        this.add({
+          kind: chunkKind,
+          x: x + this.range(-radius * 0.3, radius * 0.3),
+          y: y + this.range(-radius * 0.3, radius * 0.3),
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp,
+          grav: -r.gravity,
+          drag: r.chunks === "goo" || r.chunks === "bubble" ? 1.6 : 0.8,
+          life: this.range(0.34, 0.34 + 0.5),
+          size: this.range(r.size[0], r.size[1]) * Math.min(1.6, scale),
+          color: r.color2 && this.rand() < 0.4 ? r.color2 : r.color,
+          rot: a,
+          spin: r.spin ? this.range(-9, 9) : this.range(-2, 2),
+          shrink: 1
+        });
+      }
+      if (r.ring) {
+        this.rings.push({
+          x,
+          y,
+          r0: radius * 0.4,
+          r1: r.ring.r1 * scale,
+          life: r.ring.dur,
+          maxLife: r.ring.dur,
+          color: r.ring.color,
+          width: r.ring.width,
+          filled: false
+        });
+      }
+      if (r.decal) {
+        for (let i = 0; i < 5; i++) {
+          const a = this.range(0, Math.PI * 2);
+          this.add({
+            kind: "dust",
+            x: x + Math.cos(a) * r.decal.radius * scale * 0.5,
+            y: y + Math.sin(a) * r.decal.radius * scale * 0.25,
+            vx: Math.cos(a) * 12,
+            vy: Math.sin(a) * 10,
+            grav: -4,
+            drag: 2.4,
+            life: 0.9,
+            size: r.decal.radius * scale * 0.5,
+            color: r.decal.color,
+            rot: a,
+            spin: 0,
+            shrink: 1
+          });
+        }
+      }
+      if (r.smoke) {
+        const n = Math.round(r.smoke.count * Math.min(1.6, scale));
+        for (let i = 0; i < n; i++) {
+          const a = this.range(0, Math.PI * 2);
+          this.add({
+            kind: "smoke",
+            x: x + this.range(-radius * 0.4, radius * 0.4),
+            y: y + this.range(-radius * 0.4, radius * 0.4),
+            vx: Math.cos(a) * this.range(10, 34),
+            vy: Math.sin(a) * this.range(10, 34) + 10,
+            grav: 0,
+            drag: 1.4,
+            life: this.range(0.5, 0.95),
+            size: (9 + this.rand() * 12) * Math.min(1.5, scale),
+            color: r.smoke.color,
+            rot: 0,
+            spin: 0,
+            shrink: 0
+          });
+        }
+      }
+      if (r.glyphs) {
+        for (const g of r.glyphs) {
+          for (let i = 0; i < g.count; i++) {
+            const a = this.range(0, Math.PI * 2);
+            const sz = this.range(g.size[0], g.size[1]) * Math.min(1.5, scale);
+            if (g.kind === "arc") {
+              const ex = x + Math.cos(a) * 40;
+              const ey = y + Math.sin(a) * 40;
+              const mx = (x + ex) / 2 + this.range(-10, 10);
+              const my = (y + ey) / 2 + this.range(-10, 10);
+              if (this.bolts.length < MAX_BOLTS) {
+                this.bolts.push({ pts: [[x, y], [mx, my], [ex, ey]], life: g.dur, maxLife: g.dur, color: g.color, width: 2.5 });
+              }
+            } else if (g.kind === "wisp") {
+              this.add({ kind: "star", x, y, vx: this.range(-20, 20), vy: this.range(40, 90), grav: -20, drag: 1, life: g.dur, size: sz * 0.5, color: g.color, rot: 0.6, spin: 2, shrink: 1 });
+            } else if (g.kind === "shatter") {
+              this.rings.push({ x, y, r0: sz * 1.5, r1: sz * 4, life: g.dur, maxLife: g.dur, color: g.color, width: 2, filled: false });
+            } else if (g.kind === "crack") {
+              this.add({ kind: "dust", x: x + Math.cos(a) * sz, y: y + Math.sin(a) * sz * 0.5, vx: Math.cos(a) * 30, vy: Math.sin(a) * 20, grav: -30, drag: 2, life: g.dur, size: sz * 0.6, color: g.color, rot: a, spin: 0, shrink: 1 });
+            } else {
+              this.add({ kind: g.kind === "split" ? "star" : "shard", x, y, vx: Math.cos(a) * this.range(90, 200), vy: Math.sin(a) * this.range(90, 200), grav: -260, drag: 1.2, life: g.dur, size: sz * 0.5, color: g.color, rot: a, spin: this.range(-8, 8), shrink: 1 });
+            }
+          }
+        }
+      }
+      this.add({ kind: "star", x, y, vx: 0, vy: 0, grav: 0, drag: 0, life: isSmall ? 0.1 : 0.13, size: radius * 1.4, color: "#FFFFFF", rot: 0.6, spin: 3, shrink: 1 });
+      if (look.size === "boss" || look.size === "large") this.shake(isSmall ? 0 : look.size === "boss" ? 7 : 3, 0.2);
     }
     /** 爆炸：火球闪 + 冲击环 + 火星 + 烟。 */
     explosion(x, y, radius, coreColor = "#FFD54F", edgeColor = "#FF5A3C") {
@@ -4482,6 +5060,7 @@
       }
       case "dot":
       default: {
+        const isRune = p.weapon.cfg.id === "gun_rifle";
         ctx.strokeStyle = rgba(color, 0.18);
         ctx.lineWidth = 6;
         ctx.beginPath();
@@ -4502,6 +5081,31 @@
           ctx.fill();
         }
         drawGlow(ctx, p.x, p.y, p.radius * 4.6, color, 0.55);
+        if (isRune) {
+          const ang = Math.atan2(uy, ux);
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(ang);
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(p.radius * 2.1, 0);
+          ctx.lineTo(0, p.radius * 1.2);
+          ctx.lineTo(-p.radius * 2.1, 0);
+          ctx.lineTo(0, -p.radius * 1.2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = rgba(light, 0.85);
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(0, 0, p.radius * 2.3, t * 6, t * 6 + 2.1);
+          ctx.stroke();
+          ctx.fillStyle = "#FFFFFF";
+          ctx.beginPath();
+          ctx.arc(0, 0, p.radius * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          break;
+        }
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
@@ -4790,7 +5394,7 @@
         const m = session.monsters.find((x) => x.id === monsterId);
         if (!m) return;
         const color = monsterColorByKey(key);
-        eff.deathBurst(m.x, m.y, color, m.cfg.radius);
+        eff.deathFor(key, m.cfg.shape, m.x, m.y, m.cfg.radius, color);
         if (m.cfg.shape === "boss") {
           eff.explosion(m.x, m.y, m.cfg.radius * 1.6, "#B537F2", "#FF3D71");
           eff.shake(9, 0.4);

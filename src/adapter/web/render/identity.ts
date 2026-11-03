@@ -343,6 +343,21 @@ export const SIZE_SCALE: Record<SizeClass, number> = {
   boss: 1.9,
 };
 
+/**
+ * 碎块材质 → 粒子层（particles.ts）的粒子种类映射。
+ * 让"每只怪死成什么材质"能在既有粒子系统里直接落地，不另造一套渲染。
+ */
+export const CHUNK_TO_KIND: Record<ChunkKind, 'spark' | 'shard' | 'ember' | 'smoke' | 'dust' | 'star'> = {
+  goo: 'star',
+  shard: 'shard',
+  plate: 'shard',
+  splinter: 'shard',
+  feather: 'star',
+  spark: 'spark',
+  ember: 'ember',
+  bubble: 'star',
+};
+
 // ---------------- 武器 / 弹种 ----------------
 
 /** 子弹形态：每个武器一种，互不借用（"所有子弹各具特色"的数据基础）。 */
