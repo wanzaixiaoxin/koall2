@@ -93,7 +93,7 @@ function validateMonsters(monsters: MonsterConfig[]): Map<string, MonsterConfig>
     need(isNum(m.xp) && m.xp >= 0, where, 'xp 必须 ≥ 0');
     if (m.shape !== undefined) {
       need(['slime', 'wolf', 'charger', 'thrower', 'bulwark', 'bat', 'shroom', 'boss', 'shaman',
-        'larva', 'roach', 'lurker', 'zqueen', 'baneling', 'ultra'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
+        'larva', 'roach', 'lurker', 'zqueen', 'baneling', 'ultra', 'catapult'].includes(m.shape), where, `未知怪物形态: ${m.shape}`);
     }
     if (m.burrowRegen) {
       need(m.behavior === 'burrow_regen', where, 'burrowRegen 需搭配 behavior=burrow_regen');

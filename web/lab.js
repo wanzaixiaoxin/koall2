@@ -3811,6 +3811,9 @@
       case "thrower":
         drawThrower(ctx, m, t, s);
         break;
+      case "catapult":
+        drawThrower(ctx, m, t, s);
+        break;
       case "bulwark":
         drawBulwark(ctx, m, t, s);
         break;
@@ -4039,17 +4042,25 @@
       if (deco) inkStroke(ctx, 2);
       for (const sx of [-0.55, 0.55]) {
         ctx.beginPath();
-        ctx.arc(sx * r, -r * 0.72, r * 0.26, 0, Math.PI * 2);
+        ctx.arc(sx * r, -r * 0.72, r * 0.3, 0, Math.PI * 2);
         ctx.fillStyle = s.flat ? "#FFFFFF" : lighten(color, 0.15);
         ctx.fill();
         if (deco) {
-          inkStroke(ctx, 1.8);
-          ctx.strokeStyle = rgba(INK, 0.5);
-          ctx.lineWidth = 2;
+          inkStroke(ctx, 2);
+          ctx.strokeStyle = rgba(INK, 0.55);
+          ctx.lineWidth = 1.8;
+          const spin = t * 2.4 + sx;
+          for (let k = 0; k < 3; k++) {
+            const a = spin + k * Math.PI / 3;
+            ctx.beginPath();
+            ctx.moveTo(sx * r - Math.cos(a) * r * 0.26, -r * 0.72 - Math.sin(a) * r * 0.26);
+            ctx.lineTo(sx * r + Math.cos(a) * r * 0.26, -r * 0.72 + Math.sin(a) * r * 0.26);
+            ctx.stroke();
+          }
           ctx.beginPath();
-          ctx.moveTo(sx * r - r * 0.14, -r * 0.72);
-          ctx.lineTo(sx * r + r * 0.14, -r * 0.72);
-          ctx.stroke();
+          ctx.arc(sx * r, -r * 0.72, r * 0.07, 0, Math.PI * 2);
+          ctx.fillStyle = rgba(INK, 0.7);
+          ctx.fill();
         }
       }
       ctx.save();
@@ -4065,16 +4076,32 @@
       ctx.fill();
       if (deco) inkStroke(ctx, 1.5);
       ctx.restore();
-      rrPath(ctx, -r * 0.55, -r * 0.5, r * 1.1, r * 1.15, r * 0.2);
+      rrPath(ctx, -r * 0.58, -r * 0.52, r * 1.16, r * 1.12, r * 0.16);
       ctx.fillStyle = s.flat ? "#FFFFFF" : color;
       ctx.fill();
       if (deco) {
-        inkStroke(ctx, 2.2);
+        inkStroke(ctx, 2.4);
+        ctx.strokeStyle = rgba(INK, 0.35);
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.52, r * 0.16);
+        ctx.lineTo(r * 0.52, r * 0.16);
+        ctx.moveTo(-r * 0.52, -r * 0.2);
+        ctx.lineTo(r * 0.52, -r * 0.2);
+        ctx.stroke();
+        ctx.fillStyle = rgba(light, 0.9);
+        for (const sx of [-0.42, 0.42]) {
+          for (const sy of [-0.38, 0.42]) {
+            ctx.beginPath();
+            ctx.arc(sx * r, sy * r, r * 0.045, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
         ctx.fillStyle = rgba("#FFD54F", 0.85);
         ctx.beginPath();
-        ctx.arc(0, r * 0.16, r * 0.13, 0, Math.PI * 2);
+        ctx.arc(0, r * 0.16, r * 0.14, 0, Math.PI * 2);
         ctx.fill();
-        drawGlow(ctx, 0, r * 0.16, r * 0.5, "#FFD54F", 0.3);
+        drawGlow(ctx, 0, r * 0.16, r * 0.55, "#FFD54F", 0.32);
       }
       return;
     }

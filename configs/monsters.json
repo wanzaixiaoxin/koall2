@@ -49,16 +49,16 @@
     {
       "id": "catapult",
       "name": "哥布林投石车",
-      "hp": 60,
+      "hp": 140,
       "def": 4,
-      "speed": 24,
-      "radius": 26,
-      "atk": 14,
+      "speed": 22,
+      "radius": 34,
+      "atk": 26,
       "attackInterval": 2.2,
       "behavior": "ranged",
-      "rangedDist": 460,
+      "rangedDist": 900,
       "xp": 8,
-      "shape": "thrower"
+      "shape": "catapult"
     },
     {
       "id": "charger",

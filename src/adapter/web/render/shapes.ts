@@ -439,6 +439,10 @@ function drawMonsterBody(
     case 'thrower':
       drawThrower(ctx, m, t, s);
       break;
+    case 'catapult':
+      // 投石车：复用 thrower 的重装绘制（平台 + 双轮 + 抛臂），但强制 heavy 造型并由更大 radius 放大
+      drawThrower(ctx, m, t, s);
+      break;
     case 'bulwark':
       drawBulwark(ctx, m, t, s);
       break;
@@ -713,18 +717,27 @@ function drawThrower(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t: number
     ctx.fill();
     if (deco) inkStroke(ctx, 2);
     for (const sx of [-0.55, 0.55]) {
+      // 大轮 + 辐条：机械感（投石车与投矛手的关键剪影差异）
       ctx.beginPath();
-      ctx.arc(sx * r, -r * 0.72, r * 0.26, 0, Math.PI * 2);
+      ctx.arc(sx * r, -r * 0.72, r * 0.30, 0, Math.PI * 2);
       ctx.fillStyle = s.flat ? '#FFFFFF' : lighten(color, 0.15);
       ctx.fill();
       if (deco) {
-        inkStroke(ctx, 1.8);
-        ctx.strokeStyle = rgba(INK, 0.5);
-        ctx.lineWidth = 2;
+        inkStroke(ctx, 2);
+        ctx.strokeStyle = rgba(INK, 0.55);
+        ctx.lineWidth = 1.8;
+        const spin = t * 2.4 + sx;
+        for (let k = 0; k < 3; k++) {
+          const a = spin + (k * Math.PI) / 3;
+          ctx.beginPath();
+          ctx.moveTo(sx * r - Math.cos(a) * r * 0.26, -r * 0.72 - Math.sin(a) * r * 0.26);
+          ctx.lineTo(sx * r + Math.cos(a) * r * 0.26, -r * 0.72 + Math.sin(a) * r * 0.26);
+          ctx.stroke();
+        }
         ctx.beginPath();
-        ctx.moveTo(sx * r - r * 0.14, -r * 0.72);
-        ctx.lineTo(sx * r + r * 0.14, -r * 0.72);
-        ctx.stroke();
+        ctx.arc(sx * r, -r * 0.72, r * 0.07, 0, Math.PI * 2);
+        ctx.fillStyle = rgba(INK, 0.7);
+        ctx.fill();
       }
     }
     // 抛臂 + 石弹
@@ -741,17 +754,36 @@ function drawThrower(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t: number
     ctx.fill();
     if (deco) inkStroke(ctx, 1.5);
     ctx.restore();
-    // 车体
-    rrPath(ctx, -r * 0.55, -r * 0.5, r * 1.1, r * 1.15, r * 0.2);
+    // 车体：木质箱式机身（分框 + 横梁 + 铆钉，读作"造出来的攻城器械"）
+    rrPath(ctx, -r * 0.58, -r * 0.52, r * 1.16, r * 1.12, r * 0.16);
     ctx.fillStyle = s.flat ? '#FFFFFF' : color;
     ctx.fill();
     if (deco) {
-      inkStroke(ctx, 2.2);
+      inkStroke(ctx, 2.4);
+      // 横向木梁分框
+      ctx.strokeStyle = rgba(INK, 0.35);
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.52, r * 0.16);
+      ctx.lineTo(r * 0.52, r * 0.16);
+      ctx.moveTo(-r * 0.52, -r * 0.2);
+      ctx.lineTo(r * 0.52, -r * 0.2);
+      ctx.stroke();
+      // 四角铆钉
+      ctx.fillStyle = rgba(light, 0.9);
+      for (const sx of [-0.42, 0.42]) {
+        for (const sy of [-0.38, 0.42]) {
+          ctx.beginPath();
+          ctx.arc(sx * r, sy * r, r * 0.045, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // 中央配重（石弹舱）
       ctx.fillStyle = rgba('#FFD54F', 0.85);
       ctx.beginPath();
-      ctx.arc(0, r * 0.16, r * 0.13, 0, Math.PI * 2);
+      ctx.arc(0, r * 0.16, r * 0.14, 0, Math.PI * 2);
       ctx.fill();
-      drawGlow(ctx, 0, r * 0.16, r * 0.5, '#FFD54F', 0.3);
+      drawGlow(ctx, 0, r * 0.16, r * 0.55, '#FFD54F', 0.32);
     }
     return;
   }
