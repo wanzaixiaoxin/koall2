@@ -2,7 +2,7 @@ import { EventBus } from './core/events';
 import { Rng } from './core/rng';
 import { SpatialHash } from './core/spatial-hash';
 import { clamp, Vec2 } from './core/math';
-import { calcDamage } from './damage';
+import { calcDamage, DamageType } from './damage';
 import { createTrajectory, MotionContext, TrajectoryConfig } from './trajectory';
 import {
   createHero,
@@ -459,7 +459,7 @@ export class GameSession {
     for (const m of this.monsters) {
       if (m.cfg.detonate && m.state === 'assault' && m.hp > 0) {
         m.hp = 0;
-        this.killMonster(null, m);
+        this.killMonster(null, m, 'poison'); // 毒爆虫自爆：酸液死法
       }
     }
 
@@ -557,7 +557,7 @@ export class GameSession {
         m.hp -= dmg;
         this.totalDamage += dmg;
         this.bus.emit('onPoolTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg }); // 弹坑跳字
-        if (m.hp <= 0) this.killMonster(pool.src, m); // 弹坑击杀带来源弹体：触发"弹片"击杀分裂
+        if (m.hp <= 0) this.killMonster(pool.src, m, pool.damageType); // 弹坑击杀带来源弹体：触发"弹片"击杀分裂
       }
       if (now >= pool.until) {
         this.pools.splice(i, 1);
@@ -587,7 +587,7 @@ export class GameSession {
         const dmg = Math.max(1, Math.round(seg.dps * dt)); // 整数结算
         m.hp -= dmg;
         this.totalDamage += dmg;
-        if (m.hp <= 0) this.killMonster(null, m);
+        if (m.hp <= 0) this.killMonster(null, m, seg.damageType); // 光束/连线：死法按光束元素
       }
     }
 
@@ -896,7 +896,7 @@ export class GameSession {
       if (res.isCrit && dealt > 0) this.totalCrits++;
       this.bus.emit('onHit', {
         monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0,
-        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y,
+        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y, damageType: p.damageType,
       });
 
       // C 类词缀：灼烧（火焰骑士，附着定时跳伤不叠加；灼烧免疫怪不可被点燃）/ 冰冻 / 破甲
@@ -920,7 +920,7 @@ export class GameSession {
         m.shredUntil = now + 4;
       }
 
-      if (m.hp <= 0) this.killMonster(p, m);
+      if (m.hp <= 0) this.killMonster(p, m, p.damageType);
 
       // 穿透 / 弹射 / 消亡
       if (p.pierceLeft > 0) {
@@ -970,8 +970,8 @@ export class GameSession {
       cur.hp -= dealt;
       this.totalDamage += dealt;
       if (res.isCrit && dealt > 0) this.totalCrits++;
-      this.bus.emit('onHit', { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, mitigated: dealt === 0 ? 0 : res.mitigated, x: cur.x, y: cur.y });
-      if (cur.hp <= 0) this.killMonster(null, cur); // 闪电不触发分裂（无弹体）
+      this.bus.emit('onHit', { monsterId: cur.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0, mitigated: dealt === 0 ? 0 : res.mitigated, x: cur.x, y: cur.y, damageType: 'lightning' });
+      if (cur.hp <= 0) this.killMonster(null, cur, 'lightning'); // 闪电不触发分裂（无弹体）
       path.push([cur.x, cur.y]);
       strikesLeft--;
       mul *= 0.8;
@@ -1227,9 +1227,9 @@ export class GameSession {
       if (res.isCrit && dealt > 0) this.totalCrits++;
       this.bus.emit('onHit', {
         monsterId: m.id, dmg: dealt, isCrit: res.isCrit, blocked: dealt === 0,
-        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y,
+        mitigated: dealt === 0 ? 0 : res.mitigated, x: m.x, y: m.y, damageType: p.damageType,
       });
-      if (m.hp <= 0) this.killMonster(p, m); // 爆炸击杀带弹体：触发"弹片"击杀分裂
+      if (m.hp <= 0) this.killMonster(p, m, p.damageType); // 爆炸击杀带弹体：触发"弹片"击杀分裂
     }
     if (p.damageType === 'fire') this.burnCreep(p.x, p.y, radius); // 火焰爆炸烧虫苔
     // 持续伤害圈
@@ -1351,7 +1351,7 @@ export class GameSession {
       m.hp -= dmg;
       this.totalDamage += dmg;
       this.bus.emit('onBurnTick', { x: m.x, y: m.y + m.cfg.radius + 8, dmg });
-      if (m.hp <= 0) this.killMonster(null, m);
+      if (m.hp <= 0) this.killMonster(null, m, 'fire'); // 灼烧跳伤致死：火焰死法
     }
   }
 
@@ -1557,13 +1557,26 @@ export class GameSession {
     this.bus.emit('onMonsterEmerge', { x: m.x, y: m.y }); // 蜕变烟尘（复用菌毯孵化出土视觉）
   }
 
-  private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime): void {
+  /**
+   * 击杀结算（单点收口：同 tick 多伤害源只计一次）。
+   * dmgType = 致命一击的伤害类型，仅供渲染层做「死法配色」，不参与任何数值。
+   * onKill 携带位置/半径/形态：渲染层据此播放该怪物专属的死亡表现（docs/06 铁律 5）。
+   */
+  private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime, dmgType?: DamageType): void {
     if (m.dead) return; // 同 tick 多伤害源（连锁跳数/灼烧/弹坑）守护：击杀只结算一次
     m.dead = true;
     this.totalKills++;
     this.waveKills++;
     this.hero.xp += m.cfg.xp; // 经验自动吸收（击杀即入账，无拾取环节）
-    this.bus.emit('onKill', { monsterId: m.id, key: m.cfg.id });
+    this.bus.emit('onKill', {
+      monsterId: m.id,
+      key: m.cfg.id,
+      shape: m.cfg.shape,
+      x: m.x,
+      y: m.y,
+      radius: m.cfg.radius,
+      damageType: dmgType ?? null,
+    });
 
     // 死亡分裂：splitter 死亡裂为 N 只幼体（不可再分裂）
     if (m.cfg.deathSplit) {

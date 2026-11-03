@@ -15,7 +15,8 @@ import {
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
 import { HumanInputController, TraceRecorder, TraceRecord } from '../../../tools/sim/human';
-import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool, drawWeaponMount } from './render/shapes';
+import { KillFx } from './render/kills';
 import { FxRuntime, loadFxConfig } from './render/fx';
 
 const W = 1080;
@@ -212,6 +213,8 @@ async function boot(): Promise<void> {
   ]);
   // 动效运行时：唯一读取 fx-config.json 的消费者（美术改配置即生效，无需改代码）
   const fx = new FxRuntime(fxConfig);
+  // 击杀/命中特效：事件驱动（onKill/onHit/onExplode），不参与 30Hz 结算
+  const killFx = new KillFx();
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   canvas.width = W;
@@ -361,13 +364,17 @@ async function boot(): Promise<void> {
     floats.push({ x, y, text, color, size, life: 0.8, maxLife: 0.8 });
   };
   session.bus.on<{
-    monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number;
+    monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number;
+    x: number; y: number; damageType?: string;
   }>(
     'onHit',
-    ({ monsterId, dmg, isCrit, blocked, mitigated, x, y }) => {
+    ({ monsterId, dmg, isCrit, blocked, mitigated, x, y, damageType }) => {
       // 受击闪白登记（最高优先级动效，时长/曲线来自 fx-config.json hitFlash）
       // 时间基准与 render 内的 now 一致（session.timeSec，秒）
       if (monsterId !== undefined && !blocked) fx.markHit(monsterId, session.timeSec);
+      const dtype = (damageType ?? 'physical') as keyof typeof palette.damageType;
+      // 命中火花：与闪白分工——闪白说"打中了"，火花说"什么打的"（元素色 + 暴击更亮）
+      killFx.spawnHit(x, y, blocked ? 'physical' : dtype, blocked ? 0.5 : isCrit ? 2.2 : 1);
       if (blocked) {
         pushFloat(x, y - 12, '挡', '#8A93B8', 16); // 免伤盾抵消
         return;
@@ -384,6 +391,21 @@ async function boot(): Promise<void> {
       );
     },
   );
+  // 击杀表现：每只怪按身份表的 death 配方播放专属死法（碎块材质/冲击环/地面残留/符号），
+  // 再叠加致命伤害类型风味（火焰余烬/寒冰碎晶/雷电电弧/毒素气泡）。零击杀时零开销。
+  session.bus.on<{
+    monsterId: number; key?: string; shape?: string; x: number; y: number; radius: number;
+    damageType?: string | null;
+  }>('onKill', ({ key, shape, x, y, radius, damageType }) => {
+    killFx.spawnKill({
+      x, y, radius, key, shape,
+      damageType: (damageType ?? null) as keyof typeof palette.damageType | null,
+    });
+  });
+  // 爆炸（炸弹落地 / 毒爆虫自爆）：双向冲击环 + 碎块 + 烟
+  session.bus.on<{ x: number; y: number; radius: number }>('onExplode', ({ x, y, radius }) => {
+    killFx.spawnExplode(x, y, radius, 'fire');
+  });
   session.bus.on<{ dmg: number; x: number; y: number }>('onWallHit', ({ dmg, x, y }) => {
     pushFloat(x, y, `-${Math.round(dmg)}`, '#FF6B57', 17);
   });
@@ -626,6 +648,11 @@ async function boot(): Promise<void> {
       }
     }
 
+    // 击杀/命中特效（死亡最容易被记住：每只怪按身份配方碎成自己的材质）
+    // 层级：地面残留/碎块/冲击环压在怪物之上、弹幕之下，寿命短不遮挡后续战斗。
+    killFx.update(dtR);
+    killFx.draw(ctx, t);
+
     // 落地范围伤害圈（弹坑强化绘制）
     for (const pool of session.pools) {
       drawPool(ctx, pool, session.timeSec);
@@ -676,63 +703,8 @@ async function boot(): Promise<void> {
       const isBeam = !!w.cfg.beamBase;
       const beamLive = isBeam && beamOn.has(w.cfg.id);
       const overheated = isBeam && w.cooldown > w.cfg.interval * 1.5; // 强制散热中（正常射击间隔远小于此）
-      const recoil = isBeam ? 0 : k * 3; // 持续光束不播后坐（每 0.4s 一次会抖）
-      ctx.save();
-      ctx.translate(mx, my);
-      ctx.rotate(aimCur - Math.PI / 2);
-      // 炮塔底座
-      ctx.fillStyle = '#12142B';
-      ctx.strokeStyle = '#3D4470';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      // 炮管（开火后坐）
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 3.5;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(0, -3 + recoil * 0.4);
-      ctx.lineTo(0, 13 - recoil);
-      ctx.stroke();
-      // 炮口端点
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(0, 13 - recoil, 2.4, 0, Math.PI * 2);
-      ctx.fill();
-      // 光束武器：持束时炮口常亮光圈 / 散热时红光脉动
-      if (beamLive) {
-        ctx.globalAlpha = 0.45 + 0.25 * Math.sin(t * 24);
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(0, 13, 6.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#F5F5FA';
-        ctx.beginPath();
-        ctx.arc(0, 13, 2.6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-      if (overheated) {
-        ctx.globalAlpha = 0.45 + 0.3 * Math.sin(t * 12);
-        ctx.strokeStyle = '#FF7A6B';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, 9.5, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
-      // 开火闪光
-      if (k > 0.02) {
-        ctx.globalAlpha = 0.85 * Math.min(1, k);
-        ctx.fillStyle = '#FFF6D6';
-        ctx.beginPath();
-        ctx.arc(0, 15 - recoil, 1.8 + 2.4 * k, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-      }
-      ctx.restore();
+      // 武器专属外形 + 炮口动画（弩臂/臼炮/叉架/权杖/镜筒/双管，形态由 identity.ts 驱动）
+      drawWeaponMount(ctx, w, mx, my, aimCur, t, color, k, beamLive, overheated);
     }
     ctx.restore();
 
@@ -775,6 +747,24 @@ async function boot(): Promise<void> {
       ctx.globalAlpha = 0.95;
       ctx.fillStyle = '#FFFFFF';
       ctx.beginPath(); ctx.arc(sx, sy, 2.2, 0, Math.PI * 2); ctx.fill();
+      // 端点灼烧：光束落在哪，哪就在被烤——端点加一团光斑 + 辐射火星（激光的身份）
+      const ex = seg.bx;
+      const ey = seg.by;
+      ctx.globalAlpha = 0.5 * flick;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(ex, ey, seg.width * 1.1 * flick, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.arc(ex, ey, Math.max(2, seg.width * 0.34), 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < 3; i++) {
+        const a = t * 9 + i * 2.1;
+        const rr2 = seg.width * (1.2 + 0.6 * ((t * 1.6 + i * 0.37) % 1));
+        ctx.globalAlpha = 0.5 * (1 - ((t * 1.6 + i * 0.37) % 1));
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(ex + Math.cos(a) * rr2, ey + Math.sin(a) * rr2, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.restore();
     }
     for (const p of session.projectiles) {

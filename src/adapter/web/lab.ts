@@ -4,13 +4,15 @@
  */
 import {
   CardConfig,
+  DamageType,
   GameSession,
   LevelConfig,
   MonsterConfig,
   WeaponConfig,
 } from '../../gamecore';
 import { greedyDpsPolicy } from '../../../tools/sim/policies';
-import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool } from './render/shapes';
+import { drawMonster, drawProjectile, drawMonsterShot, drawHealPulse, drawTransfer, drawPool, drawWeaponMount } from './render/shapes';
+import { KillFx } from './render/kills';
 import { FxRuntime, loadFxConfig } from './render/fx';
 
 const W = 1080;
@@ -60,6 +62,10 @@ async function boot(): Promise<void> {
   ]);
   // 与主游戏共用同一套动效参数，保证两端视觉一致（shapes.ts 的约定）
   const fx = new FxRuntime(fxConfig);
+  // 击杀/命中特效：实验室里也能验证"每只怪的专属死法"（与主游戏同一引擎）
+  const killFx = new KillFx();
+  // 实验室炮口闪光计时（与 hero.weapons 同序）：验证每把武器的开火表现
+  const labWeaponFlash: number[] = [];
 
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   canvas.width = W;
@@ -148,12 +154,15 @@ async function boot(): Promise<void> {
     });
     // 与主游戏同款飘字表现
     session.bus.on<{
-      monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number; x: number; y: number;
+      monsterId?: number; dmg: number; isCrit: boolean; blocked?: boolean; mitigated?: number;
+      x: number; y: number; damageType?: string;
     }>(
       'onHit',
-      ({ monsterId, dmg, isCrit, blocked, mitigated, x, y }) => {
+      ({ monsterId, dmg, isCrit, blocked, mitigated, x, y, damageType }) => {
         // 受击闪白登记：与主游戏一致（实验室里也能看到打击反馈）
         if (monsterId !== undefined && !blocked) fx.markHit(monsterId, session.timeSec);
+        const dtype = (damageType ?? 'physical') as DamageType;
+        killFx.spawnHit(x, y, blocked ? 'physical' : dtype, blocked ? 0.5 : isCrit ? 2.2 : 1);
         if (blocked) {
           pushFloat(x, y - 12, '挡', '#8A93B8', 16);
           return;
@@ -162,6 +171,19 @@ async function boot(): Promise<void> {
         pushFloat(x, y + 20, String(Math.round(dmg)), isCrit ? '#FFD54F' : '#F5F5FA', isCrit ? 28 : 18);
       },
     );
+    // 专属死法 + 爆炸（实验室里逐只怪/逐把武器验证身份表现）
+    session.bus.on<{
+      monsterId: number; key?: string; shape?: string; x: number; y: number; radius: number;
+      damageType?: string | null;
+    }>('onKill', ({ key, shape, x, y, radius, damageType }) => {
+      killFx.spawnKill({
+        x, y, radius, key, shape,
+        damageType: (damageType ?? null) as DamageType | null,
+      });
+    });
+    session.bus.on<{ x: number; y: number; radius: number }>('onExplode', ({ x, y, radius }) => {
+      killFx.spawnExplode(x, y, radius, 'fire');
+    });
     session.bus.on<{ dmg: number; x: number; y: number }>('onBurnTick', ({ dmg, x, y }) => {
       pushFloat(x, y, String(dmg), '#FF9A3C', 13);
     });
@@ -177,6 +199,10 @@ async function boot(): Promise<void> {
     });
     session.bus.on<{ dmg: number; x: number; y: number }>('onWallHit', (p) => {
       pushFloat(p.x, p.y, `-${p.dmg}`, '#FF6B57', 17); // 怪物攻墙伤害飘字
+    });
+    session.bus.on<{ weaponId?: string }>('onShoot', ({ weaponId }) => {
+      const idx = session.hero.weapons.findIndex((w) => w.cfg.id === weaponId);
+      if (idx >= 0) labWeaponFlash[idx] = 0.13;
     });
     session.bus.on<{ fx: number; fy: number; tx: number; ty: number; dmg: number }>('onDamageTransfer', (p) => {
       if (transfers.length > 14) transfers.shift();
@@ -654,6 +680,10 @@ async function boot(): Promise<void> {
       }
     }
 
+    // 击杀/命中特效（与主游戏同一引擎：实验室里可逐只怪验证专属死法）
+    killFx.update(dtR);
+    killFx.draw(ctx, tNow);
+
     const projColor = (t: string): string => palette.damageType[t] ?? '#BFFFF2';
     for (const p of session.projectiles) {
       drawProjectile(ctx, p, now, projColor(p.damageType));
@@ -662,6 +692,29 @@ async function boot(): Promise<void> {
       drawMonsterShot(ctx, s);
     }
 
+    // 武器挂载：实验室逐把武器切换时，能直接看清各自的炮口剪影（与主游戏同一套绘制）
+    {
+      const hw = session.hero.weapons;
+      const labMounts: [number, number][] = [[0, 20], [-16, 2], [16, 2], [0, 28]];
+      const beamOn = new Set(session.segments.map((sg) => sg.srcWeaponId));
+      let aim = Math.PI / 2;
+      let bd = Infinity;
+      for (const m of session.monsters) {
+        if (m.hp <= 0) continue;
+        const dd = (m.x - session.hero.x) ** 2 + (m.y - session.hero.y) ** 2;
+        if (dd < bd) { bd = dd; aim = Math.atan2(m.y - session.hero.y, m.x - session.hero.x); }
+      }
+      for (let i = 0; i < hw.length && i < labMounts.length; i++) {
+        const w = hw[i];
+        const [mx, my] = labMounts[i];
+        const color = projColor(w.element);
+        const isBeam = !!w.cfg.beamBase;
+        const k = Math.max(0, (labWeaponFlash[i] ?? 0)) / 0.13;
+        if (labWeaponFlash[i]) labWeaponFlash[i] = Math.max(0, (labWeaponFlash[i] ?? 0) - dtR);
+        drawWeaponMount(ctx, w, session.hero.x + mx, session.hero.y + my, aim, tNow, color, k,
+          isBeam && beamOn.has(w.cfg.id), isBeam && w.cooldown > w.cfg.interval * 1.5);
+      }
+    }
     ctx.fillStyle = palette.friendly.hero;
     ctx.beginPath();
     ctx.moveTo(session.hero.x, session.hero.y + 26);
