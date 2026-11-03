@@ -1034,7 +1034,8 @@
         }
         s.x = s.sx + (s.tx - s.sx) * s.t;
         s.y = s.sy + (s.ty - s.sy) * s.t;
-        s.height = Math.sin(s.t * Math.PI) * (s.kind === "rock" ? 140 : 40);
+        const arc = s.kind === "rock" ? Math.min(260, Math.max(120, Math.abs(s.sy - s.ty) * 0.32)) : 40;
+        s.height = Math.sin(s.t * Math.PI) * arc;
       }
       for (let i = this.pools.length - 1; i >= 0; i--) {
         const pool = this.pools[i];
@@ -1151,15 +1152,18 @@
     spawnMonsterShot(src) {
       const isRock = (src.cfg.rangedDist ?? 0) > 400;
       const wallH = this.level.wall.height;
-      const dist = Math.hypot(src.x - src.x, src.y - wallH);
-      const speed = isRock ? 420 : 620;
+      const dist = Math.abs(src.y - wallH);
+      const speed = isRock ? 460 : 620;
+      const r = src.cfg.radius;
+      const spread = isRock ? r * 2.6 : 24;
       this.monsterShots.push({
-        sx: src.x,
-        sy: src.y,
-        tx: src.x + this.rng.range(-24, 24),
+        // 起点：投石车固定从"臂端"出石（略朝城墙方向偏移），与抛臂甩下的方向一致
+        sx: src.x + (isRock ? 0 : 0),
+        sy: isRock ? src.y - r * 0.9 : src.y,
+        tx: src.x + this.rng.range(-spread, spread),
         ty: wallH,
         x: src.x,
-        y: src.y,
+        y: isRock ? src.y - r * 0.9 : src.y,
         height: 0,
         t: 0,
         dur: Math.max(0.2, dist / speed),
@@ -4064,17 +4068,29 @@
         }
       }
       ctx.save();
-      ctx.translate(-r * 0.55, -r * 0.2);
-      ctx.rotate(-0.5 - pull * 0.8);
-      rrPath(ctx, 0, -r * 0.12, r * 1.5, r * 0.24, r * 0.1);
+      ctx.translate(0, -r * 0.05);
+      ctx.rotate(-Math.PI / 2 + pull * 1.5);
+      rrPath(ctx, 0, -r * 0.12, r * 1.45, r * 0.22, r * 0.1);
       ctx.fillStyle = s.flat ? "#FFFFFF" : color;
       ctx.fill();
       if (deco) inkStroke(ctx, 1.8);
       ctx.beginPath();
-      ctx.arc(r * 1.55, -r * 0.02, r * 0.2, 0, Math.PI * 2);
+      ctx.arc(r * 1.5, 0, r * 0.2, 0, Math.PI * 2);
       ctx.fillStyle = s.flat ? "#FFFFFF" : light;
       ctx.fill();
-      if (deco) inkStroke(ctx, 1.5);
+      if (deco) {
+        inkStroke(ctx, 1.5);
+        ctx.strokeStyle = rgba(INK, 0.35);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(r * 1.5, 0, r * 0.12, 0.3, 2.4);
+        ctx.stroke();
+      }
+      if (deco) {
+        ctx.fillStyle = rgba(INK, 0.5);
+        rrPath(ctx, -r * 0.28, -r * 0.1, r * 0.26, r * 0.2, r * 0.06);
+        ctx.fill();
+      }
       ctx.restore();
       rrPath(ctx, -r * 0.58, -r * 0.52, r * 1.16, r * 1.12, r * 0.16);
       ctx.fillStyle = s.flat ? "#FFFFFF" : color;
@@ -5313,6 +5329,21 @@
       ctx.beginPath();
       ctx.ellipse(s.x, s.ty, 11, 4.2, 0, 0, Math.PI * 2);
       ctx.fill();
+      if (s.t > 0.02) {
+        const arc = Math.max(120, Math.abs(s.sy - s.ty) * 0.32);
+        ctx.strokeStyle = rgba(color, 0.22);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const steps = 10;
+        for (let k = 0; k <= steps; k++) {
+          const tt = s.t * k / steps;
+          const px = s.sx + (s.tx - s.sx) * tt;
+          const py = s.sy + (s.ty - s.sy) * tt + Math.sin(tt * Math.PI) * arc;
+          if (k === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+      }
       const R = 9;
       const rot = t * 5 + s.tx * 0.01;
       ptsPath(ctx, Array.from({ length: 7 }, (_, i) => {

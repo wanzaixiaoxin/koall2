@@ -740,19 +740,37 @@ function drawThrower(ctx: CanvasRenderingContext2D, m: MonsterRuntime, t: number
         ctx.fill();
       }
     }
-    // 抛臂 + 石弹
+    // 投石臂：枢轴在车体中部，臂朝前下方（-y，即朝城墙）；蓄力时抬起向上，出手瞬间甩向下方，
+    // 与"石头向城墙方向抛出"的弹道方向一致（修正：此前臂朝右上，与投石方向相反）。
     ctx.save();
-    ctx.translate(-r * 0.55, -r * 0.2);
-    ctx.rotate(-0.5 - pull * 0.8);
-    rrPath(ctx, 0, -r * 0.12, r * 1.5, r * 0.24, r * 0.1);
+    ctx.translate(0, -r * 0.05);
+    // 基准 -PI/2（朝下/朝城墙）；pull=0 出手后仍略下垂，pull=1 蓄力时抬到上方
+    ctx.rotate(-Math.PI / 2 + pull * 1.5);
+    // 臂杆
+    rrPath(ctx, 0, -r * 0.12, r * 1.45, r * 0.22, r * 0.1);
     ctx.fillStyle = s.flat ? '#FFFFFF' : color;
     ctx.fill();
     if (deco) inkStroke(ctx, 1.8);
+    // 臂端石弹（蓄力时在臂端=高举；出手后随臂甩下）
     ctx.beginPath();
-    ctx.arc(r * 1.55, -r * 0.02, r * 0.2, 0, Math.PI * 2);
+    ctx.arc(r * 1.5, 0, r * 0.2, 0, Math.PI * 2);
     ctx.fillStyle = s.flat ? '#FFFFFF' : light;
     ctx.fill();
-    if (deco) inkStroke(ctx, 1.5);
+    if (deco) {
+      inkStroke(ctx, 1.5);
+      // 石弹纹理
+      ctx.strokeStyle = rgba(INK, 0.35);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(r * 1.5, 0, r * 0.12, 0.3, 2.4);
+      ctx.stroke();
+    }
+    // 配重块（臂的另一端，蓄力拉伸的"张力"）
+    if (deco) {
+      ctx.fillStyle = rgba(INK, 0.5);
+      rrPath(ctx, -r * 0.28, -r * 0.1, r * 0.26, r * 0.2, r * 0.06);
+      ctx.fill();
+    }
     ctx.restore();
     // 车体：木质箱式机身（分框 + 横梁 + 铆钉，读作"造出来的攻城器械"）
     rrPath(ctx, -r * 0.58, -r * 0.52, r * 1.16, r * 1.12, r * 0.16);
@@ -2194,6 +2212,22 @@ export function drawMonsterShot(ctx: CanvasRenderingContext2D, s: MonsterShot, t
     ctx.beginPath();
     ctx.ellipse(s.x, s.ty, 11, 4.2, 0, 0, Math.PI * 2);
     ctx.fill();
+    // 抛物弧残影：把"从臂端抛出→落点"的弧线淡淡画出来，让抛石轨迹可读（不遮本体）
+    if (s.t > 0.02) {
+      const arc = Math.max(120, Math.abs(s.sy - s.ty) * 0.32);
+      ctx.strokeStyle = rgba(color, 0.22);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const steps = 10;
+      for (let k = 0; k <= steps; k++) {
+        const tt = (s.t * k) / steps;
+        const px = s.sx + (s.tx - s.sx) * tt;
+        const py = s.sy + (s.ty - s.sy) * tt + Math.sin(tt * Math.PI) * arc;
+        if (k === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
     // 抛石：不规则多边形（旋转） + 受光面
     const R = 9;
     const rot = t * 5 + s.tx * 0.01;

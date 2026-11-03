@@ -483,7 +483,9 @@ export class GameSession {
       }
       s.x = s.sx + (s.tx - s.sx) * s.t;
       s.y = s.sy + (s.ty - s.sy) * s.t;
-      s.height = Math.sin(s.t * Math.PI) * (s.kind === 'rock' ? 140 : 40);
+      // 抛物线抬升：投石按飞行距离放大弧高（远投弧更高更明显），投矛保持小幅
+      const arc = s.kind === 'rock' ? Math.min(260, Math.max(120, Math.abs(s.sy - s.ty) * 0.32)) : 40;
+      s.height = Math.sin(s.t * Math.PI) * arc;
     }
 
     // 6) 落地范围伤害圈（火焰圈：波及钻地怪强制出土 + 烧虫苔；其余圈不伤害钻地）
@@ -622,15 +624,19 @@ export class GameSession {
     const isRock = (src.cfg.rangedDist ?? 0) > 400; // 投石车类远距抛石
     const wallH = this.level.wall.height;
     // 落点固定锁在城墙（投石车"扔炸弹远击城墙"）：不会越过城墙推进，也不会打到墙外
-    const dist = Math.hypot(src.x - src.x, src.y - wallH); // 纯竖直距离
-    const speed = isRock ? 420 : 620;
+    const dist = Math.abs(src.y - wallH); // 纯竖直距离
+    const speed = isRock ? 460 : 620;
+    // 投石：从抛臂端（车体略偏下、朝城墙一侧）甩出，横向落点散布更大 → 明显的抛物线弧
+    const r = src.cfg.radius;
+    const spread = isRock ? r * 2.6 : 24;
     this.monsterShots.push({
-      sx: src.x,
-      sy: src.y,
-      tx: src.x + this.rng.range(-24, 24),
+      // 起点：投石车固定从"臂端"出石（略朝城墙方向偏移），与抛臂甩下的方向一致
+      sx: src.x + (isRock ? 0 : 0),
+      sy: isRock ? src.y - r * 0.9 : src.y,
+      tx: src.x + this.rng.range(-spread, spread),
       ty: wallH,
       x: src.x,
-      y: src.y,
+      y: isRock ? src.y - r * 0.9 : src.y,
       height: 0,
       t: 0,
       dur: Math.max(0.2, dist / speed),
