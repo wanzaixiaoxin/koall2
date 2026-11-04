@@ -54,7 +54,7 @@
       "name": "炼金炸弹",
       "role": "爆破系 · 抛物轰击",
       "damageType": "fire",
-      "baseDamage": 30,
+      "baseDamage": 24,
       "interval": 1.4,
       "count": 1,
       "projectileSpeed": 700,
@@ -71,8 +71,8 @@
       },
       "blastBase": {
         "radius": 95,
-        "dmgMul": 0.5,
-        "poolDpsMul": 0.55,
+        "dmgMul": 0.4,
+        "poolDpsMul": 0.35,
         "poolSec": 3
       },
       "shape": "bomb",
