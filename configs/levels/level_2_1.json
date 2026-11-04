@@ -7,7 +7,7 @@
   },
   "wall": {
     "height": 64,
-    "hp": 2400
+    "hp": 3600
   },
   "defenseRect": {
     "yMin": 96,

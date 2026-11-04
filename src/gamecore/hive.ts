@@ -112,12 +112,10 @@ export class HiveSystem {
     // 初始 3 个瘤（第 3 个靠前些，开局就有多条出生通道、更快压上）
     this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 260);
     this.spawnTumor(cfg.hivePos.x - 170, cfg.hivePos.y - 520);
-    this.spawnTumor(cfg.hivePos.x + 170, cfg.hivePos.y - 760);
-    this.spawnTumor(cfg.hivePos.x - 60, cfg.hivePos.y - 980);
-    // 地堡
+            // 地堡
     this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
     // 开局预孵一窝（幼虫从前沿瘤出发，避免开场空场）
-    this.pendingBurst = 24;
+    this.pendingBurst = 3;
   }
 
   // ---------------- 菌毯网格 ----------------
@@ -322,20 +320,28 @@ export class HiveSystem {
     let income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
     // 败者保护反转：护甲剥穿后虫族背水一战（收入×1.4），拆家期有真实的最后对抗
     if (this.hive.armor <= 0) income *= 1.4;
-    // 失败压力递增：随对局时间虫族经济缓慢成长（×1→×2.5 / 4 分钟），墙真的会被打爆
+    // 开局温和发育：前 100s 底流按 6%→100% 线性爬坡，避免"开局就涌死玩家"
     const now = this.hiveArmorElapsed;
+    income *= Math.min(1, 0.06 + now / 100);
+    // 失败压力递增：随对局时间虫族经济缓慢成长（×1→×2.5 / 4 分钟）
     income *= Math.min(2.5, 1 + now / 240);
     this.hive.biomass += income * dt;
     this.hive.biomassEarned += income * dt;
-    // 孵化潮：每 20s 一次瞬时洪峰——一股脑喷出（不排队），形成明显"一波涌来"的波峰
+    // 孵化潮：渐进解锁——前 45s 不出潮（给玩家发育窗口），之后每 20s 一波、洪峰随时长增长
     this.hiveWaveLeft -= dt;
     if (this.hiveWaveLeft <= 0) {
       this.hiveWaveLeft += 20;
+      const elapsed = this.hiveArmorElapsed;
+      // 开局保护：45 秒内不喷洪峰（只有底流），防止"没发育就被淹死"
+      if (elapsed < 60) {
+        this.hiveWaveLeft = Math.max(1, 60 - elapsed); // 首次潮固定在 60s
+        return;
+      }
       this.waveCount++;
-      // 瞬时喷发：潮汐洪峰不计虫核（"免费额"），硬喷 80~130 只——形成真正一股涌来的洪峰
-      // 同屏软上限 220：只补到 220 为止（保证"上百只"，但不失控刷爆屏幕）
+      // 洪峰量按对局时长增长：45s≈55 只 → 200s 后封顶 130 只；同屏软上限 220
+      const growth = Math.min(75, (elapsed - 60) * 0.5);
+      const base = Math.round(55 + growth) + Math.floor(this.rngLike() * 16);
       const alive = deps0.monsters.length;
-      const base = 80 + Math.floor(this.rngLike() * 51);
       const flood = Math.max(0, Math.min(base, 220 - alive));
       const pool = this.unlockedUnits();
       for (let i = 0; i < flood; i++) {

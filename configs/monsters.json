@@ -205,7 +205,7 @@
       "def": 0,
       "speed": 170,
       "radius": 10,
-      "atk": 8,
+      "atk": 3,
       "attackInterval": 1.0,
       "behavior": "march",
       "xp": 2,
@@ -290,7 +290,7 @@
       "creepBenefit": true,
       "shape": "baneling",
       "detonate": {
-        "wallDamage": 80
+        "wallDamage": 40
       }
     },
     {

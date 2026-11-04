@@ -750,10 +750,8 @@
       this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
       this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 260);
       this.spawnTumor(cfg.hivePos.x - 170, cfg.hivePos.y - 520);
-      this.spawnTumor(cfg.hivePos.x + 170, cfg.hivePos.y - 760);
-      this.spawnTumor(cfg.hivePos.x - 60, cfg.hivePos.y - 980);
       this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
-      this.pendingBurst = 24;
+      this.pendingBurst = 3;
     }
     // ---------------- 菌毯网格 ----------------
     keyAt(x, y) {
@@ -921,15 +919,22 @@
       let income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
       if (this.hive.armor <= 0) income *= 1.4;
       const now = this.hiveArmorElapsed;
+      income *= Math.min(1, 0.06 + now / 100);
       income *= Math.min(2.5, 1 + now / 240);
       this.hive.biomass += income * dt;
       this.hive.biomassEarned += income * dt;
       this.hiveWaveLeft -= dt;
       if (this.hiveWaveLeft <= 0) {
         this.hiveWaveLeft += 20;
+        const elapsed = this.hiveArmorElapsed;
+        if (elapsed < 60) {
+          this.hiveWaveLeft = Math.max(1, 60 - elapsed);
+          return;
+        }
         this.waveCount++;
+        const growth = Math.min(75, (elapsed - 60) * 0.5);
+        const base = Math.round(55 + growth) + Math.floor(this.rngLike() * 16);
         const alive = deps0.monsters.length;
-        const base = 80 + Math.floor(this.rngLike() * 51);
         const flood = Math.max(0, Math.min(base, 220 - alive));
         const pool = this.unlockedUnits();
         for (let i = 0; i < flood; i++) {
