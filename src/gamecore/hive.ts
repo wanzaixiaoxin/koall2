@@ -72,7 +72,7 @@ export class HiveSystem {
     };
     this.T = {
       hp: 80,
-      maxCount: 9,
+      maxCount: 14,
       spreadIntervalSec: 5.5,
       dormantSec: 6,
       reviveCost: 20,
@@ -85,10 +85,10 @@ export class HiveSystem {
       ...(cfg.migrate ?? {}),
     };
     this.E = {
-      hiveIncomePerSec: 18,
+      hiveIncomePerSec: 34,
       tumorIncomeScale: 3.5,
       startBiomass: 80,
-      unitCost: { zerg_ling: 2, zerg_roach: 8, zerg_lurker: 18, zerg_queen: 45, baneling: 12, zerg_ultra: 90 },
+      unitCost: { zerg_ling: 1, zerg_roach: 5, zerg_lurker: 12, zerg_queen: 30, baneling: 8, zerg_ultra: 60 },
       ...(cfg.economy ?? {}),
     };
     this.hive = {
@@ -110,14 +110,14 @@ export class HiveSystem {
     // 初始菌毯：虫巢周围一圈（活性起点 50，铺得快）
     this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
     // 初始 3 个瘤（第 3 个靠前些，开局就有多条出生通道、更快压上）
-    this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 200);
-    this.spawnTumor(cfg.hivePos.x - 150, cfg.hivePos.y - 420);
-    this.spawnTumor(cfg.hivePos.x + 150, cfg.hivePos.y - 600);
-    this.spawnTumor(cfg.hivePos.x - 40, cfg.hivePos.y - 780);
+    this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 260);
+    this.spawnTumor(cfg.hivePos.x - 170, cfg.hivePos.y - 520);
+    this.spawnTumor(cfg.hivePos.x + 170, cfg.hivePos.y - 760);
+    this.spawnTumor(cfg.hivePos.x - 60, cfg.hivePos.y - 980);
     // 地堡
     this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
     // 开局预孵一窝（幼虫从前沿瘤出发，避免开场空场）
-    this.pendingBurst = 16;
+    this.pendingBurst = 24;
   }
 
   // ---------------- 菌毯网格 ----------------
@@ -327,19 +327,28 @@ export class HiveSystem {
     income *= Math.min(2.5, 1 + now / 240);
     this.hive.biomass += income * dt;
     this.hive.biomassEarned += income * dt;
-    // 孵化潮：每 20s 一次"burst"——玩家有明确的喘息/爆发节奏（波次感的替代物）
+    // 孵化潮：每 20s 一次瞬时洪峰——一股脑喷出（不排队），形成明显"一波涌来"的波峰
     this.hiveWaveLeft -= dt;
     if (this.hiveWaveLeft <= 0) {
       this.hiveWaveLeft += 20;
       this.waveCount++;
-      this.pendingBurst += 42 + Math.floor(this.rngLike() * 20);
+      // 瞬时喷发：潮汐洪峰不计虫核（"免费额"），硬喷 80~130 只——形成真正一股涌来的洪峰
+      // 同屏软上限 220：只补到 220 为止（保证"上百只"，但不失控刷爆屏幕）
+      const alive = deps0.monsters.length;
+      const base = 80 + Math.floor(this.rngLike() * 51);
+      const flood = Math.max(0, Math.min(base, 220 - alive));
+      const pool = this.unlockedUnits();
+      for (let i = 0; i < flood; i++) {
+        const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+        this.hatchOne(key, deps0);
+      }
       // 编排：每 2 潮一次"精英潮"（高级单位连出），每 4 潮一次"Boss 潮"（雷兽登场）
       if (this.waveCount % 4 === 0) {
-        this.pendingElite += 6;
+        this.pendingElite += 8;
         this.forceHatchOne('zerg_ultra');
         deps0.onEvent?.('boss');
       } else if (this.waveCount % 2 === 0) {
-        this.pendingElite += 4;
+        this.pendingElite += 6;
         deps0.onEvent?.('elite');
       } else {
         deps0.onEvent?.('wave');
@@ -390,13 +399,13 @@ export class HiveSystem {
     if (this.hive.migrateLeft > 0) return; // 迁徙不孵兵
     this.hive.hatchLeft -= dt;
     if (this.hive.hatchLeft > 0) return;
-    this.hive.hatchLeft += 0.55;
+    this.hive.hatchLeft += 0.6;
 
     // 可孵单位：按虫核累计收入解锁
     const pool = this.unlockedUnits();
     if (pool.length === 0) return;
     // 每次决策孵一批（3~5 只）：开局 pendingBurst 优先放完，之后按虫核余量连孵
-    const burst = this.pendingBurst > 0 ? Math.min(14, this.pendingBurst) : 6 + Math.floor(this.rngLike() * 7);
+    const burst = this.pendingBurst > 0 ? Math.min(30, this.pendingBurst) : 4 + Math.floor(this.rngLike() * 5);
     let hatched = 0;
     for (let i = 0; i < burst; i++) {
       // 精英潮：这是潮次里"精英波"时，偏向高级单位（越高越可能）

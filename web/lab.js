@@ -712,7 +712,7 @@
       };
       this.T = {
         hp: 80,
-        maxCount: 9,
+        maxCount: 14,
         spreadIntervalSec: 5.5,
         dormantSec: 6,
         reviveCost: 20,
@@ -725,10 +725,10 @@
         ...cfg.migrate ?? {}
       };
       this.E = {
-        hiveIncomePerSec: 18,
+        hiveIncomePerSec: 34,
         tumorIncomeScale: 3.5,
         startBiomass: 80,
-        unitCost: { zerg_ling: 2, zerg_roach: 8, zerg_lurker: 18, zerg_queen: 45, baneling: 12, zerg_ultra: 90 },
+        unitCost: { zerg_ling: 1, zerg_roach: 5, zerg_lurker: 12, zerg_queen: 30, baneling: 8, zerg_ultra: 60 },
         ...cfg.economy ?? {}
       };
       this.hive = {
@@ -748,12 +748,12 @@
         dead: false
       };
       this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
-      this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 200);
-      this.spawnTumor(cfg.hivePos.x - 150, cfg.hivePos.y - 420);
-      this.spawnTumor(cfg.hivePos.x + 150, cfg.hivePos.y - 600);
-      this.spawnTumor(cfg.hivePos.x - 40, cfg.hivePos.y - 780);
+      this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 260);
+      this.spawnTumor(cfg.hivePos.x - 170, cfg.hivePos.y - 520);
+      this.spawnTumor(cfg.hivePos.x + 170, cfg.hivePos.y - 760);
+      this.spawnTumor(cfg.hivePos.x - 60, cfg.hivePos.y - 980);
       this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
-      this.pendingBurst = 16;
+      this.pendingBurst = 24;
     }
     // ---------------- 菌毯网格 ----------------
     keyAt(x, y) {
@@ -928,13 +928,20 @@
       if (this.hiveWaveLeft <= 0) {
         this.hiveWaveLeft += 20;
         this.waveCount++;
-        this.pendingBurst += 42 + Math.floor(this.rngLike() * 20);
+        const alive = deps0.monsters.length;
+        const base = 80 + Math.floor(this.rngLike() * 51);
+        const flood = Math.max(0, Math.min(base, 220 - alive));
+        const pool = this.unlockedUnits();
+        for (let i = 0; i < flood; i++) {
+          const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+          this.hatchOne(key, deps0);
+        }
         if (this.waveCount % 4 === 0) {
-          this.pendingElite += 6;
+          this.pendingElite += 8;
           this.forceHatchOne("zerg_ultra");
           deps0.onEvent?.("boss");
         } else if (this.waveCount % 2 === 0) {
-          this.pendingElite += 4;
+          this.pendingElite += 6;
           deps0.onEvent?.("elite");
         } else {
           deps0.onEvent?.("wave");
@@ -979,10 +986,10 @@
       if (this.hive.migrateLeft > 0) return;
       this.hive.hatchLeft -= dt;
       if (this.hive.hatchLeft > 0) return;
-      this.hive.hatchLeft += 0.55;
+      this.hive.hatchLeft += 0.6;
       const pool = this.unlockedUnits();
       if (pool.length === 0) return;
-      const burst = this.pendingBurst > 0 ? Math.min(14, this.pendingBurst) : 6 + Math.floor(this.rngLike() * 7);
+      const burst = this.pendingBurst > 0 ? Math.min(30, this.pendingBurst) : 4 + Math.floor(this.rngLike() * 5);
       let hatched = 0;
       for (let i = 0; i < burst; i++) {
         let key;
