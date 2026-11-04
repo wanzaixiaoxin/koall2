@@ -725,10 +725,10 @@
         ...cfg.migrate ?? {}
       };
       this.E = {
-        hiveIncomePerSec: 11,
+        hiveIncomePerSec: 18,
         tumorIncomeScale: 3.5,
         startBiomass: 80,
-        unitCost: { zerg_ling: 5, zerg_roach: 12, zerg_lurker: 25, zerg_queen: 60, baneling: 20, zerg_ultra: 120 },
+        unitCost: { zerg_ling: 2, zerg_roach: 8, zerg_lurker: 18, zerg_queen: 45, baneling: 12, zerg_ultra: 90 },
         ...cfg.economy ?? {}
       };
       this.hive = {
@@ -748,11 +748,12 @@
         dead: false
       };
       this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
-      this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 180);
-      this.spawnTumor(cfg.hivePos.x - 90, cfg.hivePos.y - 300);
-      this.spawnTumor(cfg.hivePos.x + 110, cfg.hivePos.y - 380);
+      this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 200);
+      this.spawnTumor(cfg.hivePos.x - 150, cfg.hivePos.y - 420);
+      this.spawnTumor(cfg.hivePos.x + 150, cfg.hivePos.y - 600);
+      this.spawnTumor(cfg.hivePos.x - 40, cfg.hivePos.y - 780);
       this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
-      this.pendingBurst = 9;
+      this.pendingBurst = 16;
     }
     // ---------------- 菌毯网格 ----------------
     keyAt(x, y) {
@@ -927,7 +928,7 @@
       if (this.hiveWaveLeft <= 0) {
         this.hiveWaveLeft += 20;
         this.waveCount++;
-        this.pendingBurst += 18 + Math.floor(this.rngLike() * 10);
+        this.pendingBurst += 42 + Math.floor(this.rngLike() * 20);
         if (this.waveCount % 4 === 0) {
           this.pendingElite += 6;
           this.forceHatchOne("zerg_ultra");
@@ -981,7 +982,7 @@
       this.hive.hatchLeft += 0.55;
       const pool = this.unlockedUnits();
       if (pool.length === 0) return;
-      const burst = this.pendingBurst > 0 ? Math.min(6, this.pendingBurst) : 3 + Math.floor(this.rngLike() * 3);
+      const burst = this.pendingBurst > 0 ? Math.min(14, this.pendingBurst) : 6 + Math.floor(this.rngLike() * 7);
       let hatched = 0;
       for (let i = 0; i < burst; i++) {
         let key;
@@ -1005,16 +1006,19 @@
       this.hatchOne(key, this.lastDeps);
     }
     hatchOne(key, deps) {
-      const src = this.frontTumor();
+      const act = this.activeTumors();
+      const src = act.length > 0 ? act[Math.floor(this.rngLike() * act.length) % act.length] : null;
       let sx;
       let sy;
       if (src) {
-        sx = src.x + (this.rngLike() - 0.5) * 60;
-        sy = src.y - 20;
+        sx = src.x + (this.rngLike() - 0.5) * 140;
+        sy = src.y + (this.rngLike() - 0.5) * 80 - 10;
       } else {
-        sx = this.hive.x + (this.rngLike() - 0.5) * 80;
+        sx = this.hive.x + (this.rngLike() - 0.5) * 160;
         sy = this.hive.y - 60;
       }
+      sx = Math.max(30, Math.min(this.cfg.hiveMoveRange[1] + 180, sx));
+      sy = Math.max(120, sy);
       if (!this.hasCreep(sx, sy)) this.paintAround(sx, sy, 1);
       deps.onHatch(key, sx, sy);
       deps.onEvent?.("hatch", { x: sx, y: sy });

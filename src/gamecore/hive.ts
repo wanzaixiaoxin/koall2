@@ -85,10 +85,10 @@ export class HiveSystem {
       ...(cfg.migrate ?? {}),
     };
     this.E = {
-      hiveIncomePerSec: 11,
+      hiveIncomePerSec: 18,
       tumorIncomeScale: 3.5,
       startBiomass: 80,
-      unitCost: { zerg_ling: 5, zerg_roach: 12, zerg_lurker: 25, zerg_queen: 60, baneling: 20, zerg_ultra: 120 },
+      unitCost: { zerg_ling: 2, zerg_roach: 8, zerg_lurker: 18, zerg_queen: 45, baneling: 12, zerg_ultra: 90 },
       ...(cfg.economy ?? {}),
     };
     this.hive = {
@@ -110,13 +110,14 @@ export class HiveSystem {
     // 初始菌毯：虫巢周围一圈（活性起点 50，铺得快）
     this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
     // 初始 3 个瘤（第 3 个靠前些，开局就有多条出生通道、更快压上）
-    this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 180);
-    this.spawnTumor(cfg.hivePos.x - 90, cfg.hivePos.y - 300);
-    this.spawnTumor(cfg.hivePos.x + 110, cfg.hivePos.y - 380);
+    this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 200);
+    this.spawnTumor(cfg.hivePos.x - 150, cfg.hivePos.y - 420);
+    this.spawnTumor(cfg.hivePos.x + 150, cfg.hivePos.y - 600);
+    this.spawnTumor(cfg.hivePos.x - 40, cfg.hivePos.y - 780);
     // 地堡
     this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
     // 开局预孵一窝（幼虫从前沿瘤出发，避免开场空场）
-    this.pendingBurst = 9;
+    this.pendingBurst = 16;
   }
 
   // ---------------- 菌毯网格 ----------------
@@ -331,7 +332,7 @@ export class HiveSystem {
     if (this.hiveWaveLeft <= 0) {
       this.hiveWaveLeft += 20;
       this.waveCount++;
-      this.pendingBurst += 18 + Math.floor(this.rngLike() * 10);
+      this.pendingBurst += 42 + Math.floor(this.rngLike() * 20);
       // 编排：每 2 潮一次"精英潮"（高级单位连出），每 4 潮一次"Boss 潮"（雷兽登场）
       if (this.waveCount % 4 === 0) {
         this.pendingElite += 6;
@@ -395,7 +396,7 @@ export class HiveSystem {
     const pool = this.unlockedUnits();
     if (pool.length === 0) return;
     // 每次决策孵一批（3~5 只）：开局 pendingBurst 优先放完，之后按虫核余量连孵
-    const burst = this.pendingBurst > 0 ? Math.min(6, this.pendingBurst) : 3 + Math.floor(this.rngLike() * 3);
+    const burst = this.pendingBurst > 0 ? Math.min(14, this.pendingBurst) : 6 + Math.floor(this.rngLike() * 7);
     let hatched = 0;
     for (let i = 0; i < burst; i++) {
       // 精英潮：这是潮次里"精英波"时，偏向高级单位（越高越可能）
@@ -425,17 +426,22 @@ export class HiveSystem {
   }
 
   private hatchOne(key: string, deps: HiveDeps): void {
-    // 出生点：最靠前（y 最小）的活跃瘤；否则虫巢旁
-    const src = this.frontTumor();
+    // 出生点：从所有活跃瘤中随机选一个（多点喷发＝潮水感，而非单点细流）；
+    // 无瘤时从虫巢旁。出生位置在瘤周围较宽散布，读作"一窝涌出"。
+    const act = this.activeTumors();
+    const src = act.length > 0 ? act[Math.floor(this.rngLike() * act.length) % act.length] : null;
     let sx: number;
     let sy: number;
     if (src) {
-      sx = src.x + (this.rngLike() - 0.5) * 60;
-      sy = src.y - 20;
+      sx = src.x + (this.rngLike() - 0.5) * 140;
+      sy = src.y + (this.rngLike() - 0.5) * 80 - 10;
     } else {
-      sx = this.hive.x + (this.rngLike() - 0.5) * 80;
+      sx = this.hive.x + (this.rngLike() - 0.5) * 160;
       sy = this.hive.y - 60;
     }
+    // 上限兜底：出生点不出屏
+    sx = Math.max(30, Math.min(this.cfg.hiveMoveRange[1] + 180, sx));
+    sy = Math.max(120, sy);
     // 出生必须在菌毯上：若该点无菌毯，画一小片
     if (!this.hasCreep(sx, sy)) this.paintAround(sx, sy, 1);
     deps.onHatch(key, sx, sy);
