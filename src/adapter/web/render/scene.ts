@@ -132,6 +132,18 @@ export class SceneRenderer {
       eff.wallImpact(x, y, dmg, this.palette.friendly.wall);
     });
 
+    // 钻地怪刺墙：城墙处地刺突起 + 明确飘字（解决"看不见的怪打墙、凭空掉血"）
+    bus.on<{ x: number; y: number }>('onBurrowStrike', ({ x, y }) => {
+      eff.pushFloat(x, y + 46, '⚠ 地刺', '#FFB357', 15);
+      for (let i = 0; i < 3; i++) {
+        const sx = x + (i - 1) * 9;
+        eff.particles.push({
+          kind: 'shard', x: sx, y: y + 4, vx: 0, vy: 120, grav: -260, drag: 1.2,
+          life: 0.28, maxLife: 0.28, size: 4, color: '#C9A26B', rot: 0, spin: 0, shrink: 1,
+        });
+      }
+    });
+
     bus.on<{ wallHp: number; wallMaxHp: number }>('onWallHeal', () => {
       this.wallHeal.fill(0.5);
       eff.pushFloat(this.W / 2, this.H * 0.12, '城防修复', '#5EE1FF', 20);

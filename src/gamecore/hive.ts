@@ -42,6 +42,10 @@ export class HiveSystem {
   activity = new Map<number, number>();
   /** 开局预孵批次（"虫多繁殖快"：第一窝直接上路） */
   private pendingBurst = 0;
+  /** 精英潮倒计时额度：>0 时孵化偏向高级单位 */
+  private pendingElite = 0;
+  /** 已触发孵化潮次数（编排出精英潮/Boss 潮） */
+  private waveCount = 0;
   /** 对局累计时间（护甲剥离与经济递增用） */
   private hiveArmorElapsed = 0;
   /** 孵化潮倒计时（波次感的替代物） */
@@ -214,6 +218,7 @@ export class HiveSystem {
   update(dt: number, deps: HiveDeps): void {
     if (this.hive.dead) return;
     const now = deps.now;
+    this.lastDeps = deps;
 
     // 1) 活性更新（区域虫群密度阈值驱动）
     this.updateActivity(dt, deps.monsters);
@@ -222,7 +227,7 @@ export class HiveSystem {
     this.updateTumors(dt);
 
     // 3) 虫核经济
-    this.updateEconomy(dt);
+    this.updateEconomy(dt, deps);
 
     // 4) 虫巢护甲剥离（全局平均活性）
     this.updateArmor(dt);
@@ -311,7 +316,7 @@ export class HiveSystem {
     return sum / this.activity.size;
   }
 
-  private updateEconomy(dt: number): void {
+  private updateEconomy(dt: number, deps0: HiveDeps): void {
     const tumorCount = this.activeTumors().length;
     let income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
     // 败者保护反转：护甲剥穿后虫族背水一战（收入×1.4），拆家期有真实的最后对抗
@@ -325,7 +330,19 @@ export class HiveSystem {
     this.hiveWaveLeft -= dt;
     if (this.hiveWaveLeft <= 0) {
       this.hiveWaveLeft += 20;
+      this.waveCount++;
       this.pendingBurst += 18 + Math.floor(this.rngLike() * 10);
+      // 编排：每 2 潮一次"精英潮"（高级单位连出），每 4 潮一次"Boss 潮"（雷兽登场）
+      if (this.waveCount % 4 === 0) {
+        this.pendingElite += 6;
+        this.forceHatchOne('zerg_ultra');
+        deps0.onEvent?.('boss');
+      } else if (this.waveCount % 2 === 0) {
+        this.pendingElite += 4;
+        deps0.onEvent?.('elite');
+      } else {
+        deps0.onEvent?.('wave');
+      }
       this.waveCallback?.();
     }
   }
@@ -381,7 +398,16 @@ export class HiveSystem {
     const burst = this.pendingBurst > 0 ? Math.min(6, this.pendingBurst) : 3 + Math.floor(this.rngLike() * 3);
     let hatched = 0;
     for (let i = 0; i < burst; i++) {
-      const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+      // 精英潮：这是潮次里"精英波"时，偏向高级单位（越高越可能）
+      let key: string;
+      if (this.pendingElite > 0) {
+        const strong = pool.filter((k) => k !== 'zerg_ling');
+        key = strong.length > 0 ? strong[Math.floor(this.rngLike() * strong.length) % strong.length]
+          : pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+        this.pendingElite--;
+      } else {
+        key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+      }
       const cost = this.E.unitCost[key] ?? 10;
       if (this.hive.biomass < cost) break;
       this.hive.biomass -= cost;
@@ -389,6 +415,13 @@ export class HiveSystem {
       hatched++;
     }
     if (this.pendingBurst > 0 && hatched > 0) this.pendingBurst -= hatched;
+  }
+
+  /** 强制孵一只指定单位（Boss 潮用：无视虫核成本，保证 Boss 一定登场） */
+  private lastDeps: HiveDeps | null = null;
+  private forceHatchOne(key: string): void {
+    if (!this.lastDeps) return;
+    this.hatchOne(key, this.lastDeps);
   }
 
   private hatchOne(key: string, deps: HiveDeps): void {
@@ -421,11 +454,11 @@ export class HiveSystem {
   unlockedUnits(): string[] {
     const list: string[] = ['zerg_ling'];
     const unlock = this.cfg.unlock ?? [
-      { monster: 'zerg_roach', needBiomass: 40 },
-      { monster: 'baneling', needBiomass: 90 },
-      { monster: 'zerg_lurker', needBiomass: 150 },
-      { monster: 'zerg_queen', needBiomass: 260 },
-      { monster: 'zerg_ultra', needBiomass: 420 },
+      { monster: 'zerg_roach', needBiomass: 18 },
+      { monster: 'baneling', needBiomass: 40 },
+      { monster: 'zerg_lurker', needBiomass: 70 },
+      { monster: 'zerg_queen', needBiomass: 110 },
+      { monster: 'zerg_ultra', needBiomass: 180 },
     ];
     for (const u of unlock) {
       if (this.hive.biomassEarned >= u.needBiomass) list.push(u.monster);

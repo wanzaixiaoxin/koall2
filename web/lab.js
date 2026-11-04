@@ -690,11 +690,17 @@
       this.activity = /* @__PURE__ */ new Map();
       /** 开局预孵批次（"虫多繁殖快"：第一窝直接上路） */
       this.pendingBurst = 0;
+      /** 精英潮倒计时额度：>0 时孵化偏向高级单位 */
+      this.pendingElite = 0;
+      /** 已触发孵化潮次数（编排出精英潮/Boss 潮） */
+      this.waveCount = 0;
       /** 对局累计时间（护甲剥离与经济递增用） */
       this.hiveArmorElapsed = 0;
       /** 孵化潮倒计时（波次感的替代物） */
       this.hiveWaveLeft = 45;
       this.nextId = 1;
+      /** 强制孵一只指定单位（Boss 潮用：无视虫核成本，保证 Boss 一定登场） */
+      this.lastDeps = null;
       this.cfg = cfg;
       this.A = {
         risePerSec: 3,
@@ -835,9 +841,10 @@
     update(dt, deps) {
       if (this.hive.dead) return;
       const now = deps.now;
+      this.lastDeps = deps;
       this.updateActivity(dt, deps.monsters);
       this.updateTumors(dt);
-      this.updateEconomy(dt);
+      this.updateEconomy(dt, deps);
       this.updateArmor(dt);
       this.updateMigration(dt);
       this.updateHatch(dt, deps);
@@ -908,7 +915,7 @@
       for (const a of this.activity.values()) sum += a;
       return sum / this.activity.size;
     }
-    updateEconomy(dt) {
+    updateEconomy(dt, deps0) {
       const tumorCount = this.activeTumors().length;
       let income = this.E.hiveIncomePerSec + tumorCount * (this.avgActivity() / 100) * this.E.tumorIncomeScale;
       if (this.hive.armor <= 0) income *= 1.4;
@@ -919,7 +926,18 @@
       this.hiveWaveLeft -= dt;
       if (this.hiveWaveLeft <= 0) {
         this.hiveWaveLeft += 20;
+        this.waveCount++;
         this.pendingBurst += 18 + Math.floor(this.rngLike() * 10);
+        if (this.waveCount % 4 === 0) {
+          this.pendingElite += 6;
+          this.forceHatchOne("zerg_ultra");
+          deps0.onEvent?.("boss");
+        } else if (this.waveCount % 2 === 0) {
+          this.pendingElite += 4;
+          deps0.onEvent?.("elite");
+        } else {
+          deps0.onEvent?.("wave");
+        }
         this.waveCallback?.();
       }
     }
@@ -966,7 +984,14 @@
       const burst = this.pendingBurst > 0 ? Math.min(6, this.pendingBurst) : 3 + Math.floor(this.rngLike() * 3);
       let hatched = 0;
       for (let i = 0; i < burst; i++) {
-        const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+        let key;
+        if (this.pendingElite > 0) {
+          const strong = pool.filter((k) => k !== "zerg_ling");
+          key = strong.length > 0 ? strong[Math.floor(this.rngLike() * strong.length) % strong.length] : pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+          this.pendingElite--;
+        } else {
+          key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
+        }
         const cost = this.E.unitCost[key] ?? 10;
         if (this.hive.biomass < cost) break;
         this.hive.biomass -= cost;
@@ -974,6 +999,10 @@
         hatched++;
       }
       if (this.pendingBurst > 0 && hatched > 0) this.pendingBurst -= hatched;
+    }
+    forceHatchOne(key) {
+      if (!this.lastDeps) return;
+      this.hatchOne(key, this.lastDeps);
     }
     hatchOne(key, deps) {
       const src = this.frontTumor();
@@ -1001,11 +1030,11 @@
     unlockedUnits() {
       const list = ["zerg_ling"];
       const unlock = this.cfg.unlock ?? [
-        { monster: "zerg_roach", needBiomass: 40 },
-        { monster: "baneling", needBiomass: 90 },
-        { monster: "zerg_lurker", needBiomass: 150 },
-        { monster: "zerg_queen", needBiomass: 260 },
-        { monster: "zerg_ultra", needBiomass: 420 }
+        { monster: "zerg_roach", needBiomass: 18 },
+        { monster: "baneling", needBiomass: 40 },
+        { monster: "zerg_lurker", needBiomass: 70 },
+        { monster: "zerg_queen", needBiomass: 110 },
+        { monster: "zerg_ultra", needBiomass: 180 }
       ];
       for (const u of unlock) {
         if (this.hive.biomassEarned >= u.needBiomass) list.push(u.monster);
@@ -1326,6 +1355,7 @@
             this.totalWallDamage += dmg;
             this.waveWallDamage += dmg;
             this.bus.emit("onWallHit", { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+            this.bus.emit("onBurrowStrike", { x: src.x, y: this.level.wall.height });
           }, (src) => {
             this.spawnMonsterShot(src);
           }, (x, y) => this.isCreeped(x, y), this.maxSafeHoldY());
@@ -6068,6 +6098,28 @@
         const seg = Math.max(0, Math.min(WALL_SEGS - 1, Math.floor(x / (this.W / WALL_SEGS))));
         this.wallFlash[seg] = 0.26;
         eff.wallImpact(x, y, dmg, this.palette.friendly.wall);
+      });
+      bus.on("onBurrowStrike", ({ x, y }) => {
+        eff.pushFloat(x, y + 46, "\u26A0 \u5730\u523A", "#FFB357", 15);
+        for (let i = 0; i < 3; i++) {
+          const sx = x + (i - 1) * 9;
+          eff.particles.push({
+            kind: "shard",
+            x: sx,
+            y: y + 4,
+            vx: 0,
+            vy: 120,
+            grav: -260,
+            drag: 1.2,
+            life: 0.28,
+            maxLife: 0.28,
+            size: 4,
+            color: "#C9A26B",
+            rot: 0,
+            spin: 0,
+            shrink: 1
+          });
+        }
       });
       bus.on("onWallHeal", () => {
         this.wallHeal.fill(0.5);

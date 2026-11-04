@@ -407,6 +407,8 @@ export class GameSession {
           this.totalWallDamage += dmg;
           this.waveWallDamage += dmg;
           this.bus.emit('onWallHit', { dmg, wallHp: this.wallHp, x: src.x, y: this.level.wall.height + 26 });
+          // 钻地怪打墙＝玩家"看不见的伤害"：给城墙处一个地刺突起提示 + 飘字，避免"凭空掉血"
+          this.bus.emit('onBurrowStrike', { x: src.x, y: this.level.wall.height });
         }, (src) => {
           this.spawnMonsterShot(src);
         }, (x, y) => this.isCreeped(x, y), this.maxSafeHoldY());

@@ -135,6 +135,22 @@ async function boot(): Promise<void> {
     banner.classList.add('show');
     bannerTimer = 2.2;
   });
+  // 虫巢模式：孵化潮 / 精英潮 / Boss 登场提示（让玩家感知"压力波次"与特殊单位）
+  session.bus.on<{ evt: string }>('onHiveEvent', ({ evt }) => {
+    if (evt === 'boss') {
+      banner.textContent = '⚠ 雷兽（Boss）破土而来！';
+      banner.classList.add('show');
+      bannerTimer = 2.6;
+    } else if (evt === 'elite') {
+      banner.textContent = '❗ 精英虫潮压境';
+      banner.classList.add('show');
+      bannerTimer = 2.2;
+    } else if (evt === 'wave') {
+      banner.textContent = '虫巢孵化潮';
+      banner.classList.add('show');
+      bannerTimer = 1.6;
+    }
+  });
 
   session.bus.on<{ result: string }>('onGameOver', ({ result }) => {
     const stars = result === 'victory'
@@ -208,8 +224,12 @@ async function boot(): Promise<void> {
     const weaponTag = session.hero.weapons.length > 1
       ? ` · ${session.hero.weapons.map((w) => w.cfg.name).join('+')}`
       : '';
+    // 虫巢模式没有波次：显示茧壳/活性态势；第一章仍显示第N波
+    const waveTag = session.hiveMode
+      ? `虫巢·茧壳${session.hiveSystem!.hive.armor.toFixed(0)}%·活性${session.hiveSystem!.avgActivity().toFixed(0)}`
+      : `第 ${Math.min(session.waveStats.length + 1, level.waves.length)}/${level.waves.length} 波`;
     hudText.textContent =
-      `第 ${Math.min(session.waveStats.length + 1, level.waves.length)}/${level.waves.length} 波` +
+      `${waveTag}` +
       ` · Lv.${h.level} · 击杀 ${session.totalKills} · ${session.timeSec.toFixed(0)}s${weaponTag}`;
 
     if (bannerTimer > 0) {
