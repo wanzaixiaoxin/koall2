@@ -50,6 +50,12 @@ export interface WeaponConfig {
   blastBase?: { radius: number; dmgMul: number; poolDpsMul: number; poolSec: number };
   /** 武器谱系定位（docs/02 §6 分类）：速射 / 贯穿 / 爆破 / 回旋 / 雷霆 */
   role?: string;
+  /**
+   * 击杀溅射：该武器的弹**击杀**目标时，以目标为中心对周围造成一次溅射
+   * （伤害 = 命中弹伤害 × dmgMul）。单体武器在虫海中的定位：点杀引爆。
+   * 溅射击杀不再触发溅射（防连锁爆场）。
+   */
+  killSplash?: { radius: number; dmgMul: number };
 }
 
 export type MonsterBehavior =

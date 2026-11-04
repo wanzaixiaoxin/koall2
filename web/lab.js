@@ -2307,7 +2307,7 @@
         }
       }
     }
-    killMonster(p, m) {
+    killMonster(p, m, dmgType) {
       this.totalKills++;
       this.waveKills++;
       this.hero.xp += m.cfg.xp;
@@ -2320,6 +2320,30 @@
         radius: m.cfg.radius,
         damageType: p ? p.damageType : null
       });
+      if (p && p.weapon.cfg.killSplash) {
+        const { radius, dmgMul } = p.weapon.cfg.killSplash;
+        const splash = Math.max(1, Math.round(p.dmg * dmgMul));
+        for (const o of this.monsters) {
+          if (o === m || o.hp <= 0 || o.burrowed) continue;
+          const dx = o.x - m.x;
+          const dy = o.y - m.y;
+          const rr = radius + o.cfg.radius;
+          if (dx * dx + dy * dy > rr * rr) continue;
+          o.hp -= splash;
+          this.totalDamage += splash;
+          this.bus.emit("onHit", {
+            monsterId: o.id,
+            dmg: splash,
+            isCrit: false,
+            blocked: false,
+            mitigated: 0,
+            x: o.x,
+            y: o.y,
+            damageType: p.damageType
+          });
+          if (o.hp <= 0) this.killMonster(null, o, p.damageType);
+        }
+      }
       if (m.cfg.deathSplit) {
         this.spawnBaby(m, m.cfg.deathSplit.baby, m.cfg.deathSplit.count);
       }

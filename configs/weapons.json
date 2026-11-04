@@ -5,7 +5,7 @@
       "name": "符文步枪",
       "role": "速射系 · 弹幕雨",
       "damageType": "physical",
-      "baseDamage": 12,
+      "baseDamage": 16,
       "interval": 0.5,
       "count": 2,
       "projectileSpeed": 950,
@@ -15,8 +15,12 @@
       "targeting": "nearest",
       "trajectory": "straight",
       "shape": "dot",
+      "killSplash": {
+        "radius": 64,
+        "dmgMul": 0.5
+      },
       "heat": {
-        "shots": 16,
+        "shots": 22,
         "cooldown": 2.2
       },
       "bulletLife": 3,
@@ -66,9 +70,9 @@
         "peak": 160
       },
       "blastBase": {
-        "radius": 105,
-        "dmgMul": 0.6,
-        "poolDpsMul": 0.7,
+        "radius": 95,
+        "dmgMul": 0.5,
+        "poolDpsMul": 0.55,
         "poolSec": 3
       },
       "shape": "bomb",
@@ -146,8 +150,8 @@
       "name": "雷电权杖",
       "role": "雷霆系 · 连锁落雷",
       "damageType": "lightning",
-      "baseDamage": 16,
-      "interval": 1.05,
+      "baseDamage": 14,
+      "interval": 1.15,
       "count": 1,
       "projectileSpeed": 0,
       "projectileRange": 900,
@@ -167,7 +171,7 @@
       "name": "棱镜激光",
       "role": "光束系 · 穿射衰减",
       "damageType": "lightning",
-      "baseDamage": 58,
+      "baseDamage": 52,
       "interval": 0.8,
       "count": 1,
       "projectileSpeed": 0,
@@ -178,7 +182,7 @@
       "trajectory": "straight",
       "shape": "dot",
       "laser": {
-        "transfer": 0.8,
+        "transfer": 0.62,
         "width": 16,
         "length": 1400,
         "life": 0.18

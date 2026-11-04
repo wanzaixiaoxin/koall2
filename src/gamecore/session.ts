@@ -2,7 +2,7 @@ import { EventBus } from './core/events';
 import { Rng } from './core/rng';
 import { SpatialHash } from './core/spatial-hash';
 import { clamp, Vec2 } from './core/math';
-import { calcDamage } from './damage';
+import { calcDamage, DamageType } from './damage';
 import { createTrajectory, MotionContext, TrajectoryConfig } from './trajectory';
 import {
   createHero,
@@ -1504,7 +1504,7 @@ export class GameSession {
     }
   }
 
-  private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime): void {
+  private killMonster(p: ProjectileRuntime | null, m: MonsterRuntime, dmgType?: DamageType): void {
     this.totalKills++;
     this.waveKills++;
     this.hero.xp += m.cfg.xp; // 经验自动吸收（击杀即入账，无拾取环节）
@@ -1513,6 +1513,27 @@ export class GameSession {
       x: m.x, y: m.y, radius: m.cfg.radius,
       damageType: p ? p.damageType : null,
     });
+
+    // 击杀溅射（docs/02：单体武器的虫海定位——点杀引爆）。
+    // 只有"带弹体的直接击杀"才触发；溅射杀伤以 killMonster(null) 结算，不再连锁。
+    if (p && p.weapon.cfg.killSplash) {
+      const { radius, dmgMul } = p.weapon.cfg.killSplash;
+      const splash = Math.max(1, Math.round(p.dmg * dmgMul));
+      for (const o of this.monsters) {
+        if (o === m || o.hp <= 0 || o.burrowed) continue;
+        const dx = o.x - m.x;
+        const dy = o.y - m.y;
+        const rr = radius + o.cfg.radius;
+        if (dx * dx + dy * dy > rr * rr) continue;
+        o.hp -= splash;
+        this.totalDamage += splash;
+        this.bus.emit('onHit', {
+          monsterId: o.id, dmg: splash, isCrit: false, blocked: false,
+          mitigated: 0, x: o.x, y: o.y, damageType: p.damageType,
+        });
+        if (o.hp <= 0) this.killMonster(null, o, p.damageType); // 无弹体 → 不再触发溅射
+      }
+    }
 
     // 死亡分裂：splitter 死亡裂为 N 只幼体（不可再分裂）
     if (m.cfg.deathSplit) {
