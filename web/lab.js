@@ -707,7 +707,7 @@
       this.T = {
         hp: 80,
         maxCount: 9,
-        spreadIntervalSec: 7,
+        spreadIntervalSec: 5.5,
         dormantSec: 6,
         reviveCost: 20,
         ...cfg.tumor ?? {}
@@ -719,8 +719,8 @@
         ...cfg.migrate ?? {}
       };
       this.E = {
-        hiveIncomePerSec: 6,
-        tumorIncomeScale: 3,
+        hiveIncomePerSec: 11,
+        tumorIncomeScale: 3.5,
         startBiomass: 80,
         unitCost: { zerg_ling: 5, zerg_roach: 12, zerg_lurker: 25, zerg_queen: 60, baneling: 20, zerg_ultra: 120 },
         ...cfg.economy ?? {}
@@ -744,8 +744,9 @@
       this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
       this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 180);
       this.spawnTumor(cfg.hivePos.x - 90, cfg.hivePos.y - 300);
+      this.spawnTumor(cfg.hivePos.x + 110, cfg.hivePos.y - 380);
       this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
-      this.pendingBurst = 4;
+      this.pendingBurst = 9;
     }
     // ---------------- 菌毯网格 ----------------
     keyAt(x, y) {
@@ -890,7 +891,7 @@
         if (t.spreadLeft <= 0) {
           t.spreadLeft += this.T.spreadIntervalSec;
           this.paintAround(t.x, t.y - CELL, 1);
-          if (alive < this.T.maxCount && this.rngLike() < 0.8) {
+          if (alive < this.T.maxCount && this.rngLike() < 0.92) {
             this.spawnTumor(t.x, t.y - CELL * 1.5);
           }
         }
@@ -917,8 +918,8 @@
       this.hive.biomassEarned += income * dt;
       this.hiveWaveLeft -= dt;
       if (this.hiveWaveLeft <= 0) {
-        this.hiveWaveLeft += 30;
-        this.pendingBurst += 12 + Math.floor(this.rngLike() * 8);
+        this.hiveWaveLeft += 20;
+        this.pendingBurst += 18 + Math.floor(this.rngLike() * 10);
         this.waveCallback?.();
       }
     }
@@ -959,10 +960,10 @@
       if (this.hive.migrateLeft > 0) return;
       this.hive.hatchLeft -= dt;
       if (this.hive.hatchLeft > 0) return;
-      this.hive.hatchLeft += 0.9;
+      this.hive.hatchLeft += 0.55;
       const pool = this.unlockedUnits();
       if (pool.length === 0) return;
-      const burst = this.pendingBurst > 0 ? Math.min(4, this.pendingBurst) : 2 + Math.floor(this.rngLike() * 2.4);
+      const burst = this.pendingBurst > 0 ? Math.min(6, this.pendingBurst) : 3 + Math.floor(this.rngLike() * 3);
       let hatched = 0;
       for (let i = 0; i < burst; i++) {
         const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];

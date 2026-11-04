@@ -69,7 +69,7 @@ export class HiveSystem {
     this.T = {
       hp: 80,
       maxCount: 9,
-      spreadIntervalSec: 7,
+      spreadIntervalSec: 5.5,
       dormantSec: 6,
       reviveCost: 20,
       ...(cfg.tumor ?? {}),
@@ -81,8 +81,8 @@ export class HiveSystem {
       ...(cfg.migrate ?? {}),
     };
     this.E = {
-      hiveIncomePerSec: 6,
-      tumorIncomeScale: 3,
+      hiveIncomePerSec: 11,
+      tumorIncomeScale: 3.5,
       startBiomass: 80,
       unitCost: { zerg_ling: 5, zerg_roach: 12, zerg_lurker: 25, zerg_queen: 60, baneling: 20, zerg_ultra: 120 },
       ...(cfg.economy ?? {}),
@@ -105,13 +105,14 @@ export class HiveSystem {
     };
     // 初始菌毯：虫巢周围一圈（活性起点 50，铺得快）
     this.paintAround(cfg.hivePos.x, cfg.hivePos.y, 2);
-    // 初始 2 个瘤（都靠近虫巢——放太靠前=出生即暴露在玩家火力下白给；前沿靠增殖自然推进）
+    // 初始 3 个瘤（第 3 个靠前些，开局就有多条出生通道、更快压上）
     this.spawnTumor(cfg.hivePos.x, cfg.hivePos.y - 180);
     this.spawnTumor(cfg.hivePos.x - 90, cfg.hivePos.y - 300);
+    this.spawnTumor(cfg.hivePos.x + 110, cfg.hivePos.y - 380);
     // 地堡
     this.bunkers = (cfg.bunkers ?? []).map((b) => ({ x: b.x, y: b.y, r: b.r, hp: b.hp, maxHp: b.hp }));
     // 开局预孵一窝（幼虫从前沿瘤出发，避免开场空场）
-    this.pendingBurst = 4;
+    this.pendingBurst = 9;
   }
 
   // ---------------- 菌毯网格 ----------------
@@ -289,7 +290,7 @@ export class HiveSystem {
         t.spreadLeft += this.T.spreadIntervalSec;
         // 朝"最靠前（y 更小）/朝向城墙"方向长菌毯 + 概率生新瘤
         this.paintAround(t.x, t.y - CELL, 1);
-        if (alive < this.T.maxCount && this.rngLike() < 0.8) {
+        if (alive < this.T.maxCount && this.rngLike() < 0.92) {
           this.spawnTumor(t.x, t.y - CELL * 1.5);
         }
       }
@@ -320,11 +321,11 @@ export class HiveSystem {
     income *= Math.min(2.5, 1 + now / 240);
     this.hive.biomass += income * dt;
     this.hive.biomassEarned += income * dt;
-    // 孵化潮：每 45s 一次"burst"——玩家有明确的喘息/爆发节奏（波次感的替代物）
+    // 孵化潮：每 20s 一次"burst"——玩家有明确的喘息/爆发节奏（波次感的替代物）
     this.hiveWaveLeft -= dt;
     if (this.hiveWaveLeft <= 0) {
-      this.hiveWaveLeft += 30;
-      this.pendingBurst += 12 + Math.floor(this.rngLike() * 8);
+      this.hiveWaveLeft += 20;
+      this.pendingBurst += 18 + Math.floor(this.rngLike() * 10);
       this.waveCallback?.();
     }
   }
@@ -371,13 +372,13 @@ export class HiveSystem {
     if (this.hive.migrateLeft > 0) return; // 迁徙不孵兵
     this.hive.hatchLeft -= dt;
     if (this.hive.hatchLeft > 0) return;
-    this.hive.hatchLeft += 0.9;
+    this.hive.hatchLeft += 0.55;
 
     // 可孵单位：按虫核累计收入解锁
     const pool = this.unlockedUnits();
     if (pool.length === 0) return;
-    // 每次决策孵一批（2~4 只）：开局 pendingBurst 优先放完，之后按虫核余量连孵
-    const burst = this.pendingBurst > 0 ? Math.min(4, this.pendingBurst) : 2 + Math.floor(this.rngLike() * 2.4);
+    // 每次决策孵一批（3~5 只）：开局 pendingBurst 优先放完，之后按虫核余量连孵
+    const burst = this.pendingBurst > 0 ? Math.min(6, this.pendingBurst) : 3 + Math.floor(this.rngLike() * 3);
     let hatched = 0;
     for (let i = 0; i < burst; i++) {
       const key = pool[Math.floor(this.rngLike() * pool.length) % pool.length];
